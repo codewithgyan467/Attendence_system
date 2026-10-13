@@ -1,0 +1,17 @@
+{
+  "name": "hostelguard-enterprise-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Smart Hostel Attendance System - Root convenience scripts",
+  "scripts": {
+    "start": "npm --prefix backend start",
+    "backend": "npm --prefix backend start",
+    "frontend": "npm --prefix frontend run dev",
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "cap:build": "npm --prefix frontend run cap:build",
+    "cap:open": "npm --prefix frontend run cap:open",
+    "cap:sync": "npm --prefix frontend run cap:sync",
+    "test": "npm --prefix backend test"
+  }
+}
