@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
+import { getNativeOrBrowserLocation, isNativeMobile } from '../../utils/nativeHardware';
 import {
   UserCheck,
   History,
@@ -75,50 +76,36 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     }
   };
 
-  // Check-In Step 1: GPS Verification
-  const handleVerifyLocation = () => {
+  // Check-In Step 1: GPS Verification (Native Android Hardware via Capacitor or Browser fallback)
+  const handleVerifyLocation = async () => {
     setCheckinStep('verifying_gps');
     setCheckinError(null);
 
-    if (!navigator.geolocation) {
-      setCheckinError('Geolocation is not supported by your browser.');
-      setCheckinStep('failed');
-      return;
-    }
+    try {
+      const pos = await getNativeOrBrowserLocation();
+      const res = await api.attendance.verifyLocation({
+        roll_number: dashboard?.student?.roll_number || user?.username,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        accuracy: pos.accuracy || 10,
+        is_mock_location: pos.isMockLocation || false
+      });
 
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const res = await api.attendance.verifyLocation({
-            roll_number: dashboard?.student?.roll_number || user?.username,
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            accuracy: pos.coords.accuracy || 10,
-            is_mock_location: false
-          });
-
-          if (res.success) {
-            setSessionToken(res.sessionToken);
-            setVerifiedDistance(res.verifiedDistance);
-            setCheckinStep('gps_ok');
-            // Auto open camera
-            setTimeout(() => startCamera(), 500);
-          } else {
-            setCheckinError(res.error || 'Location rejected by geofence policy.');
-            setCheckinStep('failed');
-          }
-        } catch (err) {
-          setCheckinError(err.message || 'Location verification rejected.');
-          setCheckinStep('failed');
-          fetchStudentData();
-        }
-      },
-      (err) => {
-        setCheckinError(`GPS Sensor Error: ${err.message}. Please enable location permissions.`);
+      if (res.success) {
+        setSessionToken(res.sessionToken);
+        setVerifiedDistance(res.verifiedDistance);
+        setCheckinStep('gps_ok');
+        // Auto open camera
+        setTimeout(() => startCamera(), 500);
+      } else {
+        setCheckinError(res.error || 'Location rejected by geofence policy.');
         setCheckinStep('failed');
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+      }
+    } catch (err) {
+      setCheckinError(err.message || 'Location verification rejected.');
+      setCheckinStep('failed');
+      fetchStudentData();
+    }
   };
 
   // Check-In Step 2: Camera

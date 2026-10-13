@@ -120,6 +120,36 @@ Time:        2.325 s
 
 ---
 
+## 📱 Native Android Mobile App (Capacitor FOSS Wrapper)
+
+The system includes a production-grade native Android wrapper built into `frontend/` powered by **Capacitor**. It wraps the Vite React application while binding directly to native Android GPS hardware and camera sensors:
+
+- **Hardware GPS & Mock Spoofer Detection**: Queries Android's native `LocationManager` via `@capacitor/geolocation` and inspects `isMock` flags to enforce anti-forgery geofencing.
+- **Hardware Camera**: Direct hardware selfie camera capture via `@capacitor/camera` and WebRTC Chromium bridge.
+- **Strict Two-Folder Layout**: All Android project files and Gradle configurations reside strictly inside `frontend/android/`.
+
+### Building & Running the Android App
+
+1. Ensure [Android Studio](https://developer.android.com/studio) and Android SDK are installed.
+2. Build the web distribution and sync the native Android project:
+   ```powershell
+   cd frontend
+   npm run cap:build
+   ```
+3. Open the native Android project in Android Studio:
+   ```powershell
+   npm run cap:open
+   ```
+4. Connect an Android phone or launch an Android Virtual Device (AVD) emulator, then click **Run (Play)** in Android Studio.
+5. To compile a standalone debug APK from the command line:
+   ```powershell
+   cd frontend/android
+   ./gradlew assembleDebug
+   # Output APK will be at frontend/android/app/build/outputs/apk/debug/app-debug.apk
+   ```
+
+---
+
 ## 📁 Repository Layout
 
 ```
@@ -146,7 +176,10 @@ attendence_Hostel_system/
 │   ├── data/                     # SQLite database storage file
 │   └── tests/                    # Jest/Supertest integration test suite
 │
-├── frontend/                     # [FOLDER 2] React Vite PWA Client Application
+├── frontend/                     # [FOLDER 2] React Vite PWA & Android Native Wrapper
+│   ├── android/                  # Native Android Studio Gradle Project (Capacitor)
+│   │   ├── app/src/main/AndroidManifest.xml # Native GPS & Camera hardware permissions
+│   │   └── build.gradle          # Android Gradle build script
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── admin/            # Executive Dashboard, Charts, Roster, Geofence, Desks
@@ -155,8 +188,11 @@ attendence_Hostel_system/
 │   │   │   ├── auth/             # SaaS Login Page & Demo Selectors
 │   │   │   └── common/           # Bootstrap 5 Navbar, Sidebar, KPI Cards
 │   │   ├── context/AuthContext.jsx # Reactive session & role state provider
-│   │   ├── utils/api.js          # Authoritative API client with auto JWT
+│   │   ├── utils/
+│   │   │   ├── api.js            # Authoritative API client with auto JWT
+│   │   │   └── nativeHardware.js # Unified Capacitor GPS & Camera hardware bridge
 │   │   └── App.jsx               # Role-based workspace coordinator
+│   ├── capacitor.config.json     # Mobile wrapper configuration & appId
 │   └── index.css                 # Custom enterprise Bootstrap 5 design theme
 │
 ├── start_all.bat                 # One-click Windows batch launcher

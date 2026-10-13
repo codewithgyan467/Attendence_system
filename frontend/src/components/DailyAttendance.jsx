@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../utils/api';
+import { getNativeOrBrowserLocation, isNativeMobile } from '../utils/nativeHardware';
 import {
   MapPin,
   Camera,
@@ -94,22 +95,16 @@ export default function DailyAttendance({ simulatedLocation, simulatedMockActive
       acc = simulatedLocation.accuracy || 10;
       isMock = simulatedMockActive;
     } else {
-      // Attempt real hardware device geolocation
+      // Attempt real hardware device geolocation (Capacitor Native GPS or Browser HTML5)
       try {
-        const pos = await new Promise((resolve, reject) => {
-          if (!navigator.geolocation) reject(new Error('Geolocation not supported by device'));
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000
-          });
-        });
-        lat = pos.coords.latitude;
-        lon = pos.coords.longitude;
-        acc = pos.coords.accuracy || 10;
-        isMock = false;
+        const pos = await getNativeOrBrowserLocation();
+        lat = pos.latitude;
+        lon = pos.longitude;
+        acc = pos.accuracy || 10;
+        isMock = pos.isMockLocation || false;
       } catch (err) {
         // Fallback to configured hostel location for convenience if permission denied on localhost
-        console.warn('Browser GPS unavailable, using active hostel geofence coordinates for testing:', err);
+        console.warn('GPS unavailable, using active hostel geofence coordinates for testing:', err);
         const config = await api.getGeofenceConfig();
         lat = config.latitude;
         lon = config.longitude;

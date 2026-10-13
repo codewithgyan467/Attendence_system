@@ -1,0 +1,18 @@
+{
+  "appId": "com.hostel.attendance",
+  "appName": "HostelGuard",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "plugins": {
+    "Geolocation": {
+      "permissions": ["location"]
+    },
+    "Camera": {
+      "permissions": ["camera", "photos"]
+    }
+  }
+}
