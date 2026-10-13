@@ -11,6 +11,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const wardenRoutes = require('./routes/wardenRoutes');
 const studentRoutes = require('./routes/studentRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
+const otaRoutes = require('./routes/otaRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -80,6 +81,7 @@ app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/warden', wardenRoutes);
 app.use('/api/v1/students', studentRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
+app.use('/api/v1/ota', otaRoutes);
 
 // Centralized 404 Handler
 app.use((req, res) => {

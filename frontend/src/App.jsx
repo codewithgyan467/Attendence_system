@@ -16,12 +16,18 @@ import WardenDashboard from './components/warden/WardenDashboard';
 import StudentPortal from './components/student/StudentPortal';
 import GpsSimulator from './components/GpsSimulator';
 import { ArrowLeft } from 'lucide-react';
+import { initOtaUpdater } from './utils/otaUpdater';
 
 function AppContent() {
   const { user, role, loading } = useAuth();
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [activeTab, setActiveTab] = useState('');
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+
+  // Initialize Over-The-Air (OTA) live updater on app launch
+  useEffect(() => {
+    initOtaUpdater();
+  }, []);
 
   // Simulated GPS state (for desktop/browser evaluation)
   const [simulatedLocation, setSimulatedLocation] = useState(null);

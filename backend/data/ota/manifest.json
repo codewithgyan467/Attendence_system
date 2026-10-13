@@ -1,0 +1,6 @@
+{
+  "version": "1.0.0",
+  "mandatory": false,
+  "releaseDate": "2026-10-13T22:09:39.279Z",
+  "releaseNotes": "Initial production build with native biometric and GPS support."
+}
