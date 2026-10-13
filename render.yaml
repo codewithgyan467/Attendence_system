@@ -20,13 +20,11 @@ services:
         value: http://localhost:8000
 
   # 2. HostelGuard Web Portal (Administrative & Warden Dashboard)
-  - type: web
+  - type: static_site
     name: hostelguard-frontend
-    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
-    staticPublishPath: dist
-    plan: free
+    publishPath: dist
     routes:
       - type: rewrite
         source: /*
