@@ -9,6 +9,7 @@
     "test": "jest --runInBand --detectOpenHandles --forceExit"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "axios": "^1.7.9",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",

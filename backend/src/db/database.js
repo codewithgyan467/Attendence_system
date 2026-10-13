@@ -1,61 +1,110 @@
-const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 
-const dataDir = path.join(__dirname, '../../data');
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+const useTurso = Boolean(process.env.TURSO_DATABASE_URL);
+let tursoClient = null;
+let sqliteDb = null;
+
+if (useTurso) {
+  const { createClient } = require('@libsql/client');
+  tursoClient = createClient({
+    url: process.env.TURSO_DATABASE_URL,
+    authToken: process.env.TURSO_AUTH_TOKEN
+  });
+  console.log(`🚀 Connected to Persistent Turso Cloud SQLite Database at: ${process.env.TURSO_DATABASE_URL}`);
+} else {
+  const sqlite3 = require('sqlite3').verbose();
+  const dataDir = path.join(__dirname, '../../data');
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+
+  const dbPath = path.join(dataDir, 'hostel_attendance.sqlite');
+  sqliteDb = new sqlite3.Database(dbPath, (err) => {
+    if (err) {
+      console.error('Failed to open SQLite database:', err.message);
+    } else {
+      console.log(`Connected to Local SQLite Database at: ${dbPath}`);
+    }
+  });
+
+  // Configure High-Performance & Concurrency PRAGMAs
+  sqliteDb.serialize(() => {
+    sqliteDb.run('PRAGMA journal_mode = WAL;');
+    sqliteDb.run('PRAGMA foreign_keys = ON;');
+    sqliteDb.run('PRAGMA busy_timeout = 5000;');
+    sqliteDb.run('PRAGMA synchronous = NORMAL;');
+  });
 }
 
-const dbPath = path.join(dataDir, 'hostel_attendance.sqlite');
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Failed to open SQLite database:', err.message);
-  } else {
-    console.log(`Connected to Production SQLite Database at: ${dbPath}`);
-  }
-});
-
-// Configure High-Performance & Concurrency PRAGMAs
-db.serialize(() => {
-  db.run('PRAGMA journal_mode = WAL;');
-  db.run('PRAGMA foreign_keys = ON;');
-  db.run('PRAGMA busy_timeout = 5000;');
-  db.run('PRAGMA synchronous = NORMAL;');
-});
-
 // Helpers for promise-based queries
-const runQuery = (sql, params = []) => {
+const runQuery = async (sql, params = []) => {
+  if (useTurso) {
+    const res = await tursoClient.execute({ sql, args: params });
+    return { id: res.lastInsertRowid, changes: res.rowsAffected };
+  }
   return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
+    sqliteDb.run(sql, params, function (err) {
       if (err) reject(err);
       else resolve({ id: this.lastID, changes: this.changes });
     });
   });
 };
 
-const getQuery = (sql, params = []) => {
+const getQuery = async (sql, params = []) => {
+  if (useTurso) {
+    const res = await tursoClient.execute({ sql, args: params });
+    return res.rows[0] || null;
+  }
   return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
+    sqliteDb.get(sql, params, (err, row) => {
       if (err) reject(err);
-      else resolve(row);
+      else resolve(row || null);
     });
   });
 };
 
-const allQuery = (sql, params = []) => {
+const allQuery = async (sql, params = []) => {
+  if (useTurso) {
+    const res = await tursoClient.execute({ sql, args: params });
+    return res.rows || [];
+  }
   return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
+    sqliteDb.all(sql, params, (err, rows) => {
       if (err) reject(err);
-      else resolve(rows);
+      else resolve(rows || []);
     });
   });
 };
 
 // Transaction wrapper for atomic multi-statement operations
 const withTransaction = async (callback) => {
+  if (useTurso) {
+    const tx = await tursoClient.transaction('write');
+    try {
+      const txRun = async (sql, params = []) => {
+        const r = await tx.execute({ sql, args: params });
+        return { id: r.lastInsertRowid, changes: r.rowsAffected };
+      };
+      const txGet = async (sql, params = []) => {
+        const r = await tx.execute({ sql, args: params });
+        return r.rows[0] || null;
+      };
+      const txAll = async (sql, params = []) => {
+        const r = await tx.execute({ sql, args: params });
+        return r.rows || [];
+      };
+      const result = await callback({ runQuery: txRun, getQuery: txGet, allQuery: txAll });
+      await tx.commit();
+      return result;
+    } catch (err) {
+      await tx.rollback();
+      throw err;
+    }
+  }
+
   await runQuery('BEGIN TRANSACTION;');
   try {
     const result = await callback({ runQuery, getQuery, allQuery });
@@ -418,7 +467,7 @@ const seedInitialData = async () => {
 };
 
 module.exports = {
-  db,
+  db: sqliteDb || tursoClient,
   runQuery,
   getQuery,
   allQuery,
