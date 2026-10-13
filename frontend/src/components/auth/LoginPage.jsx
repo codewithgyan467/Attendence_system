@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key } from 'lucide-react';
+import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, Server, Check } from 'lucide-react';
+import { getApiBaseUrl, authStorage } from '../../utils/api';
 
 export default function LoginPage({ onNavigateOnboarding }) {
   const { login } = useAuth();
@@ -8,6 +9,9 @@ export default function LoginPage({ onNavigateOnboarding }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [showServerConfig, setShowServerConfig] = useState(false);
+  const [customServerUrl, setCustomServerUrl] = useState(authStorage.getBackendUrl());
+  const [serverSavedMsg, setServerSavedMsg] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -32,6 +36,16 @@ export default function LoginPage({ onNavigateOnboarding }) {
     setUsername(u);
     setPassword(p);
     setErrorMsg('');
+  };
+
+  const handleSaveServer = (e) => {
+    e.preventDefault();
+    authStorage.setBackendUrl(customServerUrl);
+    setServerSavedMsg(true);
+    setTimeout(() => {
+      setServerSavedMsg(false);
+      setShowServerConfig(false);
+    }, 1200);
   };
 
   return (
@@ -148,6 +162,44 @@ export default function LoginPage({ onNavigateOnboarding }) {
             >
               <UserCheck size={14} /> Student Self-Registration (Phase 2)
             </button>
+          </div>
+
+          {/* Server Connection Config (Especially helpful for Native Mobile & Emulator) */}
+          <div className="text-center mt-3 pt-2">
+            <button
+              type="button"
+              className="btn btn-link btn-sm text-decoration-none text-muted p-0 d-inline-flex align-items-center gap-1"
+              style={{ fontSize: '11px' }}
+              onClick={() => setShowServerConfig(!showServerConfig)}
+            >
+              <Server size={11} /> Server: <span className="text-truncate font-monospace" style={{ maxWidth: '210px' }}>{getApiBaseUrl()}</span>
+            </button>
+
+            {showServerConfig && (
+              <div className="card mt-2 p-3 text-start bg-light border-0 shadow-sm rounded-3">
+                <div className="d-flex align-items-center justify-content-between mb-2">
+                  <span className="small fw-bold text-dark">Backend API Endpoint</span>
+                  {serverSavedMsg && <span className="badge bg-success small"><Check size={10} /> Saved</span>}
+                </div>
+                <div className="input-group input-group-sm mb-2">
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="http://10.0.2.2:5000/api/v1"
+                    value={customServerUrl}
+                    onChange={(e) => setCustomServerUrl(e.target.value)}
+                  />
+                  <button className="btn btn-primary" type="button" onClick={handleSaveServer}>
+                    Save
+                  </button>
+                </div>
+                <div className="small text-muted" style={{ fontSize: '11px', lineHeight: 1.3 }}>
+                  • <strong>Android Emulator:</strong> <code>http://10.0.2.2:5000/api/v1</code><br />
+                  • <strong>Physical Phone:</strong> <code>http://&lt;your-pc-ip&gt;:5000/api/v1</code><br />
+                  • <strong>Web Browser:</strong> <code>/api/v1</code>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

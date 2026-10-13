@@ -1,4 +1,27 @@
-const API_BASE = '/api/v1';
+import { Capacitor } from '@capacitor/core';
+
+// Dynamically determine the API base URL:
+// - Browser development uses relative '/api/v1' via Vite proxy
+// - Android Native Emulator uses 'http://10.0.2.2:5000/api/v1'
+// - Physical phone or custom network can set localStorage 'hg_backend_url'
+export const getApiBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    const custom = localStorage.getItem('hg_backend_url');
+    if (custom) return custom.replace(/\/+$/, '');
+  }
+  if (import.meta.env?.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, '');
+  }
+  if (Capacitor.isNativePlatform()) {
+    return 'http://10.0.2.2:5000/api/v1';
+  }
+  return '/api/v1';
+};
+
+export const getServerRootUrl = () => {
+  const base = getApiBaseUrl();
+  return base.replace(/\/api\/v1\/?$/, '');
+};
 
 // Token Management
 export const authStorage = {
@@ -14,7 +37,12 @@ export const authStorage = {
     }
   },
   setUser: (user) => localStorage.setItem('hg_user', JSON.stringify(user)),
-  clearUser: () => localStorage.removeItem('hg_user')
+  clearUser: () => localStorage.removeItem('hg_user'),
+  getBackendUrl: () => localStorage.getItem('hg_backend_url') || getApiBaseUrl(),
+  setBackendUrl: (url) => {
+    if (!url) localStorage.removeItem('hg_backend_url');
+    else localStorage.setItem('hg_backend_url', url.trim());
+  }
 };
 
 // Central fetch helper with automatic Authorization header
@@ -26,7 +54,8 @@ async function request(endpoint, options = {}) {
     ...options.headers
   };
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  const url = `${getApiBaseUrl()}${endpoint}`;
+  const response = await fetch(url, {
     ...options,
     headers
   });
@@ -48,7 +77,8 @@ async function request(endpoint, options = {}) {
 export const api = {
   // System Health
   async getHealth() {
-    const res = await fetch('/health');
+    const root = getServerRootUrl();
+    const res = await fetch(`${root || ''}/health`);
     return res.json();
   },
 
@@ -73,7 +103,7 @@ export const api = {
     previewRosterUpload: (formDataOrJson) => {
       const token = authStorage.getToken();
       if (formDataOrJson instanceof FormData) {
-        return fetch(`${API_BASE}/admin/allotment/upload-preview`, {
+        return fetch(`${getApiBaseUrl()}/admin/allotment/upload-preview`, {
           method: 'POST',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           body: formDataOrJson
