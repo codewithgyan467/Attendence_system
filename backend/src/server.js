@@ -22,28 +22,42 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
-  : [
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'http://localhost:5173',
-      'https://localhost',
-      'http://localhost',
-      'capacitor://localhost',
-      'http://10.0.2.2:5000'
-    ];
+const defaultOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5173',
+  'https://localhost',
+  'http://localhost',
+  'capacitor://localhost',
+  'http://10.0.2.2:5000'
+];
+
+const configuredOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+  : [];
+
+const allowAllOrigins = configuredOrigins.includes('*') || !process.env.ALLOWED_ORIGINS;
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (e.g. mobile apps, curl) or matched origins
-    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
-      callback(null, true);
-    } else {
-      callback(new Error('Blocked by CORS policy'));
+    // Allow requests with no origin (e.g. mobile apps, curl)
+    if (!origin) return callback(null, true);
+    // If wildcard configured or in development mode
+    if (allowAllOrigins || process.env.NODE_ENV !== 'production') return callback(null, true);
+    // If matching configured origins, defaults, or any onrender.com host
+    if (
+      configuredOrigins.includes(origin) ||
+      defaultOrigins.includes(origin) ||
+      origin.endsWith('.onrender.com') ||
+      origin.includes('localhost')
+    ) {
+      return callback(null, true);
     }
+    return callback(null, true); // Permissive fallback for client deployments
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Request-Id']
 }));
 
 // Request Tracking & Structured Logging
