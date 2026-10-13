@@ -1,0 +1,33 @@
+services:
+  # 1. HostelGuard Backend API & OpenCV Vision Service
+  - type: web
+    name: hostelguard-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: AI_SERVICE_URL
+        value: http://localhost:8000
+
+  # 2. HostelGuard Web Portal (Administrative & Warden Dashboard)
+  - type: web
+    name: hostelguard-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    plan: free
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
