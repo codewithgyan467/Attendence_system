@@ -1,0 +1,166 @@
+const API_BASE = '/api/v1';
+
+// Token Management
+export const authStorage = {
+  getToken: () => localStorage.getItem('hg_token'),
+  setToken: (token) => localStorage.setItem('hg_token', token),
+  clearToken: () => localStorage.removeItem('hg_token'),
+  getUser: () => {
+    try {
+      const u = localStorage.getItem('hg_user');
+      return u ? JSON.parse(u) : null;
+    } catch {
+      return null;
+    }
+  },
+  setUser: (user) => localStorage.setItem('hg_user', JSON.stringify(user)),
+  clearUser: () => localStorage.removeItem('hg_user')
+};
+
+// Central fetch helper with automatic Authorization header
+async function request(endpoint, options = {}) {
+  const token = authStorage.getToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers
+  };
+
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    if (response.status === 401 && !endpoint.includes('/auth/login')) {
+      authStorage.clearToken();
+      authStorage.clearUser();
+      window.dispatchEvent(new Event('auth:unauthorized'));
+    }
+    throw new Error(data.error || data.message || `Request failed with status ${response.status}`);
+  }
+
+  return data;
+}
+
+export const api = {
+  // System Health
+  async getHealth() {
+    const res = await fetch('/health');
+    return res.json();
+  },
+
+  // Authentication
+  auth: {
+    login: (credentials) => request('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
+    getMe: () => request('/auth/me'),
+    changePassword: (data) => request('/auth/change-password', { method: 'POST', body: JSON.stringify(data) }),
+    logout: () => request('/auth/logout', { method: 'POST' })
+  },
+
+  // Admin APIs
+  admin: {
+    getDashboardStats: () => request('/admin/dashboard-stats'),
+    getStudents: (params = {}) => {
+      const q = new URLSearchParams(params).toString();
+      return request(`/admin/students${q ? '?' + q : ''}`);
+    },
+    getStudentDetails: (id) => request(`/admin/students/${encodeURIComponent(id)}`),
+    updateStudent: (id, data) => request(`/admin/students/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+    getBlocks: () => request('/admin/blocks'),
+    previewRosterUpload: (formDataOrJson) => {
+      const token = authStorage.getToken();
+      if (formDataOrJson instanceof FormData) {
+        return fetch(`${API_BASE}/admin/allotment/upload-preview`, {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formDataOrJson
+        }).then(async (r) => {
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || 'Preview failed');
+          return d;
+        });
+      }
+      return request('/admin/allotment/upload-preview', { method: 'POST', body: JSON.stringify(formDataOrJson) });
+    },
+    commitRosterUpload: (validRecords) => request('/admin/allotment/upload-commit', { method: 'POST', body: JSON.stringify({ validRecords }) }),
+    getGeofence: () => request('/admin/geofence'),
+    updateGeofence: (config) => request('/admin/geofence', { method: 'POST', body: JSON.stringify(config) }),
+    getReports: (params = {}) => {
+      const q = new URLSearchParams(params).toString();
+      return request(`/admin/reports${q ? '?' + q : ''}`);
+    },
+    overrideAttendance: (data) => request('/admin/attendance/override', { method: 'POST', body: JSON.stringify(data) }),
+    getCorrections: (status) => request(`/admin/corrections${status ? '?status=' + status : ''}`),
+    reviewCorrection: (id, data) => request(`/admin/corrections/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify(data) }),
+    getSecurityAlerts: () => request('/admin/security/alerts'),
+    resetStrike: (data) => request('/admin/security/reset-strike', { method: 'POST', body: JSON.stringify(data) }),
+    getAuditLogs: (params = {}) => {
+      const q = new URLSearchParams(params).toString();
+      return request(`/admin/audit-logs${q ? '?' + q : ''}`);
+    },
+    getFeedback: (status) => request(`/admin/feedback${status ? '?status=' + status : ''}`),
+    resolveFeedback: (id, data) => request(`/admin/feedback/${encodeURIComponent(id)}/resolve`, { method: 'POST', body: JSON.stringify(data) })
+  },
+
+  // Warden APIs
+  warden: {
+    getOverview: () => request('/warden/overview'),
+    getExceptions: () => request('/warden/exceptions'),
+    getCorrections: (status) => request(`/warden/corrections${status ? '?status=' + status : ''}`),
+    reviewCorrection: (id, data) => request(`/warden/corrections/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify(data) }),
+    getFeedback: () => request('/warden/feedback'),
+    respondFeedback: (id, data) => request(`/warden/feedback/${encodeURIComponent(id)}/respond`, { method: 'POST', body: JSON.stringify(data) })
+  },
+
+  // Student APIs
+  student: {
+    getAllotmentList: () => request('/students/allotment-list'),
+    onboard: (data) => request('/students/onboard', { method: 'POST', body: JSON.stringify(data) }),
+    getDashboard: () => request('/students/dashboard'),
+    getHistory: () => request('/students/history'),
+    submitCorrection: (data) => request('/students/corrections', { method: 'POST', body: JSON.stringify(data) }),
+    getCorrections: () => request('/students/corrections'),
+    submitFeedback: (data) => request('/students/feedback', { method: 'POST', body: JSON.stringify(data) }),
+    getFeedback: () => request('/students/feedback')
+  },
+
+  // Daily Attendance APIs
+  attendance: {
+    verifyLocation: (data) => request('/attendance/verify-location', { method: 'POST', body: JSON.stringify(data) }),
+    verifyFace: (data) => request('/attendance/verify-face', { method: 'POST', body: JSON.stringify(data) }),
+    getStatus: (identifier) => request(`/attendance/status/${encodeURIComponent(identifier)}`)
+  },
+
+  // Backward-compatibility aliases for legacy / simulator components
+  async getUnregisteredAllotments() {
+    const res = await request('/students/allotment-list');
+    return res.allotments || [];
+  },
+  onboardStudent(data) {
+    return request('/students/onboard', { method: 'POST', body: JSON.stringify(data) });
+  },
+  verifyLocation(data) {
+    return request('/attendance/verify-location', { method: 'POST', body: JSON.stringify(data) });
+  },
+  verifyFace(data) {
+    return request('/attendance/verify-face', { method: 'POST', body: JSON.stringify(data) });
+  },
+  getAttendanceStatus(roll) {
+    return request(`/attendance/status/${encodeURIComponent(roll)}`);
+  },
+  getGeofenceConfig() {
+    return request('/admin/geofence');
+  },
+  async getRegisteredStudents() {
+    try {
+      const res = await request('/admin/students?limit=200');
+      return res.students || [];
+    } catch {
+      return [];
+    }
+  }
+};
+
