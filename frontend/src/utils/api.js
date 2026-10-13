@@ -13,7 +13,7 @@ export const getApiBaseUrl = () => {
     return import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, '');
   }
   if (Capacitor.isNativePlatform()) {
-    return 'http://10.0.2.2:5000/api/v1';
+    return 'https://hostelguard-backend-oimp.onrender.com/api/v1';
   }
   return '/api/v1';
 };
