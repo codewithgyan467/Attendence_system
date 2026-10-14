@@ -895,6 +895,286 @@ router.post('/phone-login', authLimiter, async (req, res) => {
   }
 });
 
+// 11. Direct OTP Login - Request OTP (SMS or Email) - NO FIRST/LAST NAME REQUIRED
+router.post('/otp-login/request', authLimiter, async (req, res) => {
+  try {
+    const { identifier, method = 'SMS' } = req.body;
+
+    if (!identifier || !identifier.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please enter your registered mobile number, email, or roll number.'
+      });
+    }
+
+    const cleanMethod = String(method).toUpperCase() === 'EMAIL' ? 'EMAIL' : 'PHONE';
+    const identity = await resolveStudentIdentity(identifier);
+
+    if (!identity) {
+      return res.status(404).json({
+        success: false,
+        error: `No registered student found matching "${identifier.trim()}". Please check your details or contact your hostel warden.`
+      });
+    }
+
+    if (identity.user_active === 0 || identity.student_active === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'This account has been deactivated. Please contact the hostel administration.'
+      });
+    }
+
+    let destination = cleanMethod === 'EMAIL' ? identity.student_email : identity.student_phone;
+    if (!destination) {
+      destination = identity.student_phone || identity.student_email;
+    }
+
+    if (!destination) {
+      return res.status(400).json({
+        success: false,
+        error: `No registered ${cleanMethod === 'EMAIL' ? 'email' : 'phone number'} found for this student.`
+      });
+    }
+
+    // Rate-limit check in last 10 minutes
+    const recentOtps = await getQuery(`
+      SELECT COUNT(*) as count
+      FROM password_reset_otps
+      WHERE (identifier = ? OR destination = ?)
+        AND created_at > datetime('now', '-10 minutes')
+    `, [identity.roll_number, destination]);
+
+    if (process.env.NODE_ENV !== 'test' && recentOtps && recentOtps.count >= 5) {
+      return res.status(429).json({
+        success: false,
+        error: 'Too many OTP requests for this account. Please wait 10 minutes before requesting a new code.'
+      });
+    }
+
+    const otpCode = crypto.randomInt(100000, 999999).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const otpId = uuidv4();
+
+    // Invalidate previous unexpired OTPs
+    await runQuery(`
+      UPDATE password_reset_otps
+      SET is_used = 1
+      WHERE identifier = ? AND is_used = 0
+    `, [identity.roll_number]);
+
+    await runQuery(`
+      INSERT INTO password_reset_otps (
+        id, identifier, user_id, otp_code, method, destination, expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [
+      otpId,
+      identity.roll_number,
+      identity.user_account_id || null,
+      otpCode,
+      cleanMethod,
+      destination,
+      expiresAt
+    ]);
+
+    let dispatchResult;
+    if (cleanMethod === 'EMAIL') {
+      dispatchResult = await sendEmailOtp({
+        email: destination,
+        otpCode,
+        studentName: identity.full_name,
+        rollNumber: identity.roll_number
+      });
+    } else {
+      dispatchResult = await sendSmsOtp({
+        phone: destination,
+        otpCode,
+        studentName: identity.full_name,
+        rollNumber: identity.roll_number
+      });
+    }
+
+    await recordAuditEvent(
+      identity.user_account_id || 'ANONYMOUS',
+      identity.roll_number || 'STUDENT',
+      'LOGIN_OTP_REQUEST',
+      'USER',
+      identity.user_account_id || null,
+      `Requested login OTP sent to ${dispatchResult.maskedDestination}`,
+      req
+    );
+
+    res.json({
+      success: true,
+      message: `A 6-digit OTP code has been dispatched to ${dispatchResult.maskedDestination}.`,
+      identifier: identity.roll_number,
+      maskedDestination: dispatchResult.maskedDestination,
+      expiresInMinutes: 10,
+      ...(process.env.NODE_ENV !== 'production' ? { debugOtp: otpCode } : {})
+    });
+  } catch (err) {
+    console.error('Login OTP request error:', err);
+    res.status(500).json({ success: false, error: 'Failed to dispatch login OTP: ' + err.message });
+  }
+});
+
+// 12. Direct OTP Login - Verify OTP (Takes ONLY the 6-digit OTP from user)
+router.post('/otp-login/verify', authLimiter, async (req, res) => {
+  try {
+    const { identifier, otp } = req.body;
+
+    if (!identifier || !otp) {
+      return res.status(400).json({ success: false, error: 'Identifier and 6-digit OTP code are required.' });
+    }
+
+    const cleanIdentifier = identifier.trim();
+    const cleanOtp = String(otp).trim();
+
+    // Find active OTP record
+    const otpRecord = await getQuery(`
+      SELECT * FROM password_reset_otps
+      WHERE (identifier = ? OR destination = ?)
+        AND is_used = 0
+        AND datetime(expires_at) > datetime('now')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [cleanIdentifier, cleanIdentifier]);
+
+    if (!otpRecord) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or expired verification code. Please request a new OTP.'
+      });
+    }
+
+    if (otpRecord.attempts >= 5) {
+      await runQuery(`UPDATE password_reset_otps SET is_used = 1 WHERE id = ?`, [otpRecord.id]);
+      return res.status(400).json({
+        success: false,
+        error: 'Too many incorrect attempts. This OTP has been invalidated for security. Please request a new one.'
+      });
+    }
+
+    await runQuery(`UPDATE password_reset_otps SET attempts = attempts + 1 WHERE id = ?`, [otpRecord.id]);
+
+    if (otpRecord.otp_code !== cleanOtp) {
+      return res.status(400).json({
+        success: false,
+        error: 'Incorrect verification code. Please check the 6 digits and try again.'
+      });
+    }
+
+    // Mark OTP as used
+    await runQuery(`UPDATE password_reset_otps SET is_used = 1 WHERE id = ?`, [otpRecord.id]);
+
+    // Retrieve or provision student user account
+    const cleanDigits = cleanIdentifier.replace(/[^0-9]/g, '');
+    let student = await getQuery(`
+      SELECT s.*, 
+             u.id as user_account_id, 
+             u.username, 
+             u.email as user_email, 
+             u.role, 
+             u.is_active as user_active, 
+             u.must_change_password
+      FROM students s
+      LEFT JOIN users u ON (s.user_id = u.id OR s.roll_number = u.username)
+      WHERE s.roll_number = ? OR s.phone = ? OR s.email = ?
+         OR (length(?) >= 10 AND (s.phone LIKE ? OR s.phone LIKE ?))
+      LIMIT 1
+    `, [
+      otpRecord.identifier,
+      cleanIdentifier,
+      cleanIdentifier,
+      cleanDigits,
+      `%${cleanDigits.slice(-10)}`,
+      `%${cleanDigits}`
+    ]);
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        error: 'Registered student account could not be found.'
+      });
+    }
+
+    if (student.user_active === 0 || student.is_active === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Your account has been deactivated. Please contact hostel administration.'
+      });
+    }
+
+    let user = null;
+    if (student.user_account_id) {
+      user = {
+        id: student.user_account_id,
+        username: student.username || student.roll_number,
+        email: student.user_email || student.email,
+        role: student.role || 'STUDENT',
+        student_id: student.id,
+        must_change_password: student.must_change_password || 0
+      };
+    } else {
+      let existingUser = await getQuery(`SELECT * FROM users WHERE username = ? OR student_id = ?`, [student.roll_number, student.id]);
+      if (existingUser) {
+        user = existingUser;
+        await runQuery(`UPDATE students SET user_id = ? WHERE id = ?`, [existingUser.id, student.id]);
+      } else {
+        const newUserId = uuidv4();
+        const salt = await bcrypt.genSalt(10);
+        const defaultHash = await bcrypt.hash('Student@12345', salt);
+        await runQuery(`
+          INSERT INTO users (id, username, email, password_hash, role, student_id, is_active)
+          VALUES (?, ?, ?, ?, 'STUDENT', ?, 1)
+        `, [newUserId, student.roll_number, student.email, defaultHash, student.id]);
+        await runQuery(`UPDATE students SET user_id = ? WHERE id = ?`, [newUserId, student.id]);
+        user = {
+          id: newUserId,
+          username: student.roll_number,
+          email: student.email,
+          role: 'STUDENT',
+          student_id: student.id,
+          must_change_password: 0
+        };
+      }
+    }
+
+    const accessToken = generateAccessToken(user);
+    const refreshResult = await createRefreshToken(user.id, req);
+
+    await recordAuditEvent(
+      user.id,
+      user.username,
+      'USER_LOGIN_DIRECT_OTP',
+      'USER',
+      user.id,
+      `User logged in via direct 6-digit OTP verification`,
+      req
+    );
+
+    res.json({
+      success: true,
+      message: `Welcome back, ${student.full_name || user.username}!`,
+      token: accessToken,
+      accessToken,
+      refreshToken: refreshResult.refreshToken,
+      refreshTokenExpiresAt: refreshResult.expiresAt,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        studentId: student.id,
+        mustChangePassword: Boolean(user.must_change_password),
+        studentProfile: student
+      }
+    });
+  } catch (err) {
+    console.error('Direct OTP login error:', err);
+    res.status(500).json({ success: false, error: 'Failed to verify login OTP: ' + err.message });
+  }
+});
+
 module.exports = router;
 
 

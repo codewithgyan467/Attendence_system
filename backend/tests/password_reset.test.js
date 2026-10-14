@@ -243,5 +243,31 @@ describe('Student Password Reset System (Email & Phone OTP)', () => {
     expect(res.body.user.username).toBe('2023CS01');
     expect(res.body.user.role).toBe('STUDENT');
   });
+
+  test('POST /api/v1/auth/otp-login/request & verify - Direct OTP authentication without first or last name', async () => {
+    // 1. Request OTP using student roll number
+    const reqRes = await request(app)
+      .post('/api/v1/auth/otp-login/request')
+      .send({ identifier: '2023CS01', method: 'SMS' });
+
+    expect(reqRes.status).toBe(200);
+    expect(reqRes.body.success).toBe(true);
+    expect(reqRes.body.maskedDestination).toBeDefined();
+
+    const { debugOtp } = reqRes.body;
+    expect(debugOtp).toBeDefined();
+    expect(debugOtp).toHaveLength(6);
+
+    // 2. Verify OTP directly without supplying any name
+    const verifyRes = await request(app)
+      .post('/api/v1/auth/otp-login/verify')
+      .send({ identifier: '2023CS01', otp: debugOtp });
+
+    expect(verifyRes.status).toBe(200);
+    expect(verifyRes.body.success).toBe(true);
+    expect(verifyRes.body.token).toBeDefined();
+    expect(verifyRes.body.user).toBeDefined();
+    expect(verifyRes.body.user.username).toBe('2023CS01');
+  });
 });
 

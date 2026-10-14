@@ -106,6 +106,22 @@ export function AuthProvider({ children }) {
     throw new Error('Phone authentication failed');
   };
 
+  const loginWithOtp = async (identifier, otp) => {
+    const res = await api.auth.verifyLoginOtp({ identifier, otp });
+    if ((res.accessToken || res.token) && res.user) {
+      const access = res.accessToken || res.token;
+      authStorage.setToken(access);
+      if (res.refreshToken) {
+        authStorage.setRefreshToken(res.refreshToken);
+      }
+      authStorage.setUser(res.user);
+      setToken(access);
+      setUser(res.user);
+      return res;
+    }
+    throw new Error('OTP verification failed');
+  };
+
   const value = {
     user,
     token,
@@ -114,6 +130,7 @@ export function AuthProvider({ children }) {
     loading,
     login,
     loginWithPhone,
+    loginWithOtp,
     logout,
     logoutAll,
     changePassword,
