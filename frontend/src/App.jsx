@@ -14,7 +14,6 @@ import FeedbackTicketDesk from './components/admin/FeedbackTicketDesk';
 import AuditLogViewer from './components/admin/AuditLogViewer';
 import WardenDashboard from './components/warden/WardenDashboard';
 import StudentPortal from './components/student/StudentPortal';
-import GpsSimulator from './components/GpsSimulator';
 import { ArrowLeft } from 'lucide-react';
 import { initOtaUpdater } from './utils/otaUpdater';
 
@@ -28,10 +27,6 @@ function AppContent() {
   useEffect(() => {
     initOtaUpdater();
   }, []);
-
-  // Simulated GPS state (for desktop/browser evaluation)
-  const [simulatedLocation, setSimulatedLocation] = useState(null);
-  const [simulatedMockActive, setSimulatedMockActive] = useState(false);
 
   // Set default tab when role changes
   useEffect(() => {
@@ -138,16 +133,6 @@ function AppContent() {
           {/* Student Views */}
           {role === 'STUDENT' && (
             <StudentPortal activeTab={activeTab} onSelectTab={setActiveTab} />
-          )}
-
-          {/* Universal Hardware / GPS Simulator */}
-          {activeTab === 'gps_simulator' && (
-            <GpsSimulator
-              simulatedLocation={simulatedLocation}
-              setSimulatedLocation={setSimulatedLocation}
-              simulatedMockActive={simulatedMockActive}
-              setSimulatedMockActive={setSimulatedMockActive}
-            />
           )}
         </main>
 

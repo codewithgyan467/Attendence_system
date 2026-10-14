@@ -11,8 +11,7 @@ import {
   History,
   Building,
   UserCheck,
-  X,
-  Compass
+  X
 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, onSelectTab, showMobile, onCloseMobile }) {
@@ -28,8 +27,7 @@ export default function Sidebar({ activeTab, onSelectTab, showMobile, onCloseMob
         { id: 'admin_security', label: 'Security & Forge Alerts', icon: ShieldAlert },
         { id: 'admin_corrections', label: 'Correction Requests', icon: FileCheck2 },
         { id: 'admin_feedback', label: 'Support & Feedback', icon: LifeBuoy },
-        { id: 'admin_audit', label: 'System Audit Logs', icon: History },
-        { id: 'gps_simulator', label: 'GPS / Forge Simulator', icon: Compass }
+        { id: 'admin_audit', label: 'System Audit Logs', icon: History }
       ];
     } else if (role === 'WARDEN') {
       return [
@@ -38,8 +36,7 @@ export default function Sidebar({ activeTab, onSelectTab, showMobile, onCloseMob
         { id: 'warden_exceptions', label: 'Absence & Exceptions', icon: ShieldAlert },
         { id: 'warden_corrections', label: 'Correction Requests', icon: FileCheck2 },
         { id: 'warden_feedback', label: 'Facility Feedback', icon: LifeBuoy },
-        { id: 'warden_attendance', label: 'Block Attendance Logs', icon: CalendarCheck },
-        { id: 'gps_simulator', label: 'GPS / Forge Simulator', icon: Compass }
+        { id: 'warden_attendance', label: 'Block Attendance Logs', icon: CalendarCheck }
       ];
     } else {
       // Student role
@@ -48,8 +45,7 @@ export default function Sidebar({ activeTab, onSelectTab, showMobile, onCloseMob
         { id: 'student_history', label: 'My Attendance History', icon: History },
         { id: 'student_correction', label: 'Submit Correction', icon: FileCheck2 },
         { id: 'student_support', label: 'Support & Feedback', icon: LifeBuoy },
-        { id: 'student_profile', label: 'Student Profile', icon: Users },
-        { id: 'gps_simulator', label: 'GPS / Forge Simulator', icon: Compass }
+        { id: 'student_profile', label: 'Student Profile', icon: Users }
       ];
     }
   };

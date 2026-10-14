@@ -204,36 +204,6 @@ export default function ForgotPasswordModal({
     }
   };
 
-  // Step 2C: Phone.Email Instant Simulation (Test / Local fallback)
-  const handleSimulatePhoneEmail = async () => {
-    setLoading(true);
-    setErrorMsg('');
-
-    try {
-      // Pass simulated phone corresponding to student identity
-      const simulatedNumber = successInfo?.debugOtp
-        ? successInfo.identifier === '2023CS01'
-          ? '+919876543210'
-          : '+919876543211'
-        : '+919876543210';
-
-      const res = await api.auth.verifyPhoneEmail({
-        simulated_phone: simulatedNumber,
-        identifier: resolvedUsername || identifier.trim()
-      });
-
-      if (res.success) {
-        setResetToken(res.resetToken);
-        setResolvedUsername(res.identifier || identifier.trim());
-        setStep(3);
-      }
-    } catch (err) {
-      setErrorMsg(err.message || 'Phone.Email test verification failed.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Step 3: Complete Reset with New Password
   const handleResetPassword = async (e) => {
     e?.preventDefault();
@@ -277,14 +247,6 @@ export default function ForgotPasswordModal({
     await handleRequestOtp();
   };
 
-  // Helper for 1-click test fill
-  const handleFillDebugOtp = () => {
-    if (successInfo?.debugOtp) {
-      setOtp(successInfo.debugOtp);
-      setErrorMsg('');
-    }
-  };
-
   return (
     <div
       className="modal show d-block"
@@ -314,7 +276,7 @@ export default function ForgotPasswordModal({
                 <h5 className="fw-bold mb-0 text-white">Student Password Recovery</h5>
                 <span className="text-muted small">
                   {step === 1 && 'Choose Phone.Email or Email Authentication'}
-                  {step === 2 && (method === 'PHONE' ? 'Verify via Phone.Email OTP' : 'Verify via Email OTP or Magic Link')}
+                  {step === 2 && (method === 'PHONE' ? 'Verify via Phone.Email OTP' : 'Verify via Email OTP')}
                   {step === 3 && 'Create new secure password'}
                   {step === 4 && 'Password successfully updated'}
                 </span>
@@ -369,7 +331,7 @@ export default function ForgotPasswordModal({
                   <input
                     type="text"
                     className="form-control form-control-lg rounded-3 fs-6"
-                    placeholder="e.g. 2023CS01 or student@hostel.local"
+                    placeholder="e.g. 2024CS001 or student@hostel.local"
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
                     required
@@ -377,7 +339,7 @@ export default function ForgotPasswordModal({
                     autoFocus
                   />
                   <div className="form-text small" style={{ fontSize: '11px' }}>
-                    Tip: Enter your roll number (<code>2023CS01</code>, <code>2023CS02</code>, <code>2023EC01</code>).
+                    Enter your official university Roll Number or registered Email Address.
                   </div>
                 </div>
 
@@ -474,49 +436,30 @@ export default function ForgotPasswordModal({
                     </div>
 
                     {/* Official Phone.Email Widget Container */}
-                    <div className="p-3 bg-light rounded-3 text-center mb-3 border">
+                    <div className="p-4 bg-light rounded-3 text-center mb-4 border">
                       <div
                         id="phone-email-widget-container"
                         className="pe_signin_button d-inline-block"
                         data-client-id={phoneEmailClientId}
                         ref={phoneEmailContainerRef}
                       >
-                        {/* Fallback button if script is loading */}
                         <button
                           type="button"
                           className="btn btn-dark d-inline-flex align-items-center gap-2 py-2 px-3 fw-semibold shadow-sm"
                           onClick={() => {
                             if (window.phoneEmailListener) {
-                              // Trigger widget or simulate
-                              handleSimulatePhoneEmail();
+                              const btn = document.querySelector('.pe_signin_button button');
+                              if (btn) btn.click();
                             }
                           }}
                         >
                           <Smartphone size={16} className="text-warning" />
-                          <span>Sign in with Phone (Phone.Email)</span>
+                          <span>Verify with Phone.Email (SMS / WhatsApp)</span>
                         </button>
                       </div>
-                    </div>
-
-                    {/* Fast Local Simulation / Fallback Option */}
-                    <div className="card p-3 bg-light border-0 rounded-3 mb-3">
-                      <div className="d-flex align-items-center justify-content-between mb-1">
-                        <span className="small fw-bold text-dark d-inline-flex align-items-center gap-1">
-                          <Zap size={14} className="text-warning" /> Instant Phone.Email Simulation
-                        </span>
-                        <span className="badge bg-secondary" style={{ fontSize: '10px' }}>Evaluation Mode</span>
+                      <div className="mt-2 text-muted" style={{ fontSize: '11px' }}>
+                        Secured by Phone.Email Free Global Verification Service
                       </div>
-                      <p className="small text-muted mb-2" style={{ fontSize: '11px' }}>
-                        Verify the student's registered phone number ({successInfo?.maskedDestination || 'on record'}) directly without waiting for telecom SMS.
-                      </p>
-                      <button
-                        type="button"
-                        className="btn btn-outline-primary btn-sm d-flex align-items-center justify-content-center gap-1 fw-semibold"
-                        onClick={handleSimulatePhoneEmail}
-                        disabled={loading}
-                      >
-                        {loading ? 'Verifying with Phone.Email...' : '⚡ Verify & Continue Now'}
-                      </button>
                     </div>
 
                     <div className="d-flex align-items-center justify-content-between pt-2">
@@ -533,79 +476,16 @@ export default function ForgotPasswordModal({
                     </div>
                   </div>
                 ) : (
-                  /* METHOD B: EMAIL AUTHENTICATION MODEL (OTP + MAGIC LINK + ETHEREAL PREVIEW) */
+                  /* METHOD B: EMAIL AUTHENTICATION MODEL (OTP + MAGIC LINK) */
                   <form onSubmit={handleVerifyOtp}>
                     <div className="text-center mb-3">
                       <div className="badge bg-light text-dark p-2 mb-2 font-mono" style={{ fontSize: '12px' }}>
                         📧 Email Auth sent to: <strong>{successInfo?.maskedDestination || identifier}</strong>
                       </div>
                       <p className="text-muted small mb-0">
-                        Choose to enter the 6-digit OTP code below or use the 1-click Magic Link.
+                        Check your inbox for the 6-digit verification code.
                       </p>
                     </div>
-
-                    {/* 1-Click Magic Link Feature */}
-                    {successInfo?.magicLinkUrl && (
-                      <div className="card p-3 mb-3 border-primary border-opacity-25 bg-primary bg-opacity-10 rounded-3">
-                        <div className="d-flex align-items-center justify-content-between mb-1">
-                          <span className="fw-bold text-primary small d-inline-flex align-items-center gap-1">
-                            <Zap size={14} /> 1-Click Passwordless Magic Link
-                          </span>
-                          <span className="badge bg-primary" style={{ fontSize: '10px' }}>Instant</span>
-                        </div>
-                        <p className="text-muted small mb-2" style={{ fontSize: '11px' }}>
-                          Authenticate instantly with one click without needing to type the 6 digits:
-                        </p>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm py-1 px-3 d-inline-flex align-items-center justify-content-center gap-1 fw-semibold"
-                          onClick={handleActivateMagicLink}
-                          disabled={loading}
-                        >
-                          <Zap size={13} />
-                          <span>Activate Magic Link Now</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Live Ethereal Web Inbox Preview Link (If available) */}
-                    {successInfo?.previewUrl && (
-                      <div className="alert alert-secondary py-2 px-3 small d-flex align-items-center justify-content-between mb-3 rounded-3">
-                        <span className="text-truncate me-2" style={{ fontSize: '11px' }}>
-                          📬 <strong>Live Web Inbox Preview</strong> generated!
-                        </span>
-                        <a
-                          href={successInfo.previewUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="btn btn-sm btn-outline-dark py-0 px-2 d-inline-flex align-items-center gap-1"
-                          style={{ fontSize: '11px' }}
-                        >
-                          <span>Open Email</span>
-                          <ExternalLink size={10} />
-                        </a>
-                      </div>
-                    )}
-
-                    {/* Developer Demo Code Auto-Fill */}
-                    {successInfo?.debugOtp && (
-                      <div className="alert alert-info py-2 px-3 small d-flex align-items-center justify-content-between mb-3 rounded-3">
-                        <div className="d-flex align-items-center gap-2">
-                          <Sparkles size={14} className="text-primary flex-shrink-0" />
-                          <div>
-                            Demo OTP: <strong className="font-mono text-dark">{successInfo.debugOtp}</strong>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-primary py-0 px-2"
-                          style={{ fontSize: '11px' }}
-                          onClick={handleFillDebugOtp}
-                        >
-                          Auto-Fill
-                        </button>
-                      </div>
-                    )}
 
                     {/* Standard 6-Digit OTP Input */}
                     <div className="mb-4">

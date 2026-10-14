@@ -53,12 +53,6 @@ export default function LoginPage({ onNavigateOnboarding }) {
     }
   };
 
-  const handleQuickLogin = (u, p) => {
-    setUsername(u);
-    setPassword(p);
-    setErrorMsg('');
-  };
-
   const handleSaveServer = (e) => {
     e.preventDefault();
     authStorage.setBackendUrl(customServerUrl);
@@ -165,43 +159,15 @@ export default function LoginPage({ onNavigateOnboarding }) {
             </button>
           </form>
 
-          {/* Quick Demo Access Buttons */}
-          <div className="border-top pt-3 mt-3">
-            <div className="text-uppercase text-muted fw-bold mb-2 text-center" style={{ fontSize: '11px', letterSpacing: '0.8px' }}>
-              Quick Evaluator Credentials
-            </div>
-            <div className="d-grid gap-2">
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-secondary d-flex align-items-center justify-content-between px-3"
-                onClick={() => handleQuickLogin('admin', 'Admin@12345')}
-              >
-                <span>👑 System Administrator</span>
-                <code className="text-primary small">admin</code>
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-secondary d-flex align-items-center justify-content-between px-3"
-                onClick={() => handleQuickLogin('warden', 'Warden@12345')}
-              >
-                <span>🏢 Hostel Warden</span>
-                <code className="text-primary small">warden</code>
-              </button>
-            </div>
-            <div className="text-center mt-2 text-muted" style={{ fontSize: '11px' }}>
-              🎓 <em>Students sign in using their official Roll Number or Email.</em>
-            </div>
-          </div>
-
           {/* Student Onboarding Action */}
-          <div className="text-center mt-4 pt-2 border-top">
-            <p className="text-muted small mb-2">New resident not enrolled yet?</p>
+          <div className="text-center mt-4 pt-3 border-top">
+            <p className="text-muted small mb-2">New resident student not enrolled yet?</p>
             <button
               type="button"
-              className="btn btn-outline-primary btn-sm px-3 d-inline-flex align-items-center gap-1"
+              className="btn btn-outline-primary btn-sm px-3 d-inline-flex align-items-center gap-1 shadow-sm"
               onClick={onNavigateOnboarding}
             >
-              <UserCheck size={14} /> Student Self-Registration (Phase 2)
+              <UserCheck size={14} /> Student Registration & Biometrics
             </button>
           </div>
 

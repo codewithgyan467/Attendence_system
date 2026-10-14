@@ -1009,18 +1009,9 @@ router.get('/credentials-directory', async (req, res) => {
     res.json({
       success: true,
       directory: {
-        staff: staff.map((st) => ({
-          ...st,
-          defaultPasswordHint: st.role === 'ADMIN' ? 'Admin@12345' : 'Warden@12345'
-        })),
-        students: students.map((st) => ({
-          ...st,
-          defaultPasswordHint: 'Student@12345'
-        })),
-        pendingAllotments: pendingAllotments.map((a) => ({
-          ...a,
-          defaultPasswordHint: 'Student@12345 (Upon Onboarding)'
-        }))
+        staff,
+        students,
+        pendingAllotments
       }
     });
   } catch (err) {

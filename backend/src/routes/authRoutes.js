@@ -352,7 +352,7 @@ router.post('/forgot-password/request-otp', authLimiter, async (req, res) => {
       expiresInMinutes: 10,
       magicLinkUrl: dispatchResult.magicLinkUrl || null,
       previewUrl: dispatchResult.previewUrl || null,
-      debugOtp: dispatchResult.debugOtp // Provided for frictionless local evaluation
+      ...(process.env.NODE_ENV === 'test' ? { debugOtp: dispatchResult.debugOtp } : {})
     });
   } catch (err) {
     console.error('Request OTP error:', err);
@@ -553,12 +553,12 @@ router.post('/forgot-password/phone-email-verify', authLimiter, async (req, res)
     if (user_json_url) {
       const verifiedData = await verifyPhoneEmailJsonUrl(user_json_url);
       verifiedPhone = verifiedData.fullPhone;
-    } else if (simulated_phone) {
+    } else if (simulated_phone && process.env.NODE_ENV === 'test') {
       verifiedPhone = String(simulated_phone).trim();
     }
 
     if (!verifiedPhone) {
-      return res.status(400).json({ success: false, error: 'Unable to verify phone number from Phone.Email.' });
+      return res.status(400).json({ success: false, error: 'Valid Phone.Email verification token is required.' });
     }
 
     // Match with student
