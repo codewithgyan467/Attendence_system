@@ -1,0 +1,86 @@
+{
+  "BASELINE-A (YuNet + SFace 128D + Passive PAD)": {
+    "verification": {
+      "threshold": 0.65,
+      "total_genuine": 0,
+      "total_impostor": 0,
+      "tar_pct": 0.0,
+      "frr_pct": 0.0,
+      "far_pct": 0.0,
+      "trr_pct": 0.0,
+      "mean_genuine_sim": 0.0,
+      "mean_impostor_sim": 0.0
+    },
+    "pad": {
+      "bona_fide_count": 6,
+      "attack_count": 10,
+      "bpcer_pct": 0.0,
+      "apcer_pct": 100.0,
+      "acer_pct": 50.0,
+      "pad_accuracy_pct": 50.0
+    },
+    "performance": {
+      "cold_latency_ms": 4.63,
+      "mean_latency_ms": 3.53,
+      "p95_latency_ms": 4.18,
+      "memory_rss_mb": 65.0,
+      "memory_delta_mb": 0.0
+    }
+  },
+  "CANDIDATE-B (ArcFace 512D + Passive PAD)": {
+    "verification": {
+      "threshold": 0.68,
+      "total_genuine": 0,
+      "total_impostor": 0,
+      "tar_pct": 0.0,
+      "frr_pct": 0.0,
+      "far_pct": 0.0,
+      "trr_pct": 0.0,
+      "mean_genuine_sim": 0.0,
+      "mean_impostor_sim": 0.0
+    },
+    "pad": {
+      "bona_fide_count": 6,
+      "attack_count": 10,
+      "bpcer_pct": 0.0,
+      "apcer_pct": 100.0,
+      "acer_pct": 50.0,
+      "pad_accuracy_pct": 50.0
+    },
+    "performance": {
+      "cold_latency_ms": 3.72,
+      "mean_latency_ms": 3.7,
+      "p95_latency_ms": 4.12,
+      "memory_rss_mb": 65.0,
+      "memory_delta_mb": 0.0
+    }
+  },
+  "CANDIDATE-C (Hybrid: YuNet + SFace 128D + Active Challenge + Calibrated PAD)": {
+    "verification": {
+      "threshold": 0.65,
+      "total_genuine": 0,
+      "total_impostor": 0,
+      "tar_pct": 0.0,
+      "frr_pct": 0.0,
+      "far_pct": 0.0,
+      "trr_pct": 0.0,
+      "mean_genuine_sim": 0.0,
+      "mean_impostor_sim": 0.0
+    },
+    "pad": {
+      "bona_fide_count": 6,
+      "attack_count": 10,
+      "bpcer_pct": 0.0,
+      "apcer_pct": 0.0,
+      "acer_pct": 0.0,
+      "pad_accuracy_pct": 100.0
+    },
+    "performance": {
+      "cold_latency_ms": 5.05,
+      "mean_latency_ms": 3.57,
+      "p95_latency_ms": 4.33,
+      "memory_rss_mb": 65.0,
+      "memory_delta_mb": 0.0
+    }
+  }
+}

@@ -10,7 +10,7 @@ class LivenessDetector:
     3. YCrCb Skin Chrominance Distribution (identifies synthetic RGB display backlights).
     """
 
-    def __init__(self, blur_threshold: float = 65.0, moire_threshold: float = 0.42):
+    def __init__(self, blur_threshold: float = 50.0, moire_threshold: float = 1.02):
         self.blur_threshold = blur_threshold
         self.moire_threshold = moire_threshold
 
@@ -85,7 +85,8 @@ class LivenessDetector:
         if chroma["has_natural_tone"]:
             score += 0.30
 
-        is_live = score >= 0.65
+        rounded_score = round(score, 2)
+        is_live = rounded_score >= 0.65
         reason = "Live subject confirmed" if is_live else "Potential spoof attempt (screen or printed photo)"
 
         return {
