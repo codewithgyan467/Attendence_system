@@ -18,11 +18,13 @@ build/
 *.env
 !.env.example
 
-# SQLite WAL and runtime temporary files
+# SQLite WAL, backups, and runtime temporary files
 *.sqlite-wal
 *.sqlite-shm
 *.sqlite-journal
 *.log
+backend/data/backups/
+*.sqlite
 
 # Uploads and temporary files
 uploads/

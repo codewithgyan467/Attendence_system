@@ -42,10 +42,14 @@ export function AuthProvider({ children }) {
 
   const login = async (username, password) => {
     const res = await api.auth.login({ username, password });
-    if (res.token && res.user) {
-      authStorage.setToken(res.token);
+    if ((res.accessToken || res.token) && res.user) {
+      const access = res.accessToken || res.token;
+      authStorage.setToken(access);
+      if (res.refreshToken) {
+        authStorage.setRefreshToken(res.refreshToken);
+      }
       authStorage.setUser(res.user);
-      setToken(res.token);
+      setToken(access);
       setUser(res.user);
       return res.user;
     }
@@ -54,9 +58,22 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
-      await api.auth.logout();
+      const rt = authStorage.getRefreshToken();
+      await api.auth.logout({ refreshToken: rt });
     } catch (_) {}
     authStorage.clearToken();
+    authStorage.clearRefreshToken();
+    authStorage.clearUser();
+    setToken(null);
+    setUser(null);
+  };
+
+  const logoutAll = async () => {
+    try {
+      await api.auth.logoutAll();
+    } catch (_) {}
+    authStorage.clearToken();
+    authStorage.clearRefreshToken();
     authStorage.clearUser();
     setToken(null);
     setUser(null);
@@ -75,10 +92,14 @@ export function AuthProvider({ children }) {
 
   const loginWithPhone = async (userJsonUrl) => {
     const res = await api.auth.phoneEmailLogin({ user_json_url: userJsonUrl });
-    if (res.token && res.user) {
-      authStorage.setToken(res.token);
+    if ((res.accessToken || res.token) && res.user) {
+      const access = res.accessToken || res.token;
+      authStorage.setToken(access);
+      if (res.refreshToken) {
+        authStorage.setRefreshToken(res.refreshToken);
+      }
       authStorage.setUser(res.user);
-      setToken(res.token);
+      setToken(access);
       setUser(res.user);
       return res;
     }
@@ -94,6 +115,7 @@ export function AuthProvider({ children }) {
     login,
     loginWithPhone,
     logout,
+    logoutAll,
     changePassword,
     setAuthenticatedStudent
   };

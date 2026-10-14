@@ -31,6 +31,9 @@ export const authStorage = {
   getToken: () => localStorage.getItem('hg_token'),
   setToken: (token) => localStorage.setItem('hg_token', token),
   clearToken: () => localStorage.removeItem('hg_token'),
+  getRefreshToken: () => localStorage.getItem('hg_refresh_token'),
+  setRefreshToken: (token) => localStorage.setItem('hg_refresh_token', token),
+  clearRefreshToken: () => localStorage.removeItem('hg_refresh_token'),
   getUser: () => {
     try {
       const u = localStorage.getItem('hg_user');
@@ -48,8 +51,8 @@ export const authStorage = {
   }
 };
 
-// Central fetch helper with automatic Authorization header
-async function request(endpoint, options = {}) {
+// Central fetch helper with automatic Authorization header and transparent refresh token rotation
+async function request(endpoint, options = {}, isRetry = false) {
   const token = authStorage.getToken();
   const headers = {
     'Content-Type': 'application/json',
@@ -66,8 +69,39 @@ async function request(endpoint, options = {}) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    if (response.status === 401 && !endpoint.includes('/auth/login')) {
+    // If access token expired and we have a refresh token, rotate and retry once
+    if (
+      response.status === 401 &&
+      !isRetry &&
+      !endpoint.startsWith('/auth/login') &&
+      !endpoint.startsWith('/auth/refresh') &&
+      !endpoint.startsWith('/auth/phone-login')
+    ) {
+      const refreshToken = authStorage.getRefreshToken();
+      if (refreshToken) {
+        try {
+          const refreshRes = await fetch(`${getApiBaseUrl()}/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken })
+          });
+          const refreshData = await refreshRes.json();
+          if (refreshRes.ok && (refreshData.accessToken || refreshData.token)) {
+            const newAccess = refreshData.accessToken || refreshData.token;
+            authStorage.setToken(newAccess);
+            if (refreshData.refreshToken) {
+              authStorage.setRefreshToken(refreshData.refreshToken);
+            }
+            // Retry the original request with new rotated access token
+            return request(endpoint, options, true);
+          }
+        } catch (refreshErr) {
+          console.warn('Automatic token refresh failed:', refreshErr);
+        }
+      }
+
       authStorage.clearToken();
+      authStorage.clearRefreshToken();
       authStorage.clearUser();
       window.dispatchEvent(new Event('auth:unauthorized'));
     }
@@ -88,9 +122,11 @@ export const api = {
   // Authentication
   auth: {
     login: (credentials) => request('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
+    refreshToken: (refreshToken) => request('/auth/refresh', { method: 'POST', body: JSON.stringify({ refreshToken }) }),
     getMe: () => request('/auth/me'),
     changePassword: (data) => request('/auth/change-password', { method: 'POST', body: JSON.stringify(data) }),
-    logout: () => request('/auth/logout', { method: 'POST' }),
+    logout: (data = {}) => request('/auth/logout', { method: 'POST', body: JSON.stringify(data) }),
+    logoutAll: () => request('/auth/logout-all', { method: 'POST' }),
     requestPasswordResetOtp: (data) => request('/auth/forgot-password/request-otp', { method: 'POST', body: JSON.stringify(data) }),
     verifyPasswordResetOtp: (data) => request('/auth/forgot-password/verify-otp', { method: 'POST', body: JSON.stringify(data) }),
     resetPasswordWithOtp: (data) => request('/auth/forgot-password/reset', { method: 'POST', body: JSON.stringify(data) }),
@@ -146,7 +182,11 @@ export const api = {
       return request(`/admin/audit-logs${q ? '?' + q : ''}`);
     },
     getFeedback: (status) => request(`/admin/feedback${status ? '?status=' + status : ''}`),
-    resolveFeedback: (id, data) => request(`/admin/feedback/${encodeURIComponent(id)}/resolve`, { method: 'POST', body: JSON.stringify(data) })
+    resolveFeedback: (id, data) => request(`/admin/feedback/${encodeURIComponent(id)}/resolve`, { method: 'POST', body: JSON.stringify(data) }),
+    createBackup: () => request('/admin/backup/create', { method: 'POST' }),
+    listBackups: () => request('/admin/backup/list'),
+    restoreBackup: (data) => request('/admin/backup/restore', { method: 'POST', body: JSON.stringify(data) }),
+    getSystemHealth: () => request('/admin/system-health')
   },
 
   // Warden APIs

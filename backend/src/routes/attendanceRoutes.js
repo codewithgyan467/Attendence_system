@@ -33,8 +33,26 @@ router.post('/verify-location', attendanceLimiter, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Student roll number is required.' });
     }
 
-    if (latitude === undefined || longitude === undefined) {
+    if (latitude === undefined || longitude === undefined || latitude === null || longitude === null) {
       return res.status(400).json({ success: false, error: 'GPS coordinates (latitude and longitude) are required.' });
+    }
+
+    const parsedLat = parseFloat(latitude);
+    const parsedLon = parseFloat(longitude);
+    const parsedAcc = parseFloat(accuracy) || 10;
+
+    if (isNaN(parsedLat) || isNaN(parsedLon) || parsedLat < -90 || parsedLat > 90 || parsedLon < -180 || parsedLon > 180) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid GPS coordinates: latitude must be between -90 and 90, and longitude between -180 and 180.'
+      });
+    }
+
+    if (parsedAcc > 100) {
+      return res.status(400).json({
+        success: false,
+        error: `GPS accuracy (±${parsedAcc.toFixed(1)}m) is too poor for reliable hostel perimeter validation. Please move near a window or outdoors.`
+      });
     }
 
     // 1. Verify student exists and is active
@@ -233,8 +251,18 @@ router.post('/verify-face', attendanceLimiter, async (req, res) => {
     const recordId = uuidv4();
 
     await withTransaction(async ({ runQuery }) => {
-      // Consume challenge token (Single-use replay protection)
-      await runQuery(`UPDATE attendance_challenges SET is_used = 1 WHERE id = ?`, [challenge.id]);
+      // Atomic Challenge Consumption with race-condition detection:
+      // If two concurrent requests arrive simultaneously, only one can update is_used from 0 to 1
+      const consumeResult = await runQuery(
+        `UPDATE attendance_challenges SET is_used = 1 WHERE id = ? AND is_used = 0`,
+        [challenge.id]
+      );
+
+      if (!consumeResult || consumeResult.changes !== 1) {
+        const conflictErr = new Error('CHALLENGE_ALREADY_CONSUMED');
+        conflictErr.status = 409;
+        throw conflictErr;
+      }
 
       // Insert attendance record
       await runQuery(`
@@ -273,8 +301,14 @@ router.post('/verify-face', attendanceLimiter, async (req, res) => {
       }
     });
   } catch (err) {
+    if (err.message === 'CHALLENGE_ALREADY_CONSUMED' || err.status === 409) {
+      return res.status(409).json({
+        success: false,
+        error: 'Attendance challenge token has already been consumed or processed concurrently (race condition prevented).'
+      });
+    }
     if (err.message && err.message.includes('UNIQUE constraint failed')) {
-      return res.status(400).json({ success: false, error: 'Attendance already recorded for today.' });
+      return res.status(409).json({ success: false, error: 'Attendance already recorded for today.' });
     }
     console.error('Face verification failed:', err);
     res.status(500).json({ success: false, error: 'Face verification error: ' + err.message });

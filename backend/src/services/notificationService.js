@@ -204,14 +204,41 @@ async function sendEmailOtp({
 /**
  * Phone.Email ("Sign in with Phone") Verification Engine
  * Fetches the user JSON URL from Phone.Email server and extracts the verified phone number
+ * HARDENED: Strictly validates protocol and hostname to prevent SSRF attacks.
  */
 async function verifyPhoneEmailJsonUrl(userJsonUrl) {
   if (!userJsonUrl || typeof userJsonUrl !== 'string') {
     throw new Error('Invalid Phone.Email user_json_url provided.');
   }
 
+  const cleanUrl = userJsonUrl.trim();
+  let parsedUrl;
   try {
-    const res = await axios.get(userJsonUrl.trim(), { timeout: 10000 });
+    parsedUrl = new URL(cleanUrl);
+  } catch (urlErr) {
+    throw new Error('Invalid user_json_url format.');
+  }
+
+  // SSRF Defense: Enforce HTTPS and verify origin domain is strictly *.phone.email
+  if (parsedUrl.protocol !== 'https:') {
+    throw new Error('Insecure protocol: Phone.Email verification requires HTTPS.');
+  }
+
+  const hostname = parsedUrl.hostname.toLowerCase();
+  const isAllowedHost = hostname === 'phone.email' ||
+                        hostname === 'www.phone.email' ||
+                        hostname.endsWith('.phone.email');
+
+  if (!isAllowedHost) {
+    throw new Error(`SSRF Blocked: Untrusted domain "${hostname}". Only official phone.email endpoints are accepted.`);
+  }
+
+  try {
+    const res = await axios.get(cleanUrl, {
+      timeout: 8000,
+      maxContentLength: 512 * 1024, // 512 KB max payload to prevent DoS
+      maxRedirects: 3
+    });
     const data = res.data;
 
     // Expected schema from Phone.Email:

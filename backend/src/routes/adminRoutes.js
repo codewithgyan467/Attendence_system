@@ -8,11 +8,39 @@ const XLSX = require('xlsx');
 const mammoth = require('mammoth');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
-const { runQuery, getQuery, allQuery, withTransaction, clearAllStudentData } = require('../db/database');
-const { requireAuth, requireRole, recordAuditEvent } = require('../middleware/auth');
+const { runQuery, getQuery, allQuery, withTransaction, clearAllStudentData, checkDatabaseIntegrity } = require('../db/database');
+const { requireAuth, requireRole, recordAuditEvent, revokeAllUserSessions } = require('../middleware/auth');
 const { clearForgeFlag } = require('../services/fraudService');
+const backupService = require('../services/backupService');
+const aiServiceClient = require('../services/aiServiceClient');
 
-const upload = multer({ dest: 'uploads/' });
+// Security Hardened Multer Configuration: 10MB limit and strict file format filter
+const upload = multer({
+  dest: 'uploads/',
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+    files: 1
+  },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const allowed = ['.csv', '.xlsx', '.xls', '.docx', '.doc'];
+    if (allowed.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file format. Only Excel (.xlsx, .xls), CSV (.csv), or Word (.docx) files are supported.'));
+    }
+  }
+});
+
+// Formula Injection Defense: Neutralize CSV/Excel formula injection (DDE attacks)
+function sanitizeFormulaInjection(value) {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (/^[=+\-@\t\r]/.test(trimmed)) {
+    return `'${trimmed}`;
+  }
+  return trimmed;
+}
 
 // Base router authentication guard
 router.use(requireAuth);
@@ -332,13 +360,13 @@ router.post('/allotment/upload-preview', upload.single('file'), async (req, res)
 
     const parsedRows = records.map((row, idx) => ({
       index: idx + 1,
-      roll_number: String(row.roll_number || row.rollNumber || row.RollNo || row['Roll Number'] || row['Roll No'] || row['roll_no'] || row['Roll'] || '').trim().toUpperCase(),
-      full_name: String(row.full_name || row.fullName || row.Name || row['Student Name'] || row['Student'] || row['Full Name'] || '').trim(),
-      room_number: String(row.room_number || row.roomNumber || row.Room || row['Room No'] || row['Room'] || 'A-101').trim(),
-      hostel_block: String(row.hostel_block || row.block || row.Hostel || row['Hostel Block'] || row['Block'] || 'Block A').trim(),
-      email: String(row.email || row.Email || row['Email ID'] || row['Email Address'] || row['Student Email'] || '').trim().toLowerCase(),
-      phone: String(row.phone || row.Phone || row['Phone Number'] || row['Mobile'] || row['Mobile No'] || row['Contact'] || '').trim(),
-      course: String(row.course || row.Course || row['Department'] || row['Branch'] || 'B.Tech Computer Science').trim(),
+      roll_number: sanitizeFormulaInjection(String(row.roll_number || row.rollNumber || row.RollNo || row['Roll Number'] || row['Roll No'] || row['roll_no'] || row['Roll'] || '').trim().toUpperCase()),
+      full_name: sanitizeFormulaInjection(String(row.full_name || row.fullName || row.Name || row['Student Name'] || row['Student'] || row['Full Name'] || '').trim()),
+      room_number: sanitizeFormulaInjection(String(row.room_number || row.roomNumber || row.Room || row['Room No'] || row['Room'] || 'A-101').trim()),
+      hostel_block: sanitizeFormulaInjection(String(row.hostel_block || row.block || row.Hostel || row['Hostel Block'] || row['Block'] || 'Block A').trim()),
+      email: sanitizeFormulaInjection(String(row.email || row.Email || row['Email ID'] || row['Email Address'] || row['Student Email'] || '').trim().toLowerCase()),
+      phone: sanitizeFormulaInjection(String(row.phone || row.Phone || row['Phone Number'] || row['Mobile'] || row['Mobile No'] || row['Contact'] || '').trim()),
+      course: sanitizeFormulaInjection(String(row.course || row.Course || row['Department'] || row['Branch'] || 'B.Tech Computer Science').trim()),
       admission_year: parseInt(row.admission_year || row.admissionYear || row.Year || row['Batch'] || new Date().getFullYear()) || new Date().getFullYear(),
       semester: parseInt(row.semester || row.Semester || row.Sem || 1) || 1
     }));
@@ -461,7 +489,7 @@ router.post('/allotment/upload-commit', async (req, res) => {
     await recordAuditEvent(
       req.user.id,
       req.user.username,
-      'ROSTER_UPLOAD_COMMIT',
+      'ROSTER_CSV_COMMIT',
       'ALLOTMENT',
       null,
       `Imported ${inserted} students into hostel roster (Pre-create logins: ${preCreateLogins})`,
@@ -636,29 +664,56 @@ router.get('/geofence', async (req, res) => {
   }
 });
 
-router.post('/geofence', async (req, res) => {
+router.post('/geofence', requireRole('ADMIN'), async (req, res) => {
   try {
-    const { hostel_name, latitude, longitude, radius_meters } = req.body;
+    const { hostel_name, latitude, longitude, radius_meters, reason } = req.body;
 
-    if (latitude === undefined || longitude === undefined) {
+    if (latitude === undefined || longitude === undefined || latitude === null || longitude === null) {
       return res.status(400).json({ success: false, error: 'Latitude and Longitude are required.' });
     }
 
-    const radius = Math.max(10, Math.min(100, parseFloat(radius_meters) || 20.0));
+    const lat = parseFloat(latitude);
+    const lon = parseFloat(longitude);
+    const rad = parseFloat(radius_meters);
 
-    await runQuery(`
-      UPDATE geofence_configs
-      SET hostel_name = ?, latitude = ?, longitude = ?, radius_meters = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
-      WHERE is_active = 1
-    `, [hostel_name || 'Main Campus Facility', parseFloat(latitude), parseFloat(longitude), radius, req.user.username]);
+    if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid coordinates: latitude must be between -90 and 90, longitude between -180 and 180.'
+      });
+    }
+
+    if (isNaN(rad) || rad < 10 || rad > 150) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid geofence radius (${radius_meters}m). Security policy mandates radius between 10.0m and 150.0m to prevent perimeter bypass.`
+      });
+    }
+
+    const oldConfig = await getQuery(`SELECT * FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
+
+    if (oldConfig) {
+      await runQuery(`
+        UPDATE geofence_configs
+        SET hostel_name = ?, latitude = ?, longitude = ?, radius_meters = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
+        WHERE id = ?
+      `, [hostel_name || oldConfig.hostel_name || 'Main Campus Facility', lat, lon, rad, req.user.username, oldConfig.id]);
+    } else {
+      const newId = uuidv4();
+      await runQuery(`
+        INSERT INTO geofence_configs (id, hostel_name, latitude, longitude, radius_meters, is_active, updated_by)
+        VALUES (?, ?, ?, ?, ?, 1, ?)
+      `, [newId, hostel_name || 'Main Campus Facility', lat, lon, rad, req.user.username]);
+    }
 
     const updated = await getQuery(`SELECT * FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
 
-    await recordAuditEvent(req.user.id, req.user.username, 'UPDATE_GEOFENCE', 'GEOFENCE', updated.id, `Set radius to ${radius}m at [${latitude}, ${longitude}]`, req);
+    const auditDetail = `Updated geofence from [${oldConfig?.latitude}, ${oldConfig?.longitude}, r=${oldConfig?.radius_meters}m] to [${lat}, ${lon}, r=${rad}m]. Reason: ${reason || 'Administrative update'}`;
+    await recordAuditEvent(req.user.id, req.user.username, 'UPDATE_GEOFENCE', 'GEOFENCE', updated?.id || 'GEOFENCE-DEFAULT', auditDetail, req);
 
     res.json({
       success: true,
-      message: 'Geofence configuration updated successfully.',
+      message: 'Geofence configuration updated and audited successfully.',
       config: updated
     });
   } catch (err) {
@@ -1052,6 +1107,9 @@ router.post('/students/:id/reset-password', async (req, res) => {
       await runQuery(`UPDATE students SET user_id = ? WHERE id = ?`, [userId, student.id]);
     }
 
+    // Invalidate all active sessions for this student immediately
+    await revokeAllUserSessions(userId);
+
     await recordAuditEvent(
       req.user.id,
       req.user.username,
@@ -1067,6 +1125,114 @@ router.post('/students/:id/reset-password', async (req, res) => {
       message: `Password for student ${student.roll_number} (${student.full_name}) has been reset successfully!`,
       newPassword: new_password,
       rollNumber: student.roll_number
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 12. SQLite Database Backup & Recovery Engine
+router.post('/backup/create', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const backupResult = await backupService.createBackup();
+    await recordAuditEvent(
+      req.user.id,
+      req.user.username,
+      'CREATE_DATABASE_BACKUP',
+      'SYSTEM',
+      null,
+      `Created verified backup ${backupResult.backupFile} (${backupResult.sizeBytes} bytes)`,
+      req
+    );
+    res.json({
+      success: true,
+      message: 'Database backup created and integrity verified successfully.',
+      backup: backupResult
+    });
+  } catch (err) {
+    console.error('Backup error:', err);
+    res.status(500).json({ success: false, error: 'Backup failed: ' + err.message });
+  }
+});
+
+router.get('/backup/list', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const backups = backupService.listBackups();
+    res.json({
+      success: true,
+      count: backups.length,
+      backups
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/backup/restore', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const { filename, confirmation } = req.body;
+    if (!filename || confirmation !== 'CONFIRM_RESTORE') {
+      return res.status(400).json({
+        success: false,
+        error: 'Confirmation required: provide "filename" and set confirmation to "CONFIRM_RESTORE".'
+      });
+    }
+
+    const backupPath = path.join(backupService.BACKUP_DIR, path.basename(filename));
+    const restoreResult = await backupService.restoreBackup(backupPath);
+
+    await recordAuditEvent(
+      req.user.id,
+      req.user.username,
+      'RESTORE_DATABASE',
+      'SYSTEM',
+      null,
+      `Restored database from ${filename}`,
+      req
+    );
+
+    res.json({
+      success: true,
+      message: 'Database restored successfully!',
+      result: restoreResult
+    });
+  } catch (err) {
+    console.error('Restore error:', err);
+    res.status(500).json({ success: false, error: 'Database restore error: ' + err.message });
+  }
+});
+
+// 13. System Health & Readiness Diagnostics
+router.get('/system-health', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const integrityStatus = await checkDatabaseIntegrity();
+    const aiHealth = await aiServiceClient.checkHealth();
+    const backups = backupService.listBackups();
+    const lastBackup = backups[0] || null;
+
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      components: {
+        backend: {
+          status: 'HEALTHY',
+          uptimeSeconds: Math.round(process.uptime()),
+          nodeVersion: process.version
+        },
+        database: {
+          status: integrityStatus === 'ok' ? 'HEALTHY' : 'WARNING',
+          integrityCheck: integrityStatus
+        },
+        aiEngine: {
+          status: aiHealth.ok ? 'HEALTHY' : 'DEGRADED',
+          details: aiHealth.data || aiHealth.error
+        },
+        storage: {
+          backupDirectory: backupService.BACKUP_DIR,
+          totalBackups: backups.length,
+          lastBackup
+        }
+      }
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

@@ -2,10 +2,20 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const { getQuery, runQuery } = require('../db/database');
-const { generateToken, requireAuth, recordAuditEvent } = require('../middleware/auth');
+const {
+  generateToken,
+  generateAccessToken,
+  createRefreshToken,
+  rotateRefreshToken,
+  revokeRefreshToken,
+  revokeAllUserSessions,
+  requireAuth,
+  recordAuditEvent,
+  JWT_SECRET
+} = require('../middleware/auth');
 const { authLimiter } = require('../middleware/rateLimiter');
 
-// 1. User Login
+// 1. User Login (Issues Short-Lived Access Token + Rotated Refresh Token)
 router.post('/login', authLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -39,7 +49,8 @@ router.post('/login', authLimiter, async (req, res) => {
       studentProfile = await getQuery(`SELECT * FROM students WHERE id = ?`, [user.student_id]);
     }
 
-    const token = generateToken(user);
+    const accessToken = generateAccessToken(user);
+    const refreshResult = await createRefreshToken(user.id, req);
 
     // Audit log
     await recordAuditEvent(user.id, user.username, 'USER_LOGIN', 'USER', user.id, `User logged in with role ${user.role}`, req);
@@ -47,7 +58,10 @@ router.post('/login', authLimiter, async (req, res) => {
     res.json({
       success: true,
       message: 'Login successful.',
-      token,
+      token: accessToken, // backward compatibility
+      accessToken,
+      refreshToken: refreshResult.refreshToken,
+      refreshTokenExpiresAt: refreshResult.expiresAt,
       user: {
         id: user.id,
         username: user.username,
@@ -64,7 +78,26 @@ router.post('/login', authLimiter, async (req, res) => {
   }
 });
 
-// 2. Current User Profile
+// 2. Token Refresh Endpoint (Rotates Refresh Token & Detects Reused Compromised Tokens)
+router.post('/refresh', authLimiter, async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) {
+      return res.status(400).json({ success: false, error: 'Refresh token is required.' });
+    }
+
+    const rotationResult = await rotateRefreshToken(refreshToken, req);
+    res.json({
+      success: true,
+      message: 'Token refreshed successfully.',
+      ...rotationResult
+    });
+  } catch (err) {
+    res.status(401).json({ success: false, error: err.message });
+  }
+});
+
+// 3. Current User Profile
 router.get('/me', requireAuth, async (req, res) => {
   try {
     let studentProfile = null;
@@ -89,7 +122,7 @@ router.get('/me', requireAuth, async (req, res) => {
   }
 });
 
-// 3. Change Password
+// 4. Change Password (Forces Revocation of All Active Sessions on Other Devices)
 router.post('/change-password', requireAuth, async (req, res) => {
   try {
     const { current_password, new_password } = req.body;
@@ -118,18 +151,48 @@ router.post('/change-password', requireAuth, async (req, res) => {
       WHERE id = ?
     `, [newHash, req.user.id]);
 
-    await recordAuditEvent(req.user.id, req.user.username, 'PASSWORD_CHANGE', 'USER', req.user.id, 'User changed their password', req);
+    // Security Hardening: Invalidate all existing sessions / refresh tokens
+    await revokeAllUserSessions(req.user.id);
 
-    res.json({ success: true, message: 'Password changed successfully.' });
+    await recordAuditEvent(req.user.id, req.user.username, 'PASSWORD_CHANGE', 'USER', req.user.id, 'User changed their password (all prior sessions revoked)', req);
+
+    res.json({ success: true, message: 'Password changed successfully. Please log in with your new credentials.' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// 4. Logout
-router.post('/logout', requireAuth, async (req, res) => {
-  await recordAuditEvent(req.user.id, req.user.username, 'USER_LOGOUT', 'USER', req.user.id, 'User logged out', req);
-  res.json({ success: true, message: 'Logged out successfully.' });
+// 5. Logout Single Device / Session
+router.post('/logout', async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    if (refreshToken) {
+      await revokeRefreshToken(refreshToken);
+    }
+    if (req.headers.authorization) {
+      try {
+        const token = req.headers.authorization.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+        if (decoded && decoded.id) {
+          await recordAuditEvent(decoded.id, decoded.username || 'USER', 'USER_LOGOUT', 'USER', decoded.id, 'User logged out', req);
+        }
+      } catch (_) {}
+    }
+    res.json({ success: true, message: 'Logged out successfully.' });
+  } catch (err) {
+    res.json({ success: true, message: 'Logged out.' });
+  }
+});
+
+// 6. Logout All Devices / Force Revoke All Sessions
+router.post('/logout-all', requireAuth, async (req, res) => {
+  try {
+    await revokeAllUserSessions(req.user.id);
+    await recordAuditEvent(req.user.id, req.user.username, 'USER_LOGOUT_ALL', 'USER', req.user.id, 'User revoked all active sessions across devices', req);
+    res.json({ success: true, message: 'All active sessions and refresh tokens have been revoked.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // =========================================================================
@@ -138,7 +201,6 @@ router.post('/logout', requireAuth, async (req, res) => {
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const { JWT_SECRET } = require('../middleware/auth');
 const { sendEmailOtp, sendSmsOtp, maskEmail, maskPhone, verifyPhoneEmailJsonUrl } = require('../services/notificationService');
 
 // Helper to find student & user identity across roll number, email, or phone
@@ -518,6 +580,9 @@ router.post('/forgot-password/reset', authLimiter, async (req, res) => {
       await runQuery(`UPDATE password_reset_otps SET is_used = 1 WHERE id = ?`, [otpRecordId]);
     }
 
+    // Invalidate all active sessions for this user across all devices
+    await revokeAllUserSessions(updatedUserId);
+
     // Audit event
     await recordAuditEvent(
       updatedUserId,
@@ -754,7 +819,8 @@ router.post('/phone-login', authLimiter, async (req, res) => {
       }
     }
 
-    const token = generateToken(user);
+    const accessToken = generateAccessToken(user);
+    const refreshResult = await createRefreshToken(user.id, req);
 
     await recordAuditEvent(
       user.id,
@@ -769,7 +835,10 @@ router.post('/phone-login', authLimiter, async (req, res) => {
     res.json({
       success: true,
       message: `Welcome back, ${student.full_name}! (Username: ${user.username})`,
-      token,
+      token: accessToken,
+      accessToken,
+      refreshToken: refreshResult.refreshToken,
+      refreshTokenExpiresAt: refreshResult.expiresAt,
       user: {
         id: user.id,
         username: user.username,

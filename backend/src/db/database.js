@@ -14,29 +14,49 @@ if (useTurso) {
     authToken: process.env.TURSO_AUTH_TOKEN
   });
   console.log(`🚀 Connected to Persistent Turso Cloud SQLite Database at: ${process.env.TURSO_DATABASE_URL}`);
-} else {
-  const sqlite3 = require('sqlite3').verbose();
-  const dataDir = path.join(__dirname, '../../data');
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
+}
+const sqlite3 = require('sqlite3').verbose();
+const dataDir = path.join(__dirname, '../../data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+const dbPath = path.join(dataDir, 'hostel_attendance.sqlite');
 
-  const dbPath = path.join(dataDir, 'hostel_attendance.sqlite');
-  sqliteDb = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-      console.error('Failed to open SQLite database:', err.message);
-    } else {
-      console.log(`Connected to Local SQLite Database at: ${dbPath}`);
-    }
+const openSqliteConnection = () => {
+  return new Promise((resolve, reject) => {
+    if (useTurso) return resolve();
+    sqliteDb = new sqlite3.Database(dbPath, (err) => {
+      if (err) {
+        console.error('Failed to open SQLite database:', err.message);
+        reject(err);
+      } else {
+        sqliteDb.serialize(() => {
+          sqliteDb.run('PRAGMA journal_mode = WAL;');
+          sqliteDb.run('PRAGMA foreign_keys = ON;');
+          sqliteDb.run('PRAGMA busy_timeout = 5000;');
+          sqliteDb.run('PRAGMA synchronous = NORMAL;');
+        });
+        resolve(sqliteDb);
+      }
+    });
   });
+};
 
-  // Configure High-Performance & Concurrency PRAGMAs
-  sqliteDb.serialize(() => {
-    sqliteDb.run('PRAGMA journal_mode = WAL;');
-    sqliteDb.run('PRAGMA foreign_keys = ON;');
-    sqliteDb.run('PRAGMA busy_timeout = 5000;');
-    sqliteDb.run('PRAGMA synchronous = NORMAL;');
+const closeSqliteConnection = () => {
+  return new Promise((resolve, reject) => {
+    if (useTurso || !sqliteDb) return resolve();
+    sqliteDb.close((err) => {
+      if (err) reject(err);
+      else {
+        sqliteDb = null;
+        resolve();
+      }
+    });
   });
+};
+
+if (!useTurso) {
+  openSqliteConnection().catch(err => console.error('Initial DB connection error:', err));
 }
 
 // Helpers for promise-based queries
@@ -79,6 +99,8 @@ const allQuery = async (sql, params = []) => {
   });
 };
 
+let sqliteTxMutex = Promise.resolve();
+
 // Transaction wrapper for atomic multi-statement operations
 const withTransaction = async (callback) => {
   if (useTurso) {
@@ -105,14 +127,26 @@ const withTransaction = async (callback) => {
     }
   }
 
-  await runQuery('BEGIN TRANSACTION;');
+  // SQLite Transaction Mutex: Linearize concurrent transactions to prevent "cannot start a transaction within a transaction"
+  const prevTx = sqliteTxMutex;
+  let releaseTx;
+  sqliteTxMutex = new Promise(resolve => { releaseTx = resolve; });
+
+  await prevTx;
   try {
-    const result = await callback({ runQuery, getQuery, allQuery });
-    await runQuery('COMMIT;');
-    return result;
-  } catch (error) {
-    await runQuery('ROLLBACK;');
-    throw error;
+    await runQuery('BEGIN IMMEDIATE TRANSACTION;');
+    try {
+      const result = await callback({ runQuery, getQuery, allQuery });
+      await runQuery('COMMIT;');
+      return result;
+    } catch (error) {
+      try {
+        await runQuery('ROLLBACK;');
+      } catch (_) {}
+      throw error;
+    }
+  } finally {
+    releaseTx();
   }
 };
 
@@ -346,6 +380,39 @@ const initDatabase = async () => {
     )
   `);
 
+  // 14. Cryptographic Refresh Tokens (Session & Device Rotation)
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS refresh_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token_hash TEXT UNIQUE NOT NULL,
+      device_info TEXT,
+      ip_address TEXT,
+      expires_at DATETIME NOT NULL,
+      is_revoked INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // 15. Student Registered Devices (Hardware Security Signals)
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS student_registered_devices (
+      id TEXT PRIMARY KEY,
+      student_id TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      device_model TEXT,
+      browser_ua TEXT,
+      first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      is_active INTEGER DEFAULT 1,
+      revoked_at DATETIME,
+      revocation_reason TEXT,
+      FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+      UNIQUE(student_id, device_id)
+    )
+  `);
+
   // Automatic Non-Destructive Column Migrations (upgrades existing SQLite db schema)
   const ensureColumns = async (tableName, requiredCols) => {
     try {
@@ -402,10 +469,18 @@ const initDatabase = async () => {
     is_registered: 'INTEGER DEFAULT 0'
   });
 
-  // 14. Performance Indexes
+  await ensureColumns('student_face_embeddings', {
+    quality_score: 'REAL DEFAULT 1.0',
+    liveness_score: 'REAL DEFAULT 1.0'
+  });
+
+  // 16. Performance & Security Indexes
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_records(date);`);
-  await runQuery(`CREATE INDEX IF NOT EXISTS idx_attendance_student ON attendance_records(student_id);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_attendance_date_status ON attendance_records(date, status);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_attendance_student_date ON attendance_records(student_id, date);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_students_roll ON students(roll_number);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_students_phone ON students(phone);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_students_active ON students(is_active);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_challenges_token ON attendance_challenges(challenge_token);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_audit_created ON admin_audit_events(created_at);`);
@@ -413,8 +488,25 @@ const initDatabase = async () => {
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_corrections_status ON attendance_corrections(status);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_otps_identifier ON password_reset_otps(identifier);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_otps_expiry ON password_reset_otps(expires_at);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_registered_devices ON student_registered_devices(student_id, is_active);`);
 
-  // 14. Initial Data Seeding
+  // Verify SQLite database integrity on startup
+  if (!useTurso) {
+    try {
+      const integrity = await getQuery('PRAGMA integrity_check;');
+      if (integrity && Object.values(integrity)[0] === 'ok') {
+        console.log('🛡️ SQLite Database Integrity Check: PASS (ok)');
+      } else {
+        console.error('⚠️ SQLite Database Integrity Warning:', integrity);
+      }
+    } catch (intErr) {
+      console.warn('Integrity check non-blocking notice:', intErr.message);
+    }
+  }
+
+  // 17. Initial Data Seeding
   await seedInitialData();
 };
 
@@ -594,6 +686,15 @@ const seedInitialData = async () => {
   }
 };
 
+const checkDatabaseIntegrity = async () => {
+  if (useTurso) {
+    const res = await tursoClient.execute('SELECT 1 as alive;');
+    return res.rows[0]?.alive === 1 ? 'ok' : 'error';
+  }
+  const row = await getQuery('PRAGMA integrity_check;');
+  return row ? Object.values(row)[0] : 'unknown';
+};
+
 module.exports = {
   db: sqliteDb || tursoClient,
   runQuery,
@@ -601,6 +702,10 @@ module.exports = {
   allQuery,
   withTransaction,
   initDatabase,
-  clearAllStudentData
+  clearAllStudentData,
+  checkDatabaseIntegrity,
+  openSqliteConnection,
+  closeSqliteConnection
 };
+
 
