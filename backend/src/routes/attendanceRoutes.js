@@ -6,11 +6,15 @@ const { validateLocation } = require('../services/geofenceService');
 const { recordFailedLocationAttempt, resetFailedLocationAttempt } = require('../services/fraudService');
 const { attendanceLimiter } = require('../middleware/rateLimiter');
 const aiServiceClient = require('../services/aiServiceClient');
+const { optionalAuth } = require('../middleware/auth');
 
 // Helper to get today's date in YYYY-MM-DD
 function getTodayDateString() {
   return new Date().toISOString().split('T')[0];
 }
+
+// Attach optional JWT authentication to attendance router
+router.use(optionalAuth);
 
 // 1. Phase 3 Step 1: Coordinate Extraction & Geofence Validation
 router.post('/verify-location', attendanceLimiter, async (req, res) => {
@@ -23,7 +27,9 @@ router.post('/verify-location', attendanceLimiter, async (req, res) => {
       is_mock_location = false
     } = req.body;
 
-    if (!roll_number) {
+    const studentRoll = roll_number ? roll_number.trim() : (req.user?.role === 'STUDENT' ? req.user.username : null);
+
+    if (!studentRoll) {
       return res.status(400).json({ success: false, error: 'Student roll number is required.' });
     }
 
@@ -32,9 +38,17 @@ router.post('/verify-location', attendanceLimiter, async (req, res) => {
     }
 
     // 1. Verify student exists and is active
-    const student = await getQuery(`SELECT * FROM students WHERE roll_number = ? OR id = ?`, [roll_number.trim(), roll_number.trim()]);
+    const student = await getQuery(`SELECT * FROM students WHERE roll_number = ? OR id = ?`, [studentRoll, studentRoll]);
     if (!student) {
       return res.status(404).json({ success: false, error: 'Student is not registered. Please complete Phase 2 Onboarding first.' });
+    }
+
+    // Security Guard: Prevent authenticated student from marking another student's attendance
+    if (req.user && req.user.role === 'STUDENT' && req.user.username !== student.roll_number) {
+      return res.status(403).json({
+        success: false,
+        error: `Security violation: Logged in as ${req.user.username}, cannot mark attendance for ${student.roll_number}.`
+      });
     }
 
     if (student.is_active !== 1) {

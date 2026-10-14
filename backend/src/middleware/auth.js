@@ -11,6 +11,7 @@ function generateToken(user) {
     {
       id: user.id,
       username: user.username,
+      email: user.email || null,
       role: user.role,
       studentId: user.student_id || null
     },
@@ -58,6 +59,28 @@ async function requireAuth(req, res, next) {
   }
 }
 
+// Optional Authentication Middleware: populates req.user if Bearer token present, but does not block if missing
+async function optionalAuth(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = await getQuery(`SELECT id, username, email, role, student_id, is_active FROM users WHERE id = ?`, [decoded.id]);
+        if (user && user.is_active === 1) {
+          req.user = user;
+        }
+      } catch (_) {
+        // Silently proceed for optional auth
+      }
+    }
+    next();
+  } catch (err) {
+    next();
+  }
+}
+
 // Role-Based Access Control Guard
 function requireRole(...allowedRoles) {
   return (req, res, next) => {
@@ -92,7 +115,10 @@ async function recordAuditEvent(userId, username, action, targetType, targetId, 
 module.exports = {
   generateToken,
   requireAuth,
+  optionalAuth,
   requireRole,
   recordAuditEvent,
-  JWT_SECRET
+  JWT_SECRET,
+  JWT_EXPIRES_IN
 };
+

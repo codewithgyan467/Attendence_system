@@ -95,4 +95,33 @@ describe('Authentication & Role-Based Access Control (RBAC)', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.summary).toBeDefined();
   });
+
+  test('GET /api/v1/auth/me - Rejects malformed or tampered JWT with 401', async () => {
+    const res = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.invalidpayload.signature');
+
+    expect(res.status).toBe(401);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/Invalid authentication token/);
+  });
+
+  test('GET /api/v1/auth/me - Rejects expired JWT with 401 and TokenExpired message', async () => {
+    const jwt = require('jsonwebtoken');
+    const { JWT_SECRET } = require('../src/middleware/auth');
+    const expiredToken = jwt.sign(
+      { id: 'some-id', username: 'admin', role: 'ADMIN' },
+      JWT_SECRET,
+      { expiresIn: '-1s' }
+    );
+
+    const res = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${expiredToken}`);
+
+    expect(res.status).toBe(401);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/Session expired/);
+  });
 });
+
