@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, Server, Check, CheckCircle2, Smartphone } from 'lucide-react';
+import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, Server, Check, CheckCircle2, Smartphone, Mail } from 'lucide-react';
 import { getApiBaseUrl, authStorage } from '../../utils/api';
 import ForgotPasswordModal from './ForgotPasswordModal';
 import SignInWithPhoneButton from './SignInWithPhoneButton';
@@ -17,6 +17,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
   const [showServerConfig, setShowServerConfig] = useState(false);
   const [customServerUrl, setCustomServerUrl] = useState(authStorage.getBackendUrl());
   const [serverSavedMsg, setServerSavedMsg] = useState(false);
+  const [otpVerifyMode, setOtpVerifyMode] = useState('phone'); // 'phone' | 'email'
 
   // Check URL query parameters (e.g. ?mode=reset or ?token=... or ?roll=2023CS01)
   useEffect(() => {
@@ -59,9 +60,9 @@ export default function LoginPage({ onNavigateOnboarding }) {
     setErrorMsg('');
     try {
       const res = await loginWithPhone(userJsonUrl);
-      setSuccessBanner(res.message || 'Phone verification successful! Welcome back.');
+      setSuccessBanner(res.message || 'Identity verified successfully! Welcome back.');
     } catch (err) {
-      setErrorMsg(err.message || 'Phone sign-in failed. Please ensure your mobile is registered.');
+      setErrorMsg(err.message || 'Verification sign-in failed. Please ensure your mobile/email is registered.');
     } finally {
       setLoading(false);
     }
@@ -173,21 +174,53 @@ export default function LoginPage({ onNavigateOnboarding }) {
             </button>
           </form>
 
-          {/* Sign in with Phone (Phone.Email Free Global OTP) */}
+          {/* Sign in with Phone or Email (Phone.Email Free Global OTP) */}
           <div className="position-relative my-3 text-center">
             <hr className="text-secondary opacity-25" />
             <span className="position-absolute top-50 start-50 translate-middle bg-white px-2 small text-muted fw-semibold" style={{ fontSize: '11px' }}>
-              OR SIGN IN WITH PHONE
+              OR SIGN IN WITH INSTANT OTP
             </span>
           </div>
 
           <div className="d-flex flex-column align-items-center justify-content-center mb-3">
+            {/* Mode Selector Pill */}
+            <div className="btn-group btn-group-sm mb-3 p-1 bg-light rounded-pill border" role="group">
+              <button
+                type="button"
+                className={`btn btn-sm rounded-pill px-3 py-1 fw-semibold d-inline-flex align-items-center gap-1 transition-all ${
+                  otpVerifyMode === 'phone'
+                    ? 'btn-primary text-white shadow-sm'
+                    : 'btn-light text-muted border-0'
+                }`}
+                style={{ fontSize: '11px' }}
+                onClick={() => setOtpVerifyMode('phone')}
+              >
+                <Smartphone size={12} /> Mobile OTP
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm rounded-pill px-3 py-1 fw-semibold d-inline-flex align-items-center gap-1 transition-all ${
+                  otpVerifyMode === 'email'
+                    ? 'btn-primary text-white shadow-sm'
+                    : 'btn-light text-muted border-0'
+                }`}
+                style={{ fontSize: '11px' }}
+                onClick={() => setOtpVerifyMode('email')}
+              >
+                <Mail size={12} /> Email OTP
+              </button>
+            </div>
+
             <SignInWithPhoneButton
+              key={otpVerifyMode}
+              mode={otpVerifyMode}
               onSuccess={handlePhoneLoginSuccess}
               onError={(err) => setErrorMsg(err)}
             />
             <div className="text-center text-muted mt-2" style={{ fontSize: '11px' }}>
-              Forgot your username? Sign in instantly with your verified mobile number OTP.
+              {otpVerifyMode === 'phone'
+                ? 'Sign in instantly with your verified mobile number OTP.'
+                : 'Sign in instantly with your verified email address OTP.'}
             </div>
           </div>
 

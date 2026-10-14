@@ -615,19 +615,21 @@ router.post('/forgot-password/phone-email-verify', authLimiter, async (req, res)
     }
 
     let verifiedPhone = '';
+    let verifiedEmail = '';
     if (user_json_url) {
       const verifiedData = await verifyPhoneEmailJsonUrl(user_json_url);
       verifiedPhone = verifiedData.fullPhone;
+      verifiedEmail = verifiedData.email;
     } else if (simulated_phone && process.env.NODE_ENV === 'test') {
       verifiedPhone = String(simulated_phone).trim();
     }
 
-    if (!verifiedPhone) {
+    if (!verifiedPhone && !verifiedEmail) {
       return res.status(400).json({ success: false, error: 'Valid Phone.Email verification token is required.' });
     }
 
     // Match with student
-    const cleanDigits = verifiedPhone.replace(/[^0-9]/g, '');
+    const cleanDigits = verifiedPhone ? verifiedPhone.replace(/[^0-9]/g, '') : '';
     let identity = null;
 
     if (identifier && identifier.trim()) {
@@ -635,14 +637,26 @@ router.post('/forgot-password/phone-email-verify', authLimiter, async (req, res)
     }
 
     if (!identity) {
-      // Find student by phone in students table
-      const student = await getQuery(`
-        SELECT s.*, u.id as user_account_id, u.is_active as user_active
-        FROM students s
-        LEFT JOIN users u ON (s.user_id = u.id OR s.roll_number = u.username)
-        WHERE s.phone = ? OR s.phone LIKE ? OR s.phone LIKE ?
-        LIMIT 1
-      `, [verifiedPhone, `%${cleanDigits.slice(-10)}`, `%${cleanDigits}`]);
+      // Find student by email or phone in students table
+      let student = null;
+      if (verifiedEmail) {
+        student = await getQuery(`
+          SELECT s.*, u.id as user_account_id, u.is_active as user_active
+          FROM students s
+          LEFT JOIN users u ON (s.user_id = u.id OR s.roll_number = u.username)
+          WHERE s.email = ? OR u.email = ?
+          LIMIT 1
+        `, [verifiedEmail, verifiedEmail]);
+      }
+      if (!student && verifiedPhone) {
+        student = await getQuery(`
+          SELECT s.*, u.id as user_account_id, u.is_active as user_active
+          FROM students s
+          LEFT JOIN users u ON (s.user_id = u.id OR s.roll_number = u.username)
+          WHERE s.phone = ? OR s.phone LIKE ? OR s.phone LIKE ?
+          LIMIT 1
+        `, [verifiedPhone, `%${cleanDigits.slice(-10)}`, `%${cleanDigits}`]);
+      }
 
       if (student) {
         identity = {
@@ -658,9 +672,10 @@ router.post('/forgot-password/phone-email-verify', authLimiter, async (req, res)
     }
 
     if (!identity) {
+      const targetLabel = verifiedEmail || verifiedPhone;
       return res.status(404).json({
         success: false,
-        error: `Verified phone (${verifiedPhone}) is not registered with any student in the hostel system.`
+        error: `Verified identity (${targetLabel}) is not registered with any student in the hostel system.`
       });
     }
 
@@ -677,22 +692,24 @@ router.post('/forgot-password/phone-email-verify', authLimiter, async (req, res)
       { expiresIn: '15m' }
     );
 
+    const verifiedIdentity = verifiedPhone || verifiedEmail;
     await recordAuditEvent(
       identity.user_account_id || 'ANONYMOUS',
       identity.roll_number,
       'PHONE_EMAIL_VERIFY_SUCCESS',
       'USER',
       identity.user_account_id || null,
-      `Verified phone number ${verifiedPhone} via Phone.Email`,
+      `Verified identity ${verifiedIdentity} via Phone.Email`,
       req
     );
 
     res.json({
       success: true,
-      message: `Phone number ${verifiedPhone} verified successfully via Phone.Email!`,
+      message: `Identity ${verifiedIdentity} verified successfully via Phone.Email!`,
       resetToken,
       identifier: identity.roll_number,
-      verifiedPhone
+      verifiedPhone,
+      verifiedEmail
     });
   } catch (err) {
     console.error('Phone.Email verification error:', err);
@@ -740,38 +757,59 @@ router.post('/phone-login', authLimiter, async (req, res) => {
     }
 
     let verifiedPhone = '';
+    let verifiedEmail = '';
     if (user_json_url) {
       const verifiedData = await verifyPhoneEmailJsonUrl(user_json_url);
       verifiedPhone = verifiedData.fullPhone;
+      verifiedEmail = verifiedData.email;
     } else if (simulated_phone && process.env.NODE_ENV === 'test') {
       verifiedPhone = String(simulated_phone).trim();
     }
 
-    if (!verifiedPhone) {
+    if (!verifiedPhone && !verifiedEmail) {
       return res.status(400).json({ success: false, error: 'Valid Phone.Email verification data is required.' });
     }
 
-    const cleanDigits = verifiedPhone.replace(/[^0-9]/g, '');
+    const cleanDigits = verifiedPhone ? verifiedPhone.replace(/[^0-9]/g, '') : '';
 
-    // Look up student by phone in students table
-    const student = await getQuery(`
-      SELECT s.*, 
-             u.id as user_account_id, 
-             u.username, 
-             u.email as user_email, 
-             u.role, 
-             u.is_active as user_active, 
-             u.must_change_password
-      FROM students s
-      LEFT JOIN users u ON (s.user_id = u.id OR s.roll_number = u.username)
-      WHERE s.phone = ? OR s.phone LIKE ? OR s.phone LIKE ?
-      LIMIT 1
-    `, [verifiedPhone, `%${cleanDigits.slice(-10)}`, `%${cleanDigits}`]);
+    // Look up student by email or phone in students table
+    let student = null;
+    if (verifiedEmail) {
+      student = await getQuery(`
+        SELECT s.*, 
+               u.id as user_account_id, 
+               u.username, 
+               u.email as user_email, 
+               u.role, 
+               u.is_active as user_active, 
+               u.must_change_password
+        FROM students s
+        LEFT JOIN users u ON (s.user_id = u.id OR s.roll_number = u.username)
+        WHERE s.email = ? OR u.email = ?
+        LIMIT 1
+      `, [verifiedEmail, verifiedEmail]);
+    }
+    if (!student && verifiedPhone) {
+      student = await getQuery(`
+        SELECT s.*, 
+               u.id as user_account_id, 
+               u.username, 
+               u.email as user_email, 
+               u.role, 
+               u.is_active as user_active, 
+               u.must_change_password
+        FROM students s
+        LEFT JOIN users u ON (s.user_id = u.id OR s.roll_number = u.username)
+        WHERE s.phone = ? OR s.phone LIKE ? OR s.phone LIKE ?
+        LIMIT 1
+      `, [verifiedPhone, `%${cleanDigits.slice(-10)}`, `%${cleanDigits}`]);
+    }
 
     if (!student) {
+      const targetLabel = verifiedEmail || verifiedPhone;
       return res.status(404).json({
         success: false,
-        error: `Verified mobile number (${verifiedPhone}) is not registered with any student in the hostel system. Please contact your hostel warden or register as a resident.`
+        error: `Verified identity (${targetLabel}) is not registered with any student in the hostel system. Please contact your hostel warden or register as a resident.`
       });
     }
 
@@ -822,13 +860,14 @@ router.post('/phone-login', authLimiter, async (req, res) => {
     const accessToken = generateAccessToken(user);
     const refreshResult = await createRefreshToken(user.id, req);
 
+    const verifiedIdentity = verifiedPhone || verifiedEmail;
     await recordAuditEvent(
       user.id,
       user.username,
       'USER_LOGIN_PHONE_EMAIL',
       'USER',
       user.id,
-      `User logged in via Phone.Email verified mobile: ${verifiedPhone}`,
+      `User logged in via Phone.Email verified identity: ${verifiedIdentity}`,
       req
     );
 

@@ -244,19 +244,22 @@ async function verifyPhoneEmailJsonUrl(userJsonUrl) {
     const data = res.data;
 
     // Expected schema from Phone.Email:
-    // { user_country_code: "+91", user_phone_number: "9876543210", country_iso: "IN" }
+    // For Phone: { user_country_code: "+91", user_phone_number: "9876543210", country_iso: "IN" }
+    // For Email: { user_email_id: "student@example.com" }
+    const email = data.user_email_id || data.email_id || data.email || '';
     const countryCode = data.user_country_code || data.country_code || '';
     const phoneNumber = data.user_phone_number || data.phone_no || data.phone_number || '';
 
-    if (!phoneNumber) {
-      throw new Error('Phone.Email returned empty phone number data.');
+    if (!phoneNumber && !email) {
+      throw new Error('Phone.Email returned empty phone number and email verification data.');
     }
 
-    const fullPhone = `${countryCode}${phoneNumber}`.replace(/\s+/g, '');
-    const cleanNational = phoneNumber.replace(/[^0-9]/g, '');
+    const fullPhone = phoneNumber ? `${countryCode}${phoneNumber}`.replace(/\s+/g, '') : '';
+    const cleanNational = phoneNumber ? phoneNumber.replace(/[^0-9]/g, '') : '';
 
     return {
       success: true,
+      email: email ? email.trim().toLowerCase() : '',
       fullPhone,
       countryCode,
       phoneNumber: cleanNational,

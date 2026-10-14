@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../utils/api';
+import SignInWithPhoneButton from './SignInWithPhoneButton';
 import {
   Shield,
   Mail,
@@ -31,6 +32,7 @@ export default function ForgotPasswordModal({
   const [step, setStep] = useState(initialToken ? 3 : 1); // 1: Request, 2: OTP/Verify, 3: New Password, 4: Success
   const [identifier, setIdentifier] = useState(initialRollNumber);
   const [method, setMethod] = useState('EMAIL'); // 'EMAIL' or 'PHONE'
+  const [peMode, setPeMode] = useState('phone'); // 'phone' | 'email' for Phone.Email SDK
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -48,7 +50,6 @@ export default function ForgotPasswordModal({
 
   // Phone.Email Client ID (configured from developer dashboard)
   const phoneEmailClientId = import.meta.env.VITE_PHONE_EMAIL_CLIENT_ID || '18664955320259466526';
-  const phoneEmailContainerRef = useRef(null);
 
   useEffect(() => {
     if (initialRollNumber) {
@@ -71,53 +72,28 @@ export default function ForgotPasswordModal({
     return () => clearTimeout(timer);
   }, [countdown]);
 
-  // Set up Phone.Email Global Listener when on Step 2 with Phone method
-  useEffect(() => {
-    if (!isOpen || step !== 2 || method !== 'PHONE') return;
+  // Handler for Phone.Email verification (both Mobile SMS OTP and Email OTP)
+  const handlePhoneEmailSuccess = async (userJsonUrl) => {
+    setLoading(true);
+    setErrorMsg('');
 
-    window.phoneEmailListener = async function (userObj) {
-      console.log('Phone.Email callback triggered:', userObj);
-      if (!userObj || !userObj.user_json_url) {
-        setErrorMsg('Phone.Email returned invalid verification response.');
-        return;
+    try {
+      const res = await api.auth.verifyPhoneEmail({
+        user_json_url: userJsonUrl,
+        identifier: resolvedUsername || identifier.trim()
+      });
+
+      if (res.success) {
+        setResetToken(res.resetToken);
+        setResolvedUsername(res.identifier || identifier.trim());
+        setStep(3);
       }
-
-      setLoading(true);
-      setErrorMsg('');
-
-      try {
-        const res = await api.auth.verifyPhoneEmail({
-          user_json_url: userObj.user_json_url,
-          identifier: resolvedUsername || identifier.trim()
-        });
-
-        if (res.success) {
-          setResetToken(res.resetToken);
-          setResolvedUsername(res.identifier || identifier.trim());
-          setStep(3);
-        }
-      } catch (err) {
-        setErrorMsg(err.message || 'Phone.Email verification failed.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    // Inject Phone.Email official sign-in button script
-    const scriptId = 'phone-email-script';
-    let script = document.getElementById(scriptId);
-    if (!script) {
-      script = document.createElement('script');
-      script.id = scriptId;
-      script.src = 'https://www.phone.email/sign_in_button_v1.js';
-      script.async = true;
-      document.body.appendChild(script);
+    } catch (err) {
+      setErrorMsg(err.message || 'Phone.Email verification failed.');
+    } finally {
+      setLoading(false);
     }
-
-    return () => {
-      delete window.phoneEmailListener;
-    };
-  }, [isOpen, step, method, resolvedUsername, identifier]);
+  };
 
   if (!isOpen) return null;
 
@@ -437,25 +413,42 @@ export default function ForgotPasswordModal({
 
                     {/* Official Phone.Email Widget Container */}
                     <div className="p-4 bg-light rounded-3 text-center mb-4 border">
-                      <div
-                        id="phone-email-widget-container"
-                        className="pe_signin_button d-inline-block"
-                        data-client-id={phoneEmailClientId}
-                        ref={phoneEmailContainerRef}
-                      >
+                      {/* Mode Toggle */}
+                      <div className="btn-group btn-group-sm mb-3 p-1 bg-white rounded-pill border" role="group">
                         <button
                           type="button"
-                          className="btn btn-dark d-inline-flex align-items-center gap-2 py-2 px-3 fw-semibold shadow-sm"
-                          onClick={() => {
-                            if (window.phoneEmailListener) {
-                              const btn = document.querySelector('.pe_signin_button button');
-                              if (btn) btn.click();
-                            }
-                          }}
+                          className={`btn btn-sm rounded-pill px-3 py-1 fw-semibold d-inline-flex align-items-center gap-1 transition-all ${
+                            peMode === 'phone'
+                              ? 'btn-primary text-white shadow-sm'
+                              : 'btn-light text-muted border-0'
+                          }`}
+                          style={{ fontSize: '11px' }}
+                          onClick={() => setPeMode('phone')}
                         >
-                          <Smartphone size={16} className="text-warning" />
-                          <span>Verify with Phone.Email (SMS / WhatsApp)</span>
+                          <Smartphone size={12} /> Mobile OTP
                         </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm rounded-pill px-3 py-1 fw-semibold d-inline-flex align-items-center gap-1 transition-all ${
+                            peMode === 'email'
+                              ? 'btn-primary text-white shadow-sm'
+                              : 'btn-light text-muted border-0'
+                          }`}
+                          style={{ fontSize: '11px' }}
+                          onClick={() => setPeMode('email')}
+                        >
+                          <Mail size={12} /> Email OTP
+                        </button>
+                      </div>
+
+                      <div className="d-flex justify-content-center">
+                        <SignInWithPhoneButton
+                          key={peMode}
+                          mode={peMode}
+                          clientId={phoneEmailClientId}
+                          onSuccess={handlePhoneEmailSuccess}
+                          onError={(err) => setErrorMsg(err)}
+                        />
                       </div>
                       <div className="mt-2 text-muted" style={{ fontSize: '11px' }}>
                         Secured by Phone.Email Free Global Verification Service
