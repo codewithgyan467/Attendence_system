@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, Server, Check } from 'lucide-react';
+import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, Server, Check, CheckCircle2 } from 'lucide-react';
 import { getApiBaseUrl, authStorage } from '../../utils/api';
+import ForgotPasswordModal from './ForgotPasswordModal';
 
 export default function LoginPage({ onNavigateOnboarding }) {
   const { login } = useAuth();
@@ -9,9 +10,29 @@ export default function LoginPage({ onNavigateOnboarding }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [successBanner, setSuccessBanner] = useState('');
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [magicLinkToken, setMagicLinkToken] = useState(null);
   const [showServerConfig, setShowServerConfig] = useState(false);
   const [customServerUrl, setCustomServerUrl] = useState(authStorage.getBackendUrl());
   const [serverSavedMsg, setServerSavedMsg] = useState(false);
+
+  // Check URL query parameters (e.g. ?mode=reset or ?token=... or ?roll=2023CS01)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      if (token) {
+        setMagicLinkToken(token);
+        setShowForgotModal(true);
+      } else if (params.get('mode') === 'reset' || params.get('reset') === 'true' || window.location.hash === '#reset') {
+        setShowForgotModal(true);
+      }
+      if (params.get('roll')) {
+        setUsername(params.get('roll'));
+      }
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -64,6 +85,13 @@ export default function LoginPage({ onNavigateOnboarding }) {
 
         {/* Card Body */}
         <div className="card-body p-4 p-sm-5">
+          {successBanner && (
+            <div className="alert alert-success d-flex align-items-center gap-2 py-2 px-3 small mb-4" role="alert">
+              <CheckCircle2 size={16} className="text-success flex-shrink-0" />
+              <div>{successBanner}</div>
+            </div>
+          )}
+
           {errorMsg && (
             <div className="alert alert-danger d-flex align-items-center gap-2 py-2 px-3 small mb-4" role="alert">
               <AlertTriangle size={16} className="flex-shrink-0" />
@@ -91,7 +119,17 @@ export default function LoginPage({ onNavigateOnboarding }) {
             </div>
 
             <div className="mb-4">
-              <label className="form-label small fw-medium text-dark">Account Password</label>
+              <div className="d-flex align-items-center justify-content-between mb-1">
+                <label className="form-label small fw-medium text-dark mb-0">Account Password</label>
+                <button
+                  type="button"
+                  className="btn btn-link btn-sm text-decoration-none p-0 text-primary small fw-semibold d-inline-flex align-items-center gap-1"
+                  style={{ fontSize: '12px' }}
+                  onClick={() => setShowForgotModal(true)}
+                >
+                  <Key size={12} /> Forgot / Reset Password?
+                </button>
+              </div>
               <div className="input-group">
                 <span className="input-group-text bg-light border-end-0">
                   <Lock size={16} className="text-muted" />
@@ -149,6 +187,22 @@ export default function LoginPage({ onNavigateOnboarding }) {
                 <span>🏢 Hostel Warden</span>
                 <code className="text-primary small">warden</code>
               </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary d-flex align-items-center justify-content-between px-3"
+                onClick={() => handleQuickLogin('2023CS01', 'Student@12345')}
+              >
+                <span>🎓 Student: Aarav Sharma</span>
+                <code className="text-primary small">2023CS01</code>
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary d-flex align-items-center justify-content-between px-3"
+                onClick={() => handleQuickLogin('2023CS02', 'Student@12345')}
+              >
+                <span>🎓 Student: Ananya Patel</span>
+                <code className="text-primary small">2023CS02</code>
+              </button>
             </div>
           </div>
 
@@ -203,6 +257,25 @@ export default function LoginPage({ onNavigateOnboarding }) {
           </div>
         </div>
       </div>
+
+      {/* Forgot / Reset Password Modal */}
+      <ForgotPasswordModal
+        isOpen={showForgotModal}
+        initialRollNumber={username}
+        initialToken={magicLinkToken}
+        onClose={() => {
+          setShowForgotModal(false);
+          setMagicLinkToken(null);
+        }}
+        onPasswordResetSuccess={(resetRoll) => {
+          setShowForgotModal(false);
+          setMagicLinkToken(null);
+          setUsername(resetRoll);
+          setPassword('');
+          setSuccessBanner(`Password successfully reset for ${resetRoll}! Please sign in with your new password.`);
+          setErrorMsg('');
+        }}
+      />
     </div>
   );
 }

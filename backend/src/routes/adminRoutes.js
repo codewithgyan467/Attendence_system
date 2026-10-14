@@ -690,4 +690,124 @@ router.post('/feedback/:id/resolve', async (req, res) => {
   }
 });
 
+// 11. Complete System Credentials & Student Password Hub
+const bcrypt = require('bcryptjs');
+
+router.get('/credentials-directory', async (req, res) => {
+  try {
+    // 1. Staff users
+    const staff = await allQuery(`
+      SELECT id, username, email, role, is_active, created_at
+      FROM users
+      WHERE role IN ('ADMIN', 'WARDEN')
+      ORDER BY role ASC
+    `);
+
+    // 2. Student users and roster
+    const students = await allQuery(`
+      SELECT
+        s.id as student_id,
+        s.roll_number,
+        s.full_name,
+        s.email,
+        s.phone,
+        s.course,
+        s.semester,
+        s.room_number,
+        s.hostel_block,
+        s.is_active,
+        s.device_id,
+        u.id as user_id,
+        u.username,
+        u.must_change_password
+      FROM students s
+      LEFT JOIN users u ON (s.user_id = u.id OR s.roll_number = u.username)
+      ORDER BY s.roll_number ASC
+    `);
+
+    // 3. Pre-allotted students not yet registered
+    const pendingAllotments = await allQuery(`
+      SELECT id, roll_number, full_name, room_number, hostel_block
+      FROM hostel_allotments
+      WHERE is_registered = 0
+      ORDER BY roll_number ASC
+    `);
+
+    res.json({
+      success: true,
+      directory: {
+        staff: staff.map((st) => ({
+          ...st,
+          defaultPasswordHint: st.role === 'ADMIN' ? 'Admin@12345' : 'Warden@12345'
+        })),
+        students: students.map((st) => ({
+          ...st,
+          defaultPasswordHint: 'Student@12345'
+        })),
+        pendingAllotments: pendingAllotments.map((a) => ({
+          ...a,
+          defaultPasswordHint: 'Student@12345 (Upon Onboarding)'
+        }))
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Admin One-Click Password Reset for Student
+router.post('/students/:id/reset-password', async (req, res) => {
+  try {
+    const { new_password = 'Student@12345', reason = 'Admin initiated credential reset' } = req.body;
+
+    const student = await getQuery(`SELECT * FROM students WHERE id = ? OR roll_number = ?`, [req.params.id, req.params.id]);
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Student not found.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(new_password, salt);
+
+    let user = await getQuery(`SELECT id FROM users WHERE id = ? OR username = ?`, [student.user_id, student.roll_number]);
+    let userId = user?.id;
+
+    if (userId) {
+      await runQuery(`
+        UPDATE users
+        SET password_hash = ?, must_change_password = 1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `, [hash, userId]);
+    } else {
+      userId = uuidv4();
+      const email = student.email || `${student.roll_number.toLowerCase()}@student.hostel.local`;
+      await runQuery(`
+        INSERT INTO users (id, username, email, password_hash, role, student_id, is_active, must_change_password)
+        VALUES (?, ?, ?, ?, 'STUDENT', ?, 1, 1)
+      `, [userId, student.roll_number, email, hash, student.id]);
+
+      await runQuery(`UPDATE students SET user_id = ? WHERE id = ?`, [userId, student.id]);
+    }
+
+    await recordAuditEvent(
+      req.user.id,
+      req.user.username,
+      'ADMIN_RESET_STUDENT_PASSWORD',
+      'STUDENT',
+      student.id,
+      `Password reset for student ${student.roll_number} (${reason})`,
+      req
+    );
+
+    res.json({
+      success: true,
+      message: `Password for student ${student.roll_number} (${student.full_name}) has been reset successfully!`,
+      newPassword: new_password,
+      rollNumber: student.roll_number
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
+

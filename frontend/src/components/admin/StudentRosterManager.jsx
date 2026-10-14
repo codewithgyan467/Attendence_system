@@ -13,7 +13,15 @@ import {
   X,
   Check,
   RefreshCw,
-  Plus
+  Plus,
+  Key,
+  KeyRound,
+  Copy,
+  ExternalLink,
+  Shield,
+  Lock,
+  Mail,
+  Phone
 } from 'lucide-react';
 
 export default function StudentRosterManager() {
@@ -38,6 +46,20 @@ export default function StudentRosterManager() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFormData, setEditFormData] = useState({});
+
+  // Credentials & Password Hub state
+  const [showCredentialsModal, setShowCredentialsModal] = useState(false);
+  const [credentialsData, setCredentialsData] = useState(null);
+  const [credentialsLoading, setCredentialsLoading] = useState(false);
+  const [credentialsTab, setCredentialsTab] = useState('students');
+  const [copiedId, setCopiedId] = useState(null);
+
+  // Admin Single-Student Password Reset Modal
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetTargetStudent, setResetTargetStudent] = useState(null);
+  const [resetPasswordInput, setResetPasswordInput] = useState('Student@12345');
+  const [resetPasswordReason, setResetPasswordReason] = useState('Administrative credential recovery');
+  const [resetLoading, setResetLoading] = useState(false);
 
   const showFeedback = (message, type = 'success') => {
     setToast({ show: true, message, type });
@@ -168,6 +190,89 @@ export default function StudentRosterManager() {
     }
   };
 
+  // Fetch and open credentials directory
+  const handleOpenCredentialsHub = async () => {
+    try {
+      setCredentialsLoading(true);
+      setShowCredentialsModal(true);
+      const res = await api.admin.getCredentialsDirectory();
+      if (res.success) {
+        setCredentialsData(res.directory);
+      }
+    } catch (err) {
+      showFeedback(err.message || 'Failed to load credentials directory', 'danger');
+    } finally {
+      setCredentialsLoading(false);
+    }
+  };
+
+  // Open Admin Reset Password modal
+  const openResetModal = (student) => {
+    setResetTargetStudent(student);
+    setResetPasswordInput('Student@12345');
+    setResetPasswordReason('Administrative credential recovery');
+    setShowResetModal(true);
+  };
+
+  // Execute Admin Reset Password
+  const handleAdminResetPassword = async (e) => {
+    e.preventDefault();
+    if (!resetTargetStudent || !resetPasswordInput) return;
+
+    try {
+      setResetLoading(true);
+      const res = await api.admin.resetStudentPassword(resetTargetStudent.id || resetTargetStudent.roll_number, {
+        new_password: resetPasswordInput,
+        reason: resetPasswordReason
+      });
+
+      showFeedback(res.message, 'success');
+      setShowResetModal(false);
+      // Refresh credentials data if open
+      if (showCredentialsModal) {
+        const credRes = await api.admin.getCredentialsDirectory();
+        if (credRes.success) setCredentialsData(credRes.directory);
+      }
+      loadStudents();
+    } catch (err) {
+      showFeedback(err.message || 'Failed to reset student password', 'danger');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  // Copy helper
+  const handleCopyText = (text, id) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  // Copy all credentials to clipboard
+  const handleCopyAllCredentials = () => {
+    if (!credentialsData) return;
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
+    let text = `========================================================\nHOSTELGUARD SYSTEM CREDENTIALS & ACCESS DIRECTORY\nPortal Link: ${origin}\nDirect Password Reset Link: ${origin}?mode=reset\n========================================================\n\n`;
+
+    text += `--- 👑 STAFF & ADMINISTRATIVE ACCOUNTS ---\n`;
+    credentialsData.staff?.forEach((st) => {
+      text += `Role: ${st.role} | Username: ${st.username} | Email: ${st.email} | Default Password: ${st.defaultPasswordHint}\n`;
+    });
+
+    text += `\n--- 🎓 REGISTERED STUDENT ACCOUNTS ---\n`;
+    credentialsData.students?.forEach((s) => {
+      text += `Roll: ${s.roll_number} | Name: ${s.full_name} | Email: ${s.email || 'N/A'} | Phone: ${s.phone || 'N/A'} | Default Pass: Student@12345 | Reset Link: ${origin}?mode=reset&roll=${s.roll_number}\n`;
+    });
+
+    text += `\n--- 📋 PRE-ALLOTTED ROSTER STUDENTS (READY FOR ONBOARDING) ---\n`;
+    credentialsData.pendingAllotments?.forEach((p) => {
+      text += `Roll: ${p.roll_number} | Name: ${p.full_name} | Block/Room: ${p.hostel_block} ${p.room_number}\n`;
+    });
+
+    navigator.clipboard.writeText(text);
+    showFeedback('All credentials directory copied to clipboard!', 'success');
+  };
+
   return (
     <div className="container-fluid px-0">
       {/* Toast */}
@@ -186,7 +291,10 @@ export default function StudentRosterManager() {
             Official administration list. Students select from this roster during onboarding.
           </p>
         </div>
-        <div className="d-flex align-items-center gap-2">
+        <div className="d-flex align-items-center gap-2 flex-wrap">
+          <button onClick={handleOpenCredentialsHub} className="btn btn-sm btn-dark d-flex align-items-center gap-1 shadow-sm">
+            <KeyRound size={14} className="text-warning" /> Credentials & Password Hub
+          </button>
           <button onClick={() => setShowUploadModal(true)} className="btn btn-sm btn-primary d-flex align-items-center gap-1">
             <Upload size={14} /> Import CSV Roster
           </button>
@@ -321,6 +429,13 @@ export default function StudentRosterManager() {
                           title="Edit Student"
                         >
                           <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={() => openResetModal(st)}
+                          className="btn btn-outline-warning text-dark"
+                          title="Admin Reset Password"
+                        >
+                          <Key size={14} />
                         </button>
                       </div>
                     </td>
@@ -569,6 +684,310 @@ export default function StudentRosterManager() {
                 </button>
                 <button type="submit" className="btn btn-sm btn-primary">
                   Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: Credentials & Password Hub */}
+      {showCredentialsModal && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(3px)', zIndex: 1055 }}>
+          <div className="modal-dialog modal-xl modal-dialog-scrollable">
+            <div className="modal-content border-0 shadow-2xl rounded-4 overflow-hidden">
+              <div className="modal-header p-4 text-white" style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}>
+                <div className="d-flex align-items-center gap-3">
+                  <div className="p-2 rounded-circle bg-warning bg-opacity-25 text-warning">
+                    <KeyRound size={24} />
+                  </div>
+                  <div>
+                    <h5 className="modal-title fw-bold text-white mb-0">System Credentials & Student Password Directory</h5>
+                    <p className="text-muted small mb-0">
+                      Complete directory of student & staff account IDs, default passwords, and quick OTP reset links.
+                    </p>
+                  </div>
+                </div>
+                <div className="d-flex align-items-center gap-2">
+                  <button onClick={handleCopyAllCredentials} className="btn btn-sm btn-outline-light d-flex align-items-center gap-1">
+                    <Copy size={13} /> Copy All Directory Text
+                  </button>
+                  <button type="button" className="btn-close btn-close-white" onClick={() => setShowCredentialsModal(false)}></button>
+                </div>
+              </div>
+
+              <div className="modal-body p-4 bg-light">
+                {/* Tab Navigation */}
+                <ul className="nav nav-pills mb-3 gap-2">
+                  <li className="nav-item">
+                    <button
+                      className={`nav-link btn-sm ${credentialsTab === 'students' ? 'active fw-bold' : 'bg-white text-dark border'}`}
+                      onClick={() => setCredentialsTab('students')}
+                    >
+                      🎓 Registered Students ({credentialsData?.students?.length || 0})
+                    </button>
+                  </li>
+                  <li className="nav-item">
+                    <button
+                      className={`nav-link btn-sm ${credentialsTab === 'staff' ? 'active fw-bold' : 'bg-white text-dark border'}`}
+                      onClick={() => setCredentialsTab('staff')}
+                    >
+                      👑 Staff & Admins ({credentialsData?.staff?.length || 0})
+                    </button>
+                  </li>
+                  <li className="nav-item">
+                    <button
+                      className={`nav-link btn-sm ${credentialsTab === 'allotments' ? 'active fw-bold' : 'bg-white text-dark border'}`}
+                      onClick={() => setCredentialsTab('allotments')}
+                    >
+                      📋 Pre-Allotted Roster ({credentialsData?.pendingAllotments?.length || 0})
+                    </button>
+                  </li>
+                </ul>
+
+                {credentialsLoading ? (
+                  <div className="text-center py-5">
+                    <div className="spinner-border text-primary mb-2" role="status"></div>
+                    <div className="text-muted small">Loading system credentials directory...</div>
+                  </div>
+                ) : (
+                  <>
+                    {/* STUDENTS TAB */}
+                    {credentialsTab === 'students' && (
+                      <div className="card border-0 shadow-sm rounded-3 overflow-hidden">
+                        <div className="table-responsive">
+                          <table className="table table-hover align-middle mb-0" style={{ fontSize: '13px' }}>
+                            <thead className="table-light">
+                              <tr>
+                                <th>Roll Number</th>
+                                <th>Student Name</th>
+                                <th>Student ID</th>
+                                <th>Email & Phone</th>
+                                <th>Room / Block</th>
+                                <th>Default Password</th>
+                                <th className="text-end">Direct Links & Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {credentialsData?.students?.map((s) => {
+                                const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
+                                const resetLink = `${origin}?mode=reset&roll=${s.roll_number}`;
+                                return (
+                                  <tr key={s.student_id}>
+                                    <td className="font-mono fw-bold text-primary">{s.roll_number}</td>
+                                    <td className="fw-semibold">{s.full_name}</td>
+                                    <td className="font-mono text-muted small">{s.student_id}</td>
+                                    <td>
+                                      <div className="d-flex flex-column gap-1 small">
+                                        <span className="text-truncate" style={{ maxWidth: '180px' }}>
+                                          <Mail size={12} className="me-1 text-muted" />
+                                          {s.email || 'None'}
+                                        </span>
+                                        <span>
+                                          <Phone size={12} className="me-1 text-muted" />
+                                          {s.phone || 'None'}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td>
+                                      <span className="badge bg-light text-dark font-mono">
+                                        {s.hostel_block || 'N/A'} &bull; {s.room_number || 'N/A'}
+                                      </span>
+                                    </td>
+                                    <td>
+                                      <code className="text-success fw-bold">Student@12345</code>
+                                    </td>
+                                    <td className="text-end">
+                                      <div className="btn-group btn-group-sm">
+                                        <button
+                                          className="btn btn-outline-secondary"
+                                          title="Copy Direct Reset Link"
+                                          onClick={() => handleCopyText(resetLink, `reset-${s.roll_number}`)}
+                                        >
+                                          {copiedId === `reset-${s.roll_number}` ? (
+                                            <span className="text-success"><Check size={12} /> Copied</span>
+                                          ) : (
+                                            <span className="d-inline-flex align-items-center gap-1"><Copy size={12} /> Reset Link</span>
+                                          )}
+                                        </button>
+                                        <button
+                                          className="btn btn-outline-warning text-dark"
+                                          title="Admin Reset Password"
+                                          onClick={() => {
+                                            openResetModal(s);
+                                          }}
+                                        >
+                                          <Key size={12} className="me-1" /> Reset
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* STAFF TAB */}
+                    {credentialsTab === 'staff' && (
+                      <div className="card border-0 shadow-sm rounded-3 overflow-hidden">
+                        <div className="table-responsive">
+                          <table className="table table-hover align-middle mb-0" style={{ fontSize: '13px' }}>
+                            <thead className="table-light">
+                              <tr>
+                                <th>Role</th>
+                                <th>Username</th>
+                                <th>Email</th>
+                                <th>Default Password</th>
+                                <th>Account Status</th>
+                                <th className="text-end">Quick Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {credentialsData?.staff?.map((st) => (
+                                <tr key={st.id}>
+                                  <td>
+                                    <span className={`badge ${st.role === 'ADMIN' ? 'bg-primary' : 'bg-info'}`}>
+                                      {st.role}
+                                    </span>
+                                  </td>
+                                  <td className="font-mono fw-bold">{st.username}</td>
+                                  <td>{st.email}</td>
+                                  <td>
+                                    <code className="text-primary fw-bold">{st.defaultPasswordHint}</code>
+                                  </td>
+                                  <td>
+                                    <span className="badge bg-success">Active</span>
+                                  </td>
+                                  <td className="text-end">
+                                    <button
+                                      className="btn btn-sm btn-outline-secondary"
+                                      onClick={() => handleCopyText(`${st.username} | ${st.defaultPasswordHint}`, `staff-${st.username}`)}
+                                    >
+                                      {copiedId === `staff-${st.username}` ? (
+                                        <span className="text-success"><Check size={12} /> Copied</span>
+                                      ) : (
+                                        <span className="d-inline-flex align-items-center gap-1"><Copy size={12} /> Copy Login</span>
+                                      )}
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ALLOTMENTS TAB */}
+                    {credentialsTab === 'allotments' && (
+                      <div className="card border-0 shadow-sm rounded-3 overflow-hidden">
+                        <div className="table-responsive">
+                          <table className="table table-hover align-middle mb-0" style={{ fontSize: '13px' }}>
+                            <thead className="table-light">
+                              <tr>
+                                <th>Roll Number</th>
+                                <th>Student Full Name</th>
+                                <th>Block & Room</th>
+                                <th>Onboarding Password</th>
+                                <th>Self-Registration Link</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {credentialsData?.pendingAllotments?.map((a) => {
+                                const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
+                                return (
+                                  <tr key={a.id}>
+                                    <td className="font-mono fw-bold text-primary">{a.roll_number}</td>
+                                    <td>{a.full_name}</td>
+                                    <td>{a.hostel_block} &bull; {a.room_number}</td>
+                                    <td>
+                                      <code className="text-muted">Student@12345 (Default)</code>
+                                    </td>
+                                    <td>
+                                      <button
+                                        className="btn btn-sm btn-outline-primary"
+                                        onClick={() => handleCopyText(origin, `allot-${a.roll_number}`)}
+                                      >
+                                        <Copy size={12} className="me-1" /> Copy Portal Link
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="modal-footer p-3 bg-white">
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => setShowCredentialsModal(false)}>
+                  Close Hub
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: Admin One-Click Password Reset for Student */}
+      {showResetModal && resetTargetStudent && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+          <div className="modal-dialog">
+            <form onSubmit={handleAdminResetPassword} className="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+              <div className="modal-header bg-dark text-white p-3">
+                <div className="d-flex align-items-center gap-2">
+                  <Key size={18} className="text-warning" />
+                  <h6 className="modal-title fw-bold mb-0">Admin Password Reset</h6>
+                </div>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setShowResetModal(false)}></button>
+              </div>
+
+              <div className="modal-body p-4">
+                <div className="alert alert-warning py-2 px-3 small mb-3 rounded-3">
+                  You are resetting the password for student{' '}
+                  <strong>{resetTargetStudent.full_name}</strong> (<code>{resetTargetStudent.roll_number}</code>).
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label small fw-semibold">New Password to Assign</label>
+                  <input
+                    type="text"
+                    className="form-control form-control-sm font-mono"
+                    value={resetPasswordInput}
+                    onChange={(e) => setResetPasswordInput(e.target.value)}
+                    required
+                    minLength={8}
+                  />
+                  <div className="form-text" style={{ fontSize: '11px' }}>
+                    Standard default is <code>Student@12345</code>. The student can sign in immediately with this password.
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label small fw-semibold">Audit Reason / Justification</label>
+                  <input
+                    type="text"
+                    className="form-control form-control-sm"
+                    value={resetPasswordReason}
+                    onChange={(e) => setResetPasswordReason(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer p-3 bg-light">
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => setShowResetModal(false)} disabled={resetLoading}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-sm btn-primary fw-semibold" disabled={resetLoading || resetPasswordInput.length < 8}>
+                  {resetLoading ? 'Resetting...' : 'Confirm Password Reset'}
                 </button>
               </div>
             </form>

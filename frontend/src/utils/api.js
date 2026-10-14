@@ -90,12 +90,19 @@ export const api = {
     login: (credentials) => request('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
     getMe: () => request('/auth/me'),
     changePassword: (data) => request('/auth/change-password', { method: 'POST', body: JSON.stringify(data) }),
-    logout: () => request('/auth/logout', { method: 'POST' })
+    logout: () => request('/auth/logout', { method: 'POST' }),
+    requestPasswordResetOtp: (data) => request('/auth/forgot-password/request-otp', { method: 'POST', body: JSON.stringify(data) }),
+    verifyPasswordResetOtp: (data) => request('/auth/forgot-password/verify-otp', { method: 'POST', body: JSON.stringify(data) }),
+    resetPasswordWithOtp: (data) => request('/auth/forgot-password/reset', { method: 'POST', body: JSON.stringify(data) }),
+    verifyPhoneEmail: (data) => request('/auth/forgot-password/phone-email-verify', { method: 'POST', body: JSON.stringify(data) }),
+    verifyMagicLink: (token) => request('/auth/forgot-password/verify-magic-link', { method: 'POST', body: JSON.stringify({ token }) })
   },
 
   // Admin APIs
   admin: {
     getDashboardStats: () => request('/admin/dashboard-stats'),
+    getCredentialsDirectory: () => request('/admin/credentials-directory'),
+    resetStudentPassword: (id, data) => request(`/admin/students/${encodeURIComponent(id)}/reset-password`, { method: 'POST', body: JSON.stringify(data || {}) }),
     getStudents: (params = {}) => {
       const q = new URLSearchParams(params).toString();
       return request(`/admin/students${q ? '?' + q : ''}`);

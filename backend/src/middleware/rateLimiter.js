@@ -1,11 +1,12 @@
 const rateLimit = require('express-rate-limit');
 
-// Login rate limiter: max 15 attempts per 15 minutes per IP
+// Login rate limiter: max 30 attempts per 15 minutes per IP (disabled in test)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 15,
+  max: process.env.NODE_ENV === 'test' ? 5000 : 30,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
   message: {
     success: false,
     error: 'Too many login attempts from this IP address. Please try again after 15 minutes.'

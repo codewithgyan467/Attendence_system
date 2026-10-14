@@ -330,6 +330,22 @@ const initDatabase = async () => {
     )
   `);
 
+  // 13. Password Reset OTPs (Email & Phone verification tokens)
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS password_reset_otps (
+      id TEXT PRIMARY KEY,
+      identifier TEXT NOT NULL,
+      user_id TEXT,
+      otp_code TEXT NOT NULL,
+      method TEXT NOT NULL CHECK(method IN ('EMAIL', 'PHONE')),
+      destination TEXT NOT NULL,
+      expires_at DATETIME NOT NULL,
+      is_used INTEGER DEFAULT 0,
+      attempts INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Automatic Non-Destructive Column Migrations (upgrades existing SQLite db schema)
   const ensureColumns = async (tableName, requiredCols) => {
     try {
@@ -381,7 +397,7 @@ const initDatabase = async () => {
     is_registered: 'INTEGER DEFAULT 0'
   });
 
-  // 13. Performance Indexes
+  // 14. Performance Indexes
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_records(date);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_attendance_student ON attendance_records(student_id);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_students_roll ON students(roll_number);`);
@@ -390,6 +406,8 @@ const initDatabase = async () => {
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_audit_created ON admin_audit_events(created_at);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_security_created ON security_audit_logs(created_at);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_corrections_status ON attendance_corrections(status);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_otps_identifier ON password_reset_otps(identifier);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_otps_expiry ON password_reset_otps(expires_at);`);
 
   // 14. Initial Data Seeding
   await seedInitialData();
@@ -462,6 +480,101 @@ const seedInitialData = async () => {
         INSERT INTO hostel_allotments (id, roll_number, full_name, room_number, hostel_block, is_registered)
         VALUES (?, ?, ?, ?, ?, 0)
       `, [uuidv4(), item[0], item[1], item[2], item[3]]);
+    }
+  }
+
+  // F. Ensure Standard Demo Students exist with User Credentials & Contact Info for OTP testing
+  const demoStudents = [
+    {
+      roll: '2023CS01',
+      name: 'Aarav Sharma',
+      email: 'aarav.sharma@student.hostel.local',
+      phone: '+919876543210',
+      course: 'B.Tech Computer Science',
+      year: 2023,
+      sem: 4,
+      block: 'Block A',
+      room: 'A-101'
+    },
+    {
+      roll: '2023CS02',
+      name: 'Ananya Patel',
+      email: 'ananya.patel@student.hostel.local',
+      phone: '+919876543211',
+      course: 'B.Tech Computer Science',
+      year: 2023,
+      sem: 4,
+      block: 'Block A',
+      room: 'A-102'
+    },
+    {
+      roll: '2023EC01',
+      name: 'Rohan Verma',
+      email: 'rohan.verma@student.hostel.local',
+      phone: '+919876543212',
+      course: 'B.Tech Electronics & Comm',
+      year: 2023,
+      sem: 4,
+      block: 'Block A',
+      room: 'A-103'
+    }
+  ];
+
+  const defaultStudentHash = await bcrypt.hash('Student@12345', 10);
+
+  for (const ds of demoStudents) {
+    const studentId = `HSTL-${ds.year}-${ds.roll}`;
+    
+    // Check if user exists
+    let existingUser = await getQuery(`SELECT id FROM users WHERE username = ?`, [ds.roll]);
+    let userId = existingUser?.id;
+
+    if (!existingUser) {
+      userId = uuidv4();
+      await runQuery(`
+        INSERT INTO users (id, username, email, password_hash, role, student_id, is_active, must_change_password)
+        VALUES (?, ?, ?, ?, 'STUDENT', ?, 1, 0)
+      `, [userId, ds.roll, ds.email, defaultStudentHash, studentId]);
+    } else {
+      // Ensure user has email
+      await runQuery(`UPDATE users SET email = COALESCE(email, ?), student_id = ? WHERE id = ?`, [ds.email, studentId, userId]);
+    }
+
+    // Check if student record exists
+    let existingStudent = await getQuery(`SELECT id FROM students WHERE roll_number = ?`, [ds.roll]);
+    if (!existingStudent) {
+      await runQuery(`
+        INSERT INTO students (
+          id, user_id, roll_number, full_name, email, phone,
+          course, admission_year, semester, room_number, hostel_block,
+          device_id, device_model, is_active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+      `, [
+        studentId,
+        userId,
+        ds.roll,
+        ds.name,
+        ds.email,
+        ds.phone,
+        ds.course,
+        ds.year,
+        ds.sem,
+        ds.room,
+        ds.block,
+        `DEV-${ds.roll.toLowerCase()}`,
+        'Samsung Galaxy A54'
+      ]);
+      // Mark allotment registered
+      await runQuery(`UPDATE hostel_allotments SET is_registered = 1 WHERE roll_number = ?`, [ds.roll]);
+    } else {
+      // Update contact details and user_id if null
+      await runQuery(`
+        UPDATE students
+        SET user_id = ?, email = COALESCE(email, ?), phone = COALESCE(phone, ?),
+            room_number = COALESCE(room_number, ?), hostel_block = COALESCE(hostel_block, ?)
+        WHERE roll_number = ?
+      `, [userId, ds.email, ds.phone, ds.room, ds.block, ds.roll]);
+      await runQuery(`UPDATE hostel_allotments SET is_registered = 1 WHERE roll_number = ?`, [ds.roll]);
     }
   }
 };
