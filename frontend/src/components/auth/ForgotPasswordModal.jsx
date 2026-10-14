@@ -46,8 +46,8 @@ export default function ForgotPasswordModal({
   // Resend countdown timer
   const [countdown, setCountdown] = useState(0);
 
-  // Phone.Email Client ID (can be configured in admin dashboard or defaults to official client ID)
-  const phoneEmailClientId = import.meta.env.VITE_PHONE_EMAIL_CLIENT_ID || '15695407177920574360';
+  // Phone.Email Client ID (configured from developer dashboard)
+  const phoneEmailClientId = import.meta.env.VITE_PHONE_EMAIL_CLIENT_ID || '18664955320259466526';
   const phoneEmailContainerRef = useRef(null);
 
   useEffect(() => {

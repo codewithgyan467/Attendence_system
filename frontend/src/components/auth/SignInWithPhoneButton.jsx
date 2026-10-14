@@ -3,7 +3,7 @@ import React, { useEffect, useRef } from 'react';
 export default function SignInWithPhoneButton({
   onSuccess,
   onError,
-  clientId = import.meta.env.VITE_PHONE_EMAIL_CLIENT_ID || '15695407177920574360',
+  clientId = import.meta.env.VITE_PHONE_EMAIL_CLIENT_ID || '18664955320259466526',
   className = ''
 }) {
   const containerRef = useRef(null);
