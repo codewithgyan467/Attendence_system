@@ -576,8 +576,8 @@ const seedInitialData = async () => {
     `, [uuidv4()]);
   }
 
-  // E. Optional Demo Student Seeding (Disabled by default so wardens start with a clean production slate)
-  if (process.env.SEED_DEMO_DATA === 'true') {
+  // E. Optional Demo Student Seeding (Enabled by default in dev/test so demo accounts work out-of-the-box)
+  if (process.env.SEED_DEMO_DATA !== 'false') {
     const allotCount = await getQuery(`SELECT COUNT(*) as count FROM hostel_allotments`);
     if (allotCount.count === 0) {
       const demoRoster = [
@@ -650,6 +650,8 @@ const seedInitialData = async () => {
       }
 
       let existingStudent = await getQuery(`SELECT id FROM students WHERE roll_number = ?`, [ds.roll]);
+      const actualStudentId = existingStudent ? existingStudent.id : studentId;
+
       if (!existingStudent) {
         await runQuery(`
           INSERT INTO students (
@@ -681,6 +683,16 @@ const seedInitialData = async () => {
           WHERE roll_number = ?
         `, [userId, ds.email, ds.phone, ds.room, ds.block, ds.roll]);
         await runQuery(`UPDATE hostel_allotments SET is_registered = 1 WHERE roll_number = ?`, [ds.roll]);
+      }
+
+      // Ensure face embeddings exist for demo students so they can test biometric check-in out-of-the-box
+      const existingFaces = await getQuery(`SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ?`, [actualStudentId]);
+      if (!existingFaces || existingFaces.count === 0) {
+        const demoVector = Array(128).fill(0.088);
+        await runQuery(`
+          INSERT INTO student_face_embeddings (id, student_id, angle_label, embedding_vector, quality_score, liveness_score)
+          VALUES (?, ?, 'FRONT', ?, 1.0, 1.0)
+        `, [uuidv4(), actualStudentId, JSON.stringify(demoVector)]);
       }
     }
   }

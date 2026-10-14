@@ -18,7 +18,9 @@ import {
   ShieldAlert,
   Send,
   Navigation,
-  Sparkles
+  Sparkles,
+  X,
+  Check
 } from 'lucide-react';
 
 export default function StudentPortal({ activeTab = 'student_attendance', onSelectTab }) {
@@ -38,10 +40,19 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [verifiedDistance, setVerifiedDistance] = useState(null);
   const [checkinError, setCheckinError] = useState(null);
 
-  // Live Camera
+  // Live Check-in Camera
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const [cameraActive, setCameraActive] = useState(false);
+
+  // In-Portal Facial Identity Enrollment
+  const [showEnrollModal, setShowEnrollModal] = useState(false);
+  const [enrollPhotos, setEnrollPhotos] = useState([]);
+  const [enrollActiveAngle, setEnrollActiveAngle] = useState('FRONT');
+  const [enrollSubmitting, setEnrollSubmitting] = useState(false);
+  const [enrollError, setEnrollError] = useState(null);
+  const enrollVideoRef = useRef(null);
+  const enrollStreamRef = useRef(null);
 
   // Forms
   const [correctionForm, setCorrectionForm] = useState({ date: new Date().toISOString().split('T')[0], reason: '' });
@@ -52,8 +63,42 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
   useEffect(() => {
     fetchStudentData();
-    return () => stopCamera();
+    return () => {
+      stopCamera();
+      stopEnrollCamera();
+    };
   }, []);
+
+  // Ensure video stream is attached to the video DOM element as soon as it mounts or changes step
+  useEffect(() => {
+    if ((checkinStep === 'camera_active' || checkinStep === 'verifying_face') && videoRef.current && streamRef.current) {
+      if (videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+      }
+      videoRef.current.play().catch((err) => console.warn('Video autoPlay prevented on step change:', err));
+    }
+  }, [checkinStep]);
+
+  // Callback ref guarantees video stream attaches the exact microsecond the DOM node mounts
+  const attachVideoRef = (node) => {
+    videoRef.current = node;
+    if (node && streamRef.current) {
+      if (node.srcObject !== streamRef.current) {
+        node.srcObject = streamRef.current;
+      }
+      node.play().catch((err) => console.warn('Camera play warning on attach:', err));
+    }
+  };
+
+  const attachEnrollVideoRef = (node) => {
+    enrollVideoRef.current = node;
+    if (node && enrollStreamRef.current) {
+      if (node.srcObject !== enrollStreamRef.current) {
+        node.srcObject = enrollStreamRef.current;
+      }
+      node.play().catch((err) => console.warn('Enroll camera play warning on attach:', err));
+    }
+  };
 
   const fetchStudentData = async () => {
     setLoading(true);
@@ -77,7 +122,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     }
   };
 
-  // Check-In Step 1: GPS Verification (Native Android Hardware via Capacitor or Browser fallback)
+  // Check-In Step 1: GPS Verification
   const handleVerifyLocation = async () => {
     setCheckinStep('verifying_gps');
     setCheckinError(null);
@@ -101,8 +146,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         setSessionToken(res.sessionToken);
         setVerifiedDistance(res.verifiedDistance);
         setCheckinStep('gps_ok');
-        // Auto open camera
-        setTimeout(() => startCamera(), 500);
+        // Auto open camera with resilient fallback
+        setTimeout(() => startCamera(), 300);
       } else {
         setCheckinError(res.error || 'Location rejected by geofence policy.');
         setCheckinStep('failed');
@@ -114,31 +159,124 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     }
   };
 
-  // Check-In Step 2: Camera
+  // Check-In Step 2: Camera with Progressive Constraint Fallbacks
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'user' }, width: { ideal: 640 }, height: { ideal: 480 } }
+        });
+      } catch (e1) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user' }
+          });
+        } catch (e2) {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
       }
+
       streamRef.current = stream;
       setCameraActive(true);
       setCheckinStep('camera_active');
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(console.warn);
+      }
     } catch (err) {
-      setCheckinError('Could not access front camera. Please grant camera permission.');
+      console.error('Camera access error:', err);
+      setCheckinError('Could not access front camera. Please grant camera permission in your browser.');
       setCheckinStep('failed');
     }
   };
 
   const stopCamera = () => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
     setCameraActive(false);
+  };
+
+  // Facial Identity Enrollment Methods
+  const startEnrollCamera = async () => {
+    setEnrollError(null);
+    try {
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'user' }, width: { ideal: 640 }, height: { ideal: 480 } }
+        });
+      } catch (e1) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        } catch (e2) {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
+      }
+      enrollStreamRef.current = stream;
+      if (enrollVideoRef.current) {
+        enrollVideoRef.current.srcObject = stream;
+        enrollVideoRef.current.play().catch(console.warn);
+      }
+    } catch (err) {
+      console.error('Enroll camera error:', err);
+      setEnrollError('Camera permission required. Please enable camera access in your mobile browser.');
+    }
+  };
+
+  const stopEnrollCamera = () => {
+    if (enrollStreamRef.current) {
+      enrollStreamRef.current.getTracks().forEach((t) => t.stop());
+      enrollStreamRef.current = null;
+    }
+  };
+
+  const handleCaptureEnrollPhoto = (angle = enrollActiveAngle) => {
+    if (!enrollVideoRef.current) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = enrollVideoRef.current.videoWidth || 640;
+    canvas.height = enrollVideoRef.current.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(enrollVideoRef.current, 0, 0, canvas.width, canvas.height);
+    const base64 = canvas.toDataURL('image/jpeg', 0.9);
+
+    setEnrollPhotos((prev) => {
+      const filtered = prev.filter((p) => p.angle !== angle);
+      return [...filtered, { angle, imageBase64: base64 }];
+    });
+
+    // Advance angle automatically for convenient 1-2-3 flow
+    if (angle === 'FRONT') setEnrollActiveAngle('LEFT');
+    else if (angle === 'LEFT') setEnrollActiveAngle('RIGHT');
+  };
+
+  const handleSubmitFaceEnrollment = async () => {
+    if (enrollPhotos.length === 0) {
+      setEnrollError('Please capture at least one face photo (Front angle).');
+      return;
+    }
+    setEnrollSubmitting(true);
+    setEnrollError(null);
+    try {
+      const res = await api.student.registerFace({ photos: enrollPhotos });
+      if (res.success) {
+        setStatusMsg('Biometric facial vectors successfully registered! You can now mark attendance.');
+        stopEnrollCamera();
+        setShowEnrollModal(false);
+        setEnrollPhotos([]);
+        setCheckinStep('idle');
+        fetchStudentData();
+      } else {
+        setEnrollError(res.error || 'Failed to register facial embeddings.');
+      }
+    } catch (err) {
+      setEnrollError(err.message || 'Face enrollment failed. Ensure your face is centered with adequate lighting.');
+    } finally {
+      setEnrollSubmitting(false);
+    }
   };
 
   // Check-In Step 3: Face Capture & Biometric Matching
@@ -277,6 +415,31 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       {(activeTab === 'student_attendance' || !activeTab) && (
         <div className="row g-4 justify-content-center">
           <div className="col-lg-8">
+            {/* Warning Banner if Facial Biometrics Not Yet Enrolled */}
+            {dashboard && stats.hasFaceRegistered === false && (
+              <div className="card border-warning border-opacity-50 bg-warning-subtle rounded-4 p-3 mb-4 shadow-sm text-start">
+                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                  <div className="d-flex align-items-center gap-2">
+                    <AlertTriangle size={24} className="text-warning flex-shrink-0" />
+                    <div>
+                      <div className="fw-bold text-dark">Facial Biometrics Not Registered</div>
+                      <div className="small text-muted">Complete your 10-second facial identity enrollment to enable one-tap biometric attendance.</div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-warning fw-semibold btn-sm px-3 shadow-sm text-dark d-inline-flex align-items-center gap-1"
+                    onClick={() => {
+                      setShowEnrollModal(true);
+                      startEnrollCamera();
+                    }}
+                  >
+                    <Camera size={15} /> Complete Face Registration (10s)
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="card shadow-sm border-0 rounded-4 overflow-hidden">
               <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
                 <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
@@ -335,13 +498,26 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
                     {(checkinStep === 'camera_active' || checkinStep === 'verifying_face') && (
                       <div className="py-2">
-                        <div className="position-relative d-inline-block rounded-4 overflow-hidden shadow-sm mb-3" style={{ maxWidth: '440px', width: '100%', backgroundColor: '#000' }}>
+                        <div className="position-relative d-inline-block rounded-4 overflow-hidden shadow-sm mb-2" style={{ maxWidth: '440px', width: '100%', backgroundColor: '#000' }}>
                           <video
-                            ref={videoRef}
+                            ref={attachVideoRef}
                             autoPlay
                             playsInline
                             muted
-                            style={{ width: '100%', height: 'auto', transform: 'scaleX(-1)' }}
+                            controls={false}
+                            style={{
+                              width: '100%',
+                              height: 'auto',
+                              minHeight: '260px',
+                              maxHeight: '380px',
+                              objectFit: 'cover',
+                              transform: 'scaleX(-1)',
+                              display: 'block',
+                              backgroundColor: '#000'
+                            }}
+                            onLoadedMetadata={(e) => {
+                              e.target.play().catch(console.warn);
+                            }}
                           />
                           {/* Face Oval Guide */}
                           <div
@@ -357,6 +533,23 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                               boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.35)'
                             }}
                           ></div>
+                        </div>
+
+                        <div className="d-flex justify-content-center gap-2 mb-3">
+                          <button
+                            type="button"
+                            className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1 shadow-sm"
+                            onClick={() => {
+                              if (videoRef.current && streamRef.current) {
+                                videoRef.current.srcObject = streamRef.current;
+                                videoRef.current.play().catch(console.warn);
+                              } else {
+                                startCamera();
+                              }
+                            }}
+                          >
+                            <RefreshCw size={13} /> Reload Camera Feed
+                          </button>
                         </div>
 
                         <div>
@@ -400,8 +593,28 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           {checkinError || 'Verification was rejected.'}
                         </div>
 
-                        {/* CASE A: Account is Locked by Security Policy */}
-                        {checkinError?.toLowerCase().includes('locked') ? (
+                        {/* CASE A: Missing Facial Registration / Onboarding */}
+                        {(checkinError?.toLowerCase().includes('facial embeddings') || checkinError?.toLowerCase().includes('onboarding')) ? (
+                          <div className="d-flex flex-column align-items-center gap-2">
+                            <div className="card bg-warning-subtle border-warning border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
+                              <div className="fw-bold text-dark small mb-1">📸 Biometric Identity Required</div>
+                              <div className="small text-muted">
+                                Your account does not have 128-D facial vectors enrolled in the hostel database yet. You must complete your quick face enrollment to activate roll call attendance.
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-warning px-4 py-2 fw-semibold d-inline-flex align-items-center gap-2 shadow-sm text-dark"
+                              onClick={() => {
+                                setShowEnrollModal(true);
+                                startEnrollCamera();
+                              }}
+                            >
+                              <Camera size={18} /> Register Facial Identity (10s)
+                            </button>
+                          </div>
+                        ) : checkinError?.toLowerCase().includes('locked') ? (
+                          /* CASE B: Account is Locked by Security Policy */
                           <div className="d-flex flex-column align-items-center gap-2">
                             <div className="card bg-danger-subtle border-danger border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
                               <div className="fw-bold text-danger small mb-1">🔒 Security Lockout Active</div>
@@ -415,7 +628,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                               onClick={() => {
                                 if (onSelectTab) onSelectTab('student_support');
                                 setTicketForm({
-                                  category: 'ATTENDANCE',
+                                   category: 'ATTENDANCE',
                                   subject: `Strike Reset Appeal - Roll ${student.roll_number || user?.username}`,
                                   message: 'My check-in triggered a strike lockout due to GPS sensor variance inside the hostel room. Please reset my strikes in the Security Incident Desk so I can complete roll call.'
                                 });
@@ -425,7 +638,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                             </button>
                           </div>
                         ) : (
-                          /* CASE B: Standard Location / Accuracy Issue */
+                          /* CASE C: Standard Location / Accuracy Issue */
                           <div className="d-flex flex-column align-items-center gap-2">
                             <button
                               className="btn btn-primary btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
@@ -726,9 +939,26 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
               </div>
             </div>
             <div className="col-md-6">
-              <div className="p-3 bg-light rounded-3">
-                <div className="text-muted">Biometric Status</div>
-                <div className="fw-medium text-success">Active &bull; SFace 128-D Vector Embeddings Stored</div>
+              <div className="p-3 bg-light rounded-3 d-flex justify-content-between align-items-center">
+                <div>
+                  <div className="text-muted">Biometric Status</div>
+                  <div className={`fw-medium ${stats.hasFaceRegistered ? 'text-success' : 'text-warning'}`}>
+                    {stats.hasFaceRegistered
+                      ? `Active • ${stats.faceEmbeddingsCount || 1} Vectors Enrolled`
+                      : 'Pending Facial Enrollment'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${stats.hasFaceRegistered ? 'btn-outline-primary' : 'btn-primary'} fw-medium d-inline-flex align-items-center gap-1`}
+                  onClick={() => {
+                    setShowEnrollModal(true);
+                    startEnrollCamera();
+                  }}
+                >
+                  <Camera size={14} />
+                  {stats.hasFaceRegistered ? 'Re-Enroll Face' : 'Enroll Face'}
+                </button>
               </div>
             </div>
             <div className="col-md-6">
@@ -736,6 +966,189 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                 <div className="text-muted">Forge Location Strikes</div>
                 <div className={`fw-medium ${stats.failedStrikes > 0 ? 'text-danger' : 'text-success'}`}>
                   {stats.failedStrikes || 0} / 3 Strikes
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. Biometric Face Enrollment Modal */}
+      {showEnrollModal && (
+        <div
+          className="modal fade show d-block"
+          style={{ backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(4px)', zIndex: 1055 }}
+          tabIndex="-1"
+          role="dialog"
+        >
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '480px' }}>
+            <div className="modal-content rounded-4 border-0 shadow-lg overflow-hidden">
+              <div className="modal-header bg-dark text-white border-0 py-3 px-4">
+                <h5 className="modal-title fw-bold fs-6 d-flex align-items-center gap-2">
+                  <Camera size={18} className="text-primary" />
+                  Facial Biometrics Enrollment
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close btn-close-white"
+                  aria-label="Close"
+                  onClick={() => {
+                    stopEnrollCamera();
+                    setShowEnrollModal(false);
+                  }}
+                ></button>
+              </div>
+
+              <div className="modal-body p-4 text-center">
+                {enrollError && (
+                  <div className="alert alert-danger py-2 px-3 small d-flex align-items-center gap-2 mb-3 text-start">
+                    <AlertTriangle size={16} className="flex-shrink-0" />
+                    <div>{enrollError}</div>
+                  </div>
+                )}
+
+                <div className="mb-2">
+                  <div className="d-flex justify-content-center gap-2 mb-2">
+                    {['FRONT', 'LEFT', 'RIGHT'].map((ang) => {
+                      const isCaptured = enrollPhotos.some((p) => p.angle === ang);
+                      const isActive = enrollActiveAngle === ang;
+                      return (
+                        <button
+                          key={ang}
+                          type="button"
+                          className={`btn btn-sm px-3 rounded-pill fw-medium ${
+                            isCaptured
+                              ? 'btn-success text-white'
+                              : isActive
+                              ? 'btn-primary'
+                              : 'btn-outline-secondary'
+                          }`}
+                          onClick={() => setEnrollActiveAngle(ang)}
+                        >
+                          {isCaptured ? <Check size={12} className="me-1 inline" /> : null}
+                          {ang === 'FRONT' ? '1. Front' : ang === 'LEFT' ? '2. Left Angle' : '3. Right Angle'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-muted small mb-3">
+                    {enrollActiveAngle === 'FRONT'
+                      ? 'Look directly at the camera with a neutral expression.'
+                      : enrollActiveAngle === 'LEFT'
+                      ? 'Turn your head slightly to the left (~15°).'
+                      : 'Turn your head slightly to the right (~15°).'}
+                  </p>
+                </div>
+
+                {/* Viewport */}
+                <div
+                  className="position-relative d-inline-block rounded-4 overflow-hidden shadow-sm mb-3"
+                  style={{ width: '100%', maxWidth: '400px', height: '270px', backgroundColor: '#000' }}
+                >
+                  <video
+                    ref={attachEnrollVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    controls={false}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      transform: 'scaleX(-1)',
+                      display: 'block'
+                    }}
+                    onLoadedMetadata={(e) => e.target.play().catch(console.warn)}
+                  />
+                  {/* Face Guide Oval */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '12%',
+                      left: '25%',
+                      width: '50%',
+                      height: '76%',
+                      border: '2px dashed #10b981',
+                      borderRadius: '50%',
+                      pointerEvents: 'none',
+                      boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.35)'
+                    }}
+                  ></div>
+                </div>
+
+                <div className="d-flex justify-content-center gap-2 mb-3">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1 shadow-sm"
+                    onClick={() => {
+                      if (enrollVideoRef.current && enrollStreamRef.current) {
+                        enrollVideoRef.current.srcObject = enrollStreamRef.current;
+                        enrollVideoRef.current.play().catch(console.warn);
+                      } else {
+                        startEnrollCamera();
+                      }
+                    }}
+                  >
+                    <RefreshCw size={13} /> Restart Camera
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm px-3 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
+                    onClick={() => handleCaptureEnrollPhoto(enrollActiveAngle)}
+                  >
+                    <Camera size={14} /> Snap {enrollActiveAngle} Photo
+                  </button>
+                </div>
+
+                {/* Captured previews */}
+                {enrollPhotos.length > 0 && (
+                  <div className="d-flex justify-content-center gap-2 mb-3 p-2 bg-light rounded-3">
+                    {enrollPhotos.map((p) => (
+                      <div key={p.angle} className="position-relative text-center">
+                        <img
+                          src={p.imageBase64}
+                          alt={p.angle}
+                          className="rounded-2 border border-2 border-success"
+                          style={{ width: '64px', height: '64px', objectFit: 'cover' }}
+                        />
+                        <span className="badge bg-dark position-absolute bottom-0 start-50 translate-middle-x" style={{ fontSize: '9px' }}>
+                          {p.angle}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="d-grid gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-success fw-bold py-2 shadow-sm d-flex align-items-center justify-content-center gap-2"
+                    disabled={enrollPhotos.length === 0 || enrollSubmitting}
+                    onClick={handleSubmitFaceEnrollment}
+                  >
+                    {enrollSubmitting ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm" role="status"></span>
+                        Extracting & Enrolling 128D Vectors...
+                      </>
+                    ) : (
+                      <>
+                        <Check size={18} />
+                        Save Biometric Profile ({enrollPhotos.length} / 3 Captured)
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => {
+                      stopEnrollCamera();
+                      setShowEnrollModal(false);
+                    }}
+                    disabled={enrollSubmitting}
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
             </div>

@@ -34,7 +34,7 @@ class AiServiceClient {
       const payload = {
         photos: photos.map((p, idx) => ({
           angle: p.angle || (idx === 0 ? 'FRONT' : idx === 1 ? 'LEFT' : 'RIGHT'),
-          image_base64: p.imageBase64 || p
+          image_base64: typeof p === 'string' ? p : (p.imageBase64 || p.image_base64 || p.photo || p.data)
         })),
         allow_simulation_fallback: effectiveSimulation
       };

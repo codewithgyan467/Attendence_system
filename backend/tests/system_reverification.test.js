@@ -240,4 +240,43 @@ describe('System Reverification & Desk Contract Tests', () => {
       expect(res.body.logs[0].details).toContain(testRoll);
     });
   });
+
+  describe('6. Student Face Registration & Biometric Contract', () => {
+    it('accurately reports biometric enrollment status and allows self-service face registration', async () => {
+      // Step A: Initially no embeddings registered
+      await runQuery(`DELETE FROM student_face_embeddings WHERE student_id = ?`, [testStudentId]);
+
+      const dashBefore = await request(app)
+        .get('/api/v1/students/dashboard')
+        .set('Authorization', `Bearer ${studentToken}`);
+
+      expect(dashBefore.status).toBe(200);
+      expect(dashBefore.body.stats.hasFaceRegistered).toBe(false);
+      expect(dashBefore.body.stats.faceEmbeddingsCount).toBe(0);
+
+      // Step B: Student registers facial identity
+      const regRes = await request(app)
+        .post('/api/v1/students/register-face')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({
+          photos: [
+            { angle: 'FRONT', imageBase64: 'data:image/jpeg;base64,sampleFrontPhoto' },
+            { angle: 'LEFT', imageBase64: 'data:image/jpeg;base64,sampleLeftPhoto' }
+          ]
+        });
+
+      expect(regRes.status).toBe(200);
+      expect(regRes.body.success).toBe(true);
+      expect(regRes.body.embeddingsCount).toBeGreaterThanOrEqual(1);
+
+      // Step C: Dashboard now confirms biometric status is active
+      const dashAfter = await request(app)
+        .get('/api/v1/students/dashboard')
+        .set('Authorization', `Bearer ${studentToken}`);
+
+      expect(dashAfter.status).toBe(200);
+      expect(dashAfter.body.stats.hasFaceRegistered).toBe(true);
+      expect(dashAfter.body.stats.faceEmbeddingsCount).toBeGreaterThanOrEqual(1);
+    });
+  });
 });

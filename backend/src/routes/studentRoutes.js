@@ -242,6 +242,11 @@ router.get('/dashboard', async (req, res) => {
 
     const activeGeofence = await getQuery(`SELECT * FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
 
+    const faceEmbeddingsCount = await getQuery(`
+      SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ?
+    `, [student.id]);
+    const hasFaceRegistered = (faceEmbeddingsCount?.count || 0) > 0;
+
     res.json({
       success: true,
       student,
@@ -255,7 +260,9 @@ router.get('/dashboard', async (req, res) => {
         presentDays: presentDays?.count || 0,
         attendancePercentage: percentage,
         failedStrikes: student.failed_attempts || 0,
-        isFlaggedForge: Boolean(student.is_flagged_forge)
+        isFlaggedForge: Boolean(student.is_flagged_forge),
+        hasFaceRegistered,
+        faceEmbeddingsCount: faceEmbeddingsCount?.count || 0
       },
       geofence: activeGeofence,
       recentHistory: history
@@ -380,6 +387,64 @@ router.get('/feedback', async (req, res) => {
     `, [student.id]);
 
     res.json({ success: true, tickets, feedback: tickets });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 7. Student Self-Service Face Registration
+router.post('/register-face', async (req, res) => {
+  try {
+    const { photos } = req.body;
+    if (!photos || !Array.isArray(photos) || photos.length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one face capture photo is required.' });
+    }
+
+    const student = await getQuery(`SELECT * FROM students WHERE user_id = ? OR id = ?`, [req.user.id, req.user.student_id]);
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Student profile not found.' });
+    }
+
+    let aiResponse;
+    try {
+      aiResponse = await aiServiceClient.extractEmbeddings(photos);
+    } catch (aiErr) {
+      return res.status(400).json({
+        success: false,
+        error: `Face processing failed: ${aiErr.message}. Ensure your face is centered with good lighting.`
+      });
+    }
+
+    if (!aiResponse.embeddings || aiResponse.embeddings.length === 0) {
+      return res.status(400).json({ success: false, error: 'Could not detect face in captured photos.' });
+    }
+
+    await withTransaction(async ({ runQuery }) => {
+      await runQuery(`DELETE FROM student_face_embeddings WHERE student_id = ?`, [student.id]);
+
+      for (const embItem of aiResponse.embeddings) {
+        await runQuery(`
+          INSERT INTO student_face_embeddings (
+            id, student_id, angle_label, embedding_vector, quality_score, liveness_score
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `, [
+          uuidv4(),
+          student.id,
+          embItem.angle || 'FRONT',
+          JSON.stringify(embItem.embedding),
+          embItem.confidence || 1.0,
+          embItem.liveness_score || 1.0
+        ]);
+      }
+    });
+
+    await recordAuditEvent(req.user.id, req.user.username, 'REGISTER_FACE', 'STUDENT', student.id, `Enrolled ${aiResponse.embeddings.length} biometric facial vectors`, req);
+
+    res.json({
+      success: true,
+      message: 'Facial identity successfully registered! You can now mark biometric attendance.',
+      embeddingsCount: aiResponse.embeddings.length
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

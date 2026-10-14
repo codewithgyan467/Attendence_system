@@ -212,7 +212,8 @@ export const api = {
     submitCorrection: (data) => request('/students/corrections', { method: 'POST', body: JSON.stringify(data) }),
     getCorrections: () => request('/students/corrections'),
     submitFeedback: (data) => request('/students/feedback', { method: 'POST', body: JSON.stringify(data) }),
-    getFeedback: () => request('/students/feedback')
+    getFeedback: () => request('/students/feedback'),
+    registerFace: (data) => request('/students/register-face', { method: 'POST', body: JSON.stringify(data) })
   },
 
   // Daily Attendance APIs

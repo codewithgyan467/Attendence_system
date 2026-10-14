@@ -216,7 +216,11 @@ router.post('/verify-face', attendanceLimiter, async (req, res) => {
     `, [student.id]);
 
     if (!storedRows || storedRows.length === 0) {
-      return res.status(400).json({ success: false, error: 'No facial embeddings registered for this student. Please complete onboarding.' });
+      return res.status(400).json({
+        success: false,
+        needsFaceEnrollment: true,
+        error: 'No facial embeddings registered for this student. Please complete onboarding.'
+      });
     }
 
     const storedEmbeddings = storedRows.map((r) => JSON.parse(r.embedding_vector));
