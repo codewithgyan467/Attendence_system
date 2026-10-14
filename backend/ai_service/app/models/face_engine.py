@@ -19,6 +19,24 @@ class FaceEngine:
         self._init_models()
 
     def _init_models(self):
+        # Auto-download models if missing
+        yunet_ok = os.path.exists(self.yunet_path) and os.path.getsize(self.yunet_path) > 50000
+        sface_ok = os.path.exists(self.sface_path) and os.path.getsize(self.sface_path) > 1000000
+
+        if not yunet_ok or not sface_ok:
+            try:
+                ai_dir = os.path.dirname(os.path.abspath(self.models_dir))
+                dl_script = os.path.join(ai_dir, "download_models.py")
+                if os.path.exists(dl_script):
+                    import importlib.util
+                    spec = importlib.util.spec_from_file_location("download_models", dl_script)
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    logger.info("Auto-downloading missing OpenCV YuNet and SFace models...")
+                    mod.ensure_models_downloaded()
+            except Exception as dl_err:
+                logger.warning(f"Model auto-download notice: {dl_err}")
+
         if os.path.exists(self.yunet_path) and os.path.getsize(self.yunet_path) > 50000:
             logger.info("Initializing YuNet face detector...")
             self.detector = cv2.FaceDetectorYN.create(

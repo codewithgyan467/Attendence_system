@@ -24,6 +24,9 @@ RUN pip install --no-cache-dir -r ai_service/requirements.txt
 # Copy backend source code
 COPY . .
 
+# Pre-download OpenCV YuNet and SFace ONNX models into container image
+RUN python3 ai_service/download_models.py
+
 # Ensure SQLite storage and uploads directory exist
 RUN mkdir -p data data/ota uploads
 
