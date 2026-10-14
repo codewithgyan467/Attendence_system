@@ -25,8 +25,15 @@ export default function GeofenceManager() {
     setErrorMsg(null);
     try {
       const data = await api.admin.getGeofence();
-      if (data && data.latitude !== undefined) {
-        setConfig(data);
+      const conf = data?.config || data;
+      if (conf && conf.latitude !== undefined) {
+        setConfig({
+          facility_name: conf.facility_name || conf.hostel_name || 'Main Hostel Campus',
+          latitude: conf.latitude,
+          longitude: conf.longitude,
+          radius_meters: conf.radius_meters || 20,
+          is_active: conf.is_active !== undefined ? conf.is_active : 1
+        });
       }
     } catch (err) {
       setErrorMsg(err.message || 'Failed to load geofence perimeter');
@@ -82,8 +89,8 @@ export default function GeofenceManager() {
       setSaving(false);
       return;
     }
-    if (isNaN(rad) || rad < 5 || rad > 500) {
-      setErrorMsg('Radius must be between 5 and 500 meters (Policy standard is 10-20 meters).');
+    if (isNaN(rad) || rad < 10 || rad > 150) {
+      setErrorMsg('Radius must be between 10 and 150 meters (Policy standard is 15-25 meters).');
       setSaving(false);
       return;
     }
@@ -91,6 +98,7 @@ export default function GeofenceManager() {
     try {
       const res = await api.admin.updateGeofence({
         facility_name: config.facility_name,
+        hostel_name: config.facility_name,
         latitude: lat,
         longitude: lng,
         radius_meters: rad,

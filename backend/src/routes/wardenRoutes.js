@@ -83,7 +83,7 @@ router.get('/corrections', async (req, res) => {
   try {
     const { status } = req.query;
     let sql = `
-      SELECT c.*, s.full_name, s.course, s.semester, s.hostel_block, s.room_number
+      SELECT c.*, c.roll_number AS roll_no, c.resolution_note AS review_notes, s.full_name, s.course, s.semester, s.hostel_block, s.room_number
       FROM attendance_corrections c
       JOIN students s ON c.student_id = s.id
     `;
@@ -95,7 +95,7 @@ router.get('/corrections', async (req, res) => {
     sql += ' ORDER BY c.created_at DESC';
 
     const requests = await allQuery(sql, params);
-    res.json({ success: true, requests });
+    res.json({ success: true, requests, corrections: requests });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -103,7 +103,8 @@ router.get('/corrections', async (req, res) => {
 
 router.post('/corrections/:id/review', async (req, res) => {
   try {
-    const { decision, resolution_note } = req.body;
+    const decision = req.body.decision || req.body.status;
+    const resolution_note = req.body.resolution_note || req.body.review_notes || '';
     if (!decision || !['APPROVED', 'REJECTED'].includes(decision)) {
       return res.status(400).json({ success: false, error: 'Decision must be APPROVED or REJECTED.' });
     }
@@ -156,12 +157,12 @@ router.post('/corrections/:id/review', async (req, res) => {
 router.get('/feedback', async (req, res) => {
   try {
     const tickets = await allQuery(`
-      SELECT f.*, s.full_name, s.course, s.room_number, s.hostel_block
+      SELECT f.*, f.roll_number AS roll_no, f.resolution_note AS admin_response, s.full_name, s.course, s.room_number, s.hostel_block
       FROM feedback_tickets f
       JOIN students s ON f.student_id = s.id
       ORDER BY f.created_at DESC
     `);
-    res.json({ success: true, tickets });
+    res.json({ success: true, tickets, feedback: tickets });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -169,12 +170,13 @@ router.get('/feedback', async (req, res) => {
 
 router.post('/feedback/:id/respond', async (req, res) => {
   try {
-    const { status = 'RESOLVED', resolution_note } = req.body;
+    const status = req.body.status || 'RESOLVED';
+    const resolution_note = req.body.resolution_note || req.body.resolution_notes || req.body.note || '';
     await runQuery(`
       UPDATE feedback_tickets
       SET status = ?, resolution_note = ?, resolved_by = ?, resolved_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `, [status, resolution_note || '', req.user.username, req.params.id]);
+    `, [status, resolution_note, req.user.username, req.params.id]);
 
     await recordAuditEvent(req.user.id, req.user.username, 'WARDEN_RESPOND_FEEDBACK', 'FEEDBACK', req.params.id, `Status updated to ${status}`, req);
 

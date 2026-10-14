@@ -117,15 +117,15 @@ export default function AttendanceManager() {
     }
     const headers = ['Roll No', 'Full Name', 'Block', 'Room', 'Date', 'Time', 'Status', 'Verification Method', 'Distance (m)'];
     const rows = records.map((r) => [
-      `"${r.roll_no || ''}"`,
+      `"${r.roll_no || r.roll_number || ''}"`,
       `"${r.full_name || ''}"`,
-      `"${r.block_name || ''}"`,
+      `"${r.block_name || r.hostel_block || ''}"`,
       `"${r.room_number || ''}"`,
       `"${r.date || selectedDate}"`,
-      `"${r.check_in_time || 'N/A'}"`,
+      `"${r.check_in_time || r.time_marked || 'N/A'}"`,
       `"${r.status || 'ABSENT'}"`,
       `"${r.verification_method || 'N/A'}"`,
-      `"${r.distance_meters !== null && r.distance_meters !== undefined ? r.distance_meters.toFixed(1) : 'N/A'}"`
+      `"${r.distance_meters !== null && r.distance_meters !== undefined ? Number(r.distance_meters).toFixed(1) : (r.verified_distance !== null && r.verified_distance !== undefined ? Number(r.verified_distance).toFixed(1) : 'N/A')}"`
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
@@ -314,18 +314,18 @@ export default function AttendanceManager() {
                 </thead>
                 <tbody>
                   {records.map((r, idx) => (
-                    <tr key={r.attendance_id || r.student_id || idx}>
+                    <tr key={r.attendance_id || r.id || r.student_id || idx}>
                       <td className="ps-3 fw-medium text-dark">{r.full_name}</td>
-                      <td><code>{r.roll_no}</code></td>
+                      <td><code>{r.roll_no || r.roll_number}</code></td>
                       <td>
-                        <span className="badge bg-light text-dark me-1">{r.block_name || 'Block A'}</span>
+                        <span className="badge bg-light text-dark me-1">{r.block_name || r.hostel_block || 'Block A'}</span>
                         <small className="text-muted">Rm {r.room_number || 'N/A'}</small>
                       </td>
                       <td>
-                        {r.check_in_time ? (
+                        {(r.check_in_time || r.time_marked) ? (
                           <span className="small text-dark d-flex align-items-center gap-1">
                             <Clock size={12} className="text-muted" />
-                            {new Date(r.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {r.check_in_time ? (r.check_in_time.includes('T') ? new Date(r.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : r.check_in_time) : r.time_marked}
                           </span>
                         ) : (
                           <span className="small text-muted">&mdash;</span>
@@ -337,9 +337,9 @@ export default function AttendanceManager() {
                         </small>
                       </td>
                       <td>
-                        {r.distance_meters !== null && r.distance_meters !== undefined ? (
-                          <span className={`small ${r.distance_meters <= 20 ? 'text-success' : 'text-danger'}`}>
-                            {r.distance_meters.toFixed(1)}m
+                        {(r.distance_meters !== null && r.distance_meters !== undefined) || (r.verified_distance !== null && r.verified_distance !== undefined) ? (
+                          <span className={`small ${(r.distance_meters ?? r.verified_distance) <= 20 ? 'text-success' : 'text-danger'}`}>
+                            {Number(r.distance_meters ?? r.verified_distance).toFixed(1)}m
                           </span>
                         ) : (
                           <span className="small text-muted">&mdash;</span>

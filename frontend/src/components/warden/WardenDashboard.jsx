@@ -52,8 +52,8 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
 
       if (ovRes.status === 'fulfilled' && ovRes.value.success) setOverview(ovRes.value);
       if (exRes.status === 'fulfilled' && exRes.value.success) setExceptions(exRes.value);
-      if (corrRes.status === 'fulfilled' && corrRes.value.success) setCorrections(corrRes.value.requests || []);
-      if (feedRes.status === 'fulfilled' && feedRes.value.success) setTickets(feedRes.value.tickets || []);
+      if (corrRes.status === 'fulfilled' && corrRes.value.success) setCorrections(corrRes.value.requests || corrRes.value.corrections || []);
+      if (feedRes.status === 'fulfilled' && feedRes.value.success) setTickets(feedRes.value.tickets || feedRes.value.feedback || []);
     } catch (err) {
       setErrorMsg(err.message || 'Failed to load warden dashboard data');
     } finally {
@@ -77,7 +77,7 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
       setStatusMsg(res.message || 'Correction updated.');
       setReviewModal({ open: false, req: null, decision: 'APPROVED', note: '' });
       const corrRes = await api.warden.getCorrections();
-      if (corrRes?.success) setCorrections(corrRes.requests || []);
+      if (corrRes?.success) setCorrections(corrRes.requests || corrRes.corrections || []);
     } catch (err) {
       setErrorMsg(err.message || 'Failed to update correction');
     } finally {
@@ -101,7 +101,7 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
       setStatusMsg(res.message || 'Ticket updated.');
       setTicketModal({ open: false, ticket: null, status: 'RESOLVED', note: '' });
       const feedRes = await api.warden.getFeedback();
-      if (feedRes?.success) setTickets(feedRes.tickets || []);
+      if (feedRes?.success) setTickets(feedRes.tickets || feedRes.feedback || []);
     } catch (err) {
       setErrorMsg(err.message || 'Failed to update ticket');
     } finally {

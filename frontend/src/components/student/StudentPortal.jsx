@@ -68,8 +68,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
       if (dashRes.status === 'fulfilled' && dashRes.value.success) setDashboard(dashRes.value);
       if (histRes.status === 'fulfilled' && histRes.value.success) setHistory(histRes.value.records || []);
-      if (corrRes.status === 'fulfilled' && corrRes.value.success) setCorrections(corrRes.value.corrections || []);
-      if (tickRes.status === 'fulfilled' && tickRes.value.success) setTickets(tickRes.value.feedback || []);
+      if (corrRes.status === 'fulfilled' && corrRes.value.success) setCorrections(corrRes.value.corrections || corrRes.value.requests || []);
+      if (tickRes.status === 'fulfilled' && tickRes.value.success) setTickets(tickRes.value.tickets || tickRes.value.feedback || []);
     } catch (err) {
       setErrorMsg(err.message || 'Failed to load student data');
     } finally {
@@ -213,7 +213,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       setStatusMsg(res.message || 'Support ticket registered.');
       setTicketForm({ category: 'Hostel Facilities', subject: '', message: '' });
       const tickRes = await api.student.getFeedback();
-      if (tickRes?.success) setTickets(tickRes.feedback || []);
+      if (tickRes?.success) setTickets(tickRes.tickets || tickRes.feedback || []);
     } catch (err) {
       setErrorMsg(err.message || 'Failed to submit ticket');
     } finally {
@@ -413,7 +413,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                               type="button"
                               className="btn btn-danger btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
                               onClick={() => {
-                                if (onSelectTab) onSelectTab('support_tickets');
+                                if (onSelectTab) onSelectTab('student_support');
                                 setTicketForm({
                                   category: 'ATTENDANCE',
                                   subject: `Strike Reset Appeal - Roll ${student.roll_number || user?.username}`,

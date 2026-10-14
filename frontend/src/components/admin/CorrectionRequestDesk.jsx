@@ -34,7 +34,7 @@ export default function CorrectionRequestDesk() {
     setErrorMsg(null);
     try {
       const data = await api.admin.getCorrections(selectedStatus || undefined);
-      setCorrections(data.corrections || []);
+      setCorrections(data.corrections || data.requests || []);
     } catch (err) {
       setErrorMsg(err.message || 'Failed to fetch attendance correction requests');
     } finally {
@@ -62,7 +62,9 @@ export default function CorrectionRequestDesk() {
 
     try {
       const res = await api.admin.reviewCorrection(selectedReq.id, {
+        decision: reviewDecision,
         status: reviewDecision,
+        resolution_note: reviewNotes,
         review_notes: reviewNotes
       });
       setStatusMsg(res.message || `Correction request successfully marked as ${reviewDecision}.`);
@@ -197,7 +199,7 @@ export default function CorrectionRequestDesk() {
                     <tr key={req.id}>
                       <td className="ps-3">
                         <div className="fw-medium text-dark">{req.full_name}</div>
-                        <code className="small">{req.roll_no}</code>
+                        <code className="small">{req.roll_no || req.roll_number}</code>
                       </td>
                       <td>
                         <span className="fw-semibold text-primary">{req.date}</span>
@@ -209,9 +211,9 @@ export default function CorrectionRequestDesk() {
                         <div className="text-dark small text-truncate" title={req.reason}>
                           {req.reason}
                         </div>
-                        {req.review_notes && (
+                        {(req.review_notes || req.resolution_note) && (
                           <div className="text-muted small mt-1 fst-italic">
-                            Admin Note: {req.review_notes}
+                            Admin Note: {req.review_notes || req.resolution_note}
                           </div>
                         )}
                       </td>

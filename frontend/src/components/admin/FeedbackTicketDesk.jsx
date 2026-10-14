@@ -33,7 +33,7 @@ export default function FeedbackTicketDesk() {
     setErrorMsg(null);
     try {
       const data = await api.admin.getFeedback(selectedStatus || undefined);
-      setTickets(data.feedback || []);
+      setTickets(data.feedback || data.tickets || []);
     } catch (err) {
       setErrorMsg(err.message || 'Failed to fetch student feedback tickets');
     } finally {
@@ -62,6 +62,7 @@ export default function FeedbackTicketDesk() {
     try {
       const res = await api.admin.resolveFeedback(selectedTicket.id, {
         status: ticketStatus,
+        resolution_note: resolutionNotes,
         resolution_notes: resolutionNotes
       });
       setStatusMsg(res.message || 'Feedback ticket successfully updated.');
@@ -172,7 +173,7 @@ export default function FeedbackTicketDesk() {
                     <tr key={t.id}>
                       <td className="ps-3">
                         <div className="fw-medium text-dark">{t.full_name}</div>
-                        <code className="small">{t.roll_no}</code>
+                        <code className="small">{t.roll_no || t.roll_number}</code>
                       </td>
                       <td>
                         <span className="badge bg-light text-dark">{t.category || 'General'}</span>
@@ -182,9 +183,9 @@ export default function FeedbackTicketDesk() {
                         <div className="text-muted small text-truncate" title={t.message}>
                           {t.message}
                         </div>
-                        {t.admin_response && (
+                        {(t.admin_response || t.resolution_note) && (
                           <div className="text-success small mt-1">
-                            Resolution: {t.admin_response}
+                            Resolution: {t.admin_response || t.resolution_note}
                           </div>
                         )}
                       </td>

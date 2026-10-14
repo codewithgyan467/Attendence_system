@@ -654,14 +654,17 @@ router.post('/students/clear-all', async (req, res) => {
 router.get('/geofence', async (req, res) => {
   try {
     const config = await getQuery(`SELECT * FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
+    const activeConfig = config || {
+      hostel_name: 'Main Campus Facility',
+      latitude: 28.5450,
+      longitude: 77.1926,
+      radius_meters: 20.0
+    };
     res.json({
       success: true,
-      config: config || {
-        hostel_name: 'Main Campus Facility',
-        latitude: 28.5450,
-        longitude: 77.1926,
-        radius_meters: 20.0
-      }
+      config: activeConfig,
+      ...activeConfig,
+      facility_name: activeConfig.hostel_name || 'Main Campus Facility'
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -670,7 +673,8 @@ router.get('/geofence', async (req, res) => {
 
 router.post('/geofence', requireRole('ADMIN'), async (req, res) => {
   try {
-    const { hostel_name, latitude, longitude, radius_meters, reason } = req.body;
+    const { hostel_name, facility_name, latitude, longitude, radius_meters, reason } = req.body;
+    const resolvedName = hostel_name || facility_name || 'Main Campus Facility';
 
     if (latitude === undefined || longitude === undefined || latitude === null || longitude === null) {
       return res.status(400).json({ success: false, error: 'Latitude and Longitude are required.' });
@@ -701,13 +705,13 @@ router.post('/geofence', requireRole('ADMIN'), async (req, res) => {
         UPDATE geofence_configs
         SET hostel_name = ?, latitude = ?, longitude = ?, radius_meters = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
         WHERE id = ?
-      `, [hostel_name || oldConfig.hostel_name || 'Main Campus Facility', lat, lon, rad, req.user.username, oldConfig.id]);
+      `, [resolvedName, lat, lon, rad, req.user.username, oldConfig.id]);
     } else {
       const newId = uuidv4();
       await runQuery(`
         INSERT INTO geofence_configs (id, hostel_name, latitude, longitude, radius_meters, is_active, updated_by)
         VALUES (?, ?, ?, ?, ?, 1, ?)
-      `, [newId, hostel_name || 'Main Campus Facility', lat, lon, rad, req.user.username]);
+      `, [newId, resolvedName, lat, lon, rad, req.user.username]);
     }
 
     const updated = await getQuery(`SELECT * FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
@@ -718,7 +722,9 @@ router.post('/geofence', requireRole('ADMIN'), async (req, res) => {
     res.json({
       success: true,
       message: 'Geofence configuration updated and audited successfully.',
-      config: updated
+      config: updated,
+      ...updated,
+      facility_name: updated?.hostel_name
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -752,10 +758,15 @@ router.get('/reports', async (req, res) => {
     const records = await allQuery(`
       SELECT
         a.*,
+        a.id AS attendance_id,
+        a.roll_number AS roll_no,
+        a.time_marked AS check_in_time,
+        a.verified_distance AS distance_meters,
         s.course,
         s.semester,
         s.room_number,
-        s.hostel_block
+        s.hostel_block,
+        s.hostel_block AS block_name
       FROM attendance_records a
       LEFT JOIN students s ON a.student_id = s.id
       WHERE ${conditions.join(' AND ')}
@@ -826,7 +837,7 @@ router.get('/corrections', async (req, res) => {
   try {
     const { status } = req.query;
     let sql = `
-      SELECT c.*, s.full_name, s.course, s.semester, s.hostel_block, s.room_number
+      SELECT c.*, c.roll_number AS roll_no, c.resolution_note AS review_notes, s.full_name, s.course, s.semester, s.hostel_block, s.room_number
       FROM attendance_corrections c
       JOIN students s ON c.student_id = s.id
     `;
@@ -838,7 +849,7 @@ router.get('/corrections', async (req, res) => {
     sql += ' ORDER BY c.created_at DESC';
 
     const requests = await allQuery(sql, params);
-    res.json({ success: true, requests });
+    res.json({ success: true, requests, corrections: requests });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -846,7 +857,8 @@ router.get('/corrections', async (req, res) => {
 
 router.post('/corrections/:id/review', async (req, res) => {
   try {
-    const { decision, resolution_note } = req.body; // 'APPROVED' or 'REJECTED'
+    const decision = req.body.decision || req.body.status; // 'APPROVED' or 'REJECTED'
+    const resolution_note = req.body.resolution_note || req.body.review_notes || '';
     if (!decision || !['APPROVED', 'REJECTED'].includes(decision)) {
       return res.status(400).json({ success: false, error: 'Decision must be APPROVED or REJECTED.' });
     }
@@ -1004,13 +1016,25 @@ router.post('/security/reset-all-strikes', async (req, res) => {
 // 8. Audit Logs Viewer
 router.get('/audit-logs', async (req, res) => {
   try {
-    const { action, limit = 50 } = req.query;
+    const { action, search, limit = 50 } = req.query;
     let sql = 'SELECT * FROM admin_audit_events';
     const params = [];
+    const conditions = [];
+
     if (action) {
-      sql += ' WHERE action = ?';
+      conditions.push('action = ?');
       params.push(action);
     }
+
+    if (search && search.trim()) {
+      conditions.push('(username LIKE ? OR action LIKE ? OR target_id LIKE ? OR details LIKE ?)');
+      params.push(`%${search.trim()}%`, `%${search.trim()}%`, `%${search.trim()}%`, `%${search.trim()}%`);
+    }
+
+    if (conditions.length > 0) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+
     sql += ' ORDER BY created_at DESC LIMIT ?';
     params.push(parseInt(limit));
 
@@ -1041,7 +1065,7 @@ router.get('/feedback', async (req, res) => {
   try {
     const { status } = req.query;
     let sql = `
-      SELECT f.*, s.full_name, s.course, s.room_number, s.hostel_block
+      SELECT f.*, f.roll_number AS roll_no, f.resolution_note AS admin_response, s.full_name, s.course, s.room_number, s.hostel_block
       FROM feedback_tickets f
       JOIN students s ON f.student_id = s.id
     `;
@@ -1053,7 +1077,7 @@ router.get('/feedback', async (req, res) => {
     sql += ' ORDER BY f.created_at DESC';
 
     const tickets = await allQuery(sql, params);
-    res.json({ success: true, tickets });
+    res.json({ success: true, tickets, feedback: tickets });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -1061,16 +1085,17 @@ router.get('/feedback', async (req, res) => {
 
 router.post('/feedback/:id/resolve', async (req, res) => {
   try {
-    const { resolution_note } = req.body;
+    const status = req.body.status || 'RESOLVED';
+    const resolution_note = req.body.resolution_note || req.body.resolution_notes || req.body.note || 'Resolved by administrator.';
     await runQuery(`
       UPDATE feedback_tickets
-      SET status = 'RESOLVED', resolution_note = ?, resolved_by = ?, resolved_at = CURRENT_TIMESTAMP
+      SET status = ?, resolution_note = ?, resolved_by = ?, resolved_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `, [resolution_note || 'Resolved by administrator.', req.user.username, req.params.id]);
+    `, [status, resolution_note, req.user.username, req.params.id]);
 
-    await recordAuditEvent(req.user.id, req.user.username, 'RESOLVE_FEEDBACK', 'FEEDBACK', req.params.id, 'Resolved feedback ticket', req);
+    await recordAuditEvent(req.user.id, req.user.username, 'RESOLVE_FEEDBACK', 'FEEDBACK', req.params.id, `Resolved ticket: status=${status}`, req);
 
-    res.json({ success: true, message: 'Ticket resolved successfully.' });
+    res.json({ success: true, message: 'Ticket updated successfully.' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

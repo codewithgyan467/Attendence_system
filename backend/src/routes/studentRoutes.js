@@ -345,11 +345,24 @@ router.post('/feedback', async (req, res) => {
     const student = await getQuery(`SELECT * FROM students WHERE user_id = ? OR id = ?`, [req.user.id, req.user.student_id]);
     if (!student) return res.status(404).json({ success: false, error: 'Student not found.' });
 
+    const categoryMap = {
+      'Hostel Facilities': 'ROOM',
+      'Wi-Fi / Internet': 'HARDWARE',
+      'Mess & Food': 'GENERAL',
+      'App / Technical': 'ATTENDANCE',
+      'ATTENDANCE': 'ATTENDANCE',
+      'HARDWARE': 'HARDWARE',
+      'GEOFENCE': 'GEOFENCE',
+      'GENERAL': 'GENERAL',
+      'ROOM': 'ROOM'
+    };
+    const dbCategory = categoryMap[category] || 'GENERAL';
+
     const ticketId = uuidv4();
     await runQuery(`
       INSERT INTO feedback_tickets (id, student_id, roll_number, category, subject, message, status)
       VALUES (?, ?, ?, ?, ?, ?, 'OPEN')
-    `, [ticketId, student.id, student.roll_number, category, subject, message]);
+    `, [ticketId, student.id, student.roll_number, dbCategory, subject, message]);
 
     res.json({ success: true, message: 'Support ticket submitted successfully.' });
   } catch (err) {
@@ -366,7 +379,7 @@ router.get('/feedback', async (req, res) => {
       ORDER BY created_at DESC
     `, [student.id]);
 
-    res.json({ success: true, tickets });
+    res.json({ success: true, tickets, feedback: tickets });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
