@@ -146,4 +146,69 @@ describe('Roster Upload & Pre-Registration Verification', () => {
     await runQuery(`DELETE FROM hostel_allotments WHERE roll_number = 'UNIQUE_ROLL_99'`);
     await runQuery(`DELETE FROM users WHERE username = 'UNIQUE_ROLL_99'`);
   });
+
+  test('DELETE /api/v1/admin/students/:id - Permanently deletes individual student when departing hostel', async () => {
+    // 0. Clean prior state if any
+    await runQuery(`DELETE FROM student_face_embeddings WHERE id = 'face-vec-depart-01'`);
+    await runQuery(`DELETE FROM students WHERE roll_number = 'DEPART_STUDENT_01'`);
+    await runQuery(`DELETE FROM hostel_allotments WHERE roll_number = 'DEPART_STUDENT_01'`);
+    await runQuery(`DELETE FROM users WHERE username = 'DEPART_STUDENT_01'`);
+
+    // 1. Create a student to delete
+    await request(app)
+      .post('/api/v1/admin/students/manual-add')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roll_number: 'DEPART_STUDENT_01',
+        full_name: 'Departing Student',
+        room_number: 'C-301',
+        hostel_block: 'Block C',
+        email: 'departing.student@hostel.local',
+        phone: '+919876500000',
+        course: 'B.Tech Mechanical',
+        admission_year: 2024,
+        semester: 2,
+        create_login: true
+      });
+
+    const studentRec = await getQuery(`SELECT * FROM students WHERE roll_number = 'DEPART_STUDENT_01'`);
+    expect(studentRec).toBeDefined();
+
+    // 2. Add sample face embedding vector
+    await runQuery(`
+      INSERT INTO student_face_embeddings (id, student_id, angle_label, embedding_vector, quality_score, liveness_score)
+      VALUES ('face-vec-depart-01', ?, 'frontal', '[0.12, 0.34]', 1.0, 1.0)
+    `, [studentRec.id]);
+
+    // 3. Call DELETE endpoint
+    const delRes = await request(app)
+      .delete(`/api/v1/admin/students/${studentRec.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(delRes.status).toBe(200);
+    expect(delRes.body.success).toBe(true);
+    expect(delRes.body.message).toMatch(/successfully deleted/i);
+
+    // 4. Verify all associated records were completely wiped
+    const checkStudent = await getQuery(`SELECT id FROM students WHERE roll_number = 'DEPART_STUDENT_01'`);
+    expect(checkStudent).toBeNull();
+
+    const checkAllotment = await getQuery(`SELECT id FROM hostel_allotments WHERE roll_number = 'DEPART_STUDENT_01'`);
+    expect(checkAllotment).toBeNull();
+
+    const checkUser = await getQuery(`SELECT id FROM users WHERE username = 'DEPART_STUDENT_01'`);
+    expect(checkUser).toBeNull();
+
+    const checkVectors = await getQuery(`SELECT id FROM student_face_embeddings WHERE id = 'face-vec-depart-01'`);
+    expect(checkVectors).toBeNull();
+
+    // 5. Verify audit event was logged
+    const audit = await getQuery(`
+      SELECT * FROM admin_audit_events
+      WHERE action = 'DELETE_STUDENT_RECORD' AND details LIKE '%DEPART_STUDENT_01%'
+      ORDER BY created_at DESC LIMIT 1
+    `);
+    expect(audit).toBeDefined();
+    expect(audit.username).toBe('admin');
+  });
 });

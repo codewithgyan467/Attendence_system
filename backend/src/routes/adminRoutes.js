@@ -261,6 +261,111 @@ router.put('/students/:id', async (req, res) => {
   }
 });
 
+// Delete Individual Student Record (When Student Leaves the Hostel)
+router.delete('/students/:id', async (req, res) => {
+  try {
+    const studentIdentifier = req.params.id;
+
+    // Check in students table first
+    const student = await getQuery(
+      `SELECT * FROM students WHERE id = ? OR roll_number = ?`,
+      [studentIdentifier, studentIdentifier]
+    );
+    // Also check in hostel_allotments table
+    const allotment = await getQuery(
+      `SELECT * FROM hostel_allotments WHERE id = ? OR roll_number = ?`,
+      [studentIdentifier, studentIdentifier]
+    );
+
+    if (!student && !allotment) {
+      return res.status(404).json({ success: false, error: 'Student record not found.' });
+    }
+
+    const studentId = student ? student.id : null;
+    const rollNumber = student ? student.roll_number : (allotment ? allotment.roll_number : studentIdentifier);
+    let userId = student ? student.user_id : null;
+    const studentName = student ? student.full_name : (allotment ? allotment.full_name : rollNumber);
+    const allotmentId = student ? student.allotment_id : (allotment ? allotment.id : null);
+
+    // If userId not found directly on student, look up user by username = rollNumber
+    if (!userId && rollNumber) {
+      const u = await getQuery(`SELECT id FROM users WHERE username = ?`, [rollNumber]);
+      if (u) userId = u.id;
+    }
+
+    // Invalidate active user sessions immediately so credentials can no longer be used
+    if (userId) {
+      await revokeAllUserSessions(userId);
+    }
+
+    // Atomically remove all student records, biometric vectors, attendance, and logins
+    await withTransaction(async ({ runQuery }) => {
+      // 1. Delete corrections and records that have foreign keys
+      if (studentId) {
+        await runQuery(`DELETE FROM attendance_corrections WHERE student_id = ?`, [studentId]);
+        await runQuery(`DELETE FROM attendance_records WHERE student_id = ?`, [studentId]);
+        await runQuery(`DELETE FROM student_face_embeddings WHERE student_id = ?`, [studentId]);
+        await runQuery(`DELETE FROM student_registered_devices WHERE student_id = ?`, [studentId]);
+        await runQuery(`DELETE FROM attendance_challenges WHERE student_id = ?`, [studentId]);
+        await runQuery(`DELETE FROM feedback_tickets WHERE student_id = ?`, [studentId]);
+      }
+      if (rollNumber) {
+        await runQuery(`DELETE FROM attendance_corrections WHERE roll_number = ?`, [rollNumber]);
+        await runQuery(`DELETE FROM attendance_records WHERE roll_number = ?`, [rollNumber]);
+        await runQuery(`DELETE FROM password_reset_otps WHERE identifier = ?`, [rollNumber]);
+        await runQuery(`DELETE FROM security_audit_logs WHERE roll_number = ?`, [rollNumber]);
+        await runQuery(`DELETE FROM feedback_tickets WHERE roll_number = ?`, [rollNumber]);
+      }
+      if (userId) {
+        await runQuery(`DELETE FROM password_reset_otps WHERE user_id = ?`, [userId]);
+        await runQuery(`DELETE FROM security_audit_logs WHERE user_id = ?`, [userId]);
+      }
+
+      // 2. Delete Student profile
+      if (studentId) {
+        await runQuery(`DELETE FROM students WHERE id = ?`, [studentId]);
+      }
+      if (rollNumber) {
+        await runQuery(`DELETE FROM students WHERE roll_number = ?`, [rollNumber]);
+      }
+
+      // 3. Delete Allotment record
+      if (allotmentId) {
+        await runQuery(`DELETE FROM hostel_allotments WHERE id = ?`, [allotmentId]);
+      }
+      if (rollNumber) {
+        await runQuery(`DELETE FROM hostel_allotments WHERE roll_number = ?`, [rollNumber]);
+      }
+
+      // 4. Delete User login account
+      if (userId) {
+        await runQuery(`DELETE FROM users WHERE id = ?`, [userId]);
+      }
+      if (rollNumber) {
+        await runQuery(`DELETE FROM users WHERE username = ? AND role = 'STUDENT'`, [rollNumber]);
+      }
+    });
+
+    await recordAuditEvent(
+      req.user.id,
+      req.user.username,
+      'DELETE_STUDENT_RECORD',
+      'STUDENT',
+      studentId || rollNumber,
+      `Permanently deleted student ${studentName} (${rollNumber}) - Student vacated/left hostel`,
+      req
+    );
+
+    res.json({
+      success: true,
+      message: `Student ${studentName} (${rollNumber}) has been successfully deleted from the hostel system.`
+    });
+  } catch (err) {
+    console.error('Delete student failed:', err);
+    res.status(500).json({ success: false, error: 'Failed to delete student: ' + err.message });
+  }
+});
+
 // Helper: Multi-Format Roster Parser (Excel .xlsx/.xls, Word .docx/.doc, CSV .csv)
 async function parseRosterFile(filePath, originalFilename = '') {
   const ext = path.extname(originalFilename || filePath).toLowerCase();

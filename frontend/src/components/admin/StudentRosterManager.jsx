@@ -60,9 +60,10 @@ export default function StudentRosterManager() {
   });
   const [manualLoading, setManualLoading] = useState(false);
 
-  // Clear All Students Modal state
-  const [showClearModal, setShowClearModal] = useState(false);
-  const [clearLoading, setClearLoading] = useState(false);
+  // Delete Individual Student Modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [studentToDelete, setStudentToDelete] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -300,18 +301,26 @@ export default function StudentRosterManager() {
     }
   };
 
-  // 5. Clear All Student Records
-  const handleClearAllStudents = async () => {
+  // 5. Delete Individual Student (When Student Leaves the Hostel)
+  const openDeleteModal = (student) => {
+    setStudentToDelete(student);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDeleteStudent = async () => {
+    if (!studentToDelete) return;
     try {
-      setClearLoading(true);
-      const res = await api.admin.clearAllStudents();
-      showFeedback(res.message || 'All student records successfully cleared!', 'success');
-      setShowClearModal(false);
+      setDeleteLoading(true);
+      const targetId = studentToDelete.id || studentToDelete.roll_number;
+      const res = await api.admin.deleteStudent(targetId);
+      showFeedback(res.message || `Student ${studentToDelete.full_name} (${studentToDelete.roll_number}) deleted successfully!`, 'success');
+      setShowDeleteModal(false);
+      setStudentToDelete(null);
       loadStudents();
     } catch (err) {
-      showFeedback(err.message || 'Failed to clear student records', 'danger');
+      showFeedback(err.message || 'Failed to delete student record.', 'danger');
     } finally {
-      setClearLoading(false);
+      setDeleteLoading(false);
     }
   };
 
@@ -396,9 +405,6 @@ export default function StudentRosterManager() {
           </button>
           <button onClick={() => setShowUploadModal(true)} className="btn btn-sm btn-primary d-flex align-items-center gap-1 shadow-sm">
             <Upload size={14} /> Upload Records (Excel / Word / CSV)
-          </button>
-          <button onClick={() => setShowClearModal(true)} className="btn btn-sm btn-outline-danger d-flex align-items-center gap-1">
-            <Trash2 size={14} /> Clear All Records
           </button>
         </div>
       </div>
@@ -535,6 +541,13 @@ export default function StudentRosterManager() {
                           title="Admin Reset Password"
                         >
                           <Key size={14} />
+                        </button>
+                        <button
+                          onClick={() => openDeleteModal(st)}
+                          className="btn btn-outline-danger"
+                          title="Delete Student (Left Hostel)"
+                        >
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     </td>
@@ -1048,45 +1061,65 @@ export default function StudentRosterManager() {
         </div>
       )}
 
-      {/* MODAL: Clear All Students Confirmation */}
-      {showClearModal && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 1060 }}>
+      {/* MODAL: Delete Individual Student Confirmation */}
+      {showDeleteModal && studentToDelete && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(3px)', zIndex: 1060 }}>
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content border-0 shadow-lg rounded-3">
               <div className="modal-header bg-danger text-white py-3">
                 <div className="d-flex align-items-center gap-2">
                   <Trash2 size={20} />
-                  <h5 className="modal-title fw-bold mb-0 text-white">Wipe All Student Records?</h5>
+                  <h5 className="modal-title fw-bold mb-0 text-white">Delete Student Record</h5>
                 </div>
-                <button type="button" className="btn-close btn-close-white" onClick={() => setShowClearModal(false)}></button>
+                <button
+                  type="button"
+                  className="btn-close btn-close-white"
+                  onClick={() => { setShowDeleteModal(false); setStudentToDelete(null); }}
+                  disabled={deleteLoading}
+                ></button>
               </div>
               <div className="modal-body p-4">
-                <p className="mb-2 text-danger fw-bold">⚠️ Warning: This action cannot be undone!</p>
-                <p className="text-muted" style={{ fontSize: '13px', lineHeight: 1.6 }}>
-                  This will completely remove all student accounts, hostel allotments, biometric facial embeddings, and daily attendance history from the database. Administrative and Warden staff accounts will remain safe.
+                <p className="mb-2 text-dark" style={{ fontSize: '14px' }}>
+                  Are you sure you want to delete student <strong>{studentToDelete.full_name}</strong>?
                 </p>
-                <div className="p-3 rounded bg-light border text-muted" style={{ fontSize: '12px' }}>
-                  Use this to wipe out demo or old academic year student records so you can upload a clean roster via Excel, Word, or manual entry.
+
+                <div className="p-3 my-3 rounded bg-light border" style={{ fontSize: '12.5px' }}>
+                  <div className="mb-1"><strong>Roll Number:</strong> <span className="font-mono text-primary fw-bold">{studentToDelete.roll_number}</span></div>
+                  <div className="mb-1"><strong>Hostel Room:</strong> {studentToDelete.hostel_block} &bull; Room {studentToDelete.room_number}</div>
+                  <div className="mb-1"><strong>Degree / Course:</strong> {studentToDelete.course}</div>
+                  <div><strong>Email Address:</strong> {studentToDelete.email || 'N/A'}</div>
+                </div>
+
+                <div className="alert alert-warning py-2 px-3 mb-0 d-flex align-items-start gap-2" style={{ fontSize: '12px' }}>
+                  <AlertTriangle size={16} className="text-warning flex-shrink-0 mt-1" />
+                  <span>
+                    <strong>Hostel Checkout Action:</strong> This permanently removes their room allotment, login credentials, biometric facial vectors, and attendance records. Their active sessions will be revoked immediately.
+                  </span>
                 </div>
               </div>
               <div className="modal-footer bg-light py-2">
-                <button type="button" className="btn btn-sm btn-secondary" onClick={() => setShowClearModal(false)}>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => { setShowDeleteModal(false); setStudentToDelete(null); }}
+                  disabled={deleteLoading}
+                >
                   Cancel
                 </button>
                 <button
                   type="button"
                   className="btn btn-sm btn-danger d-flex align-items-center gap-1"
-                  onClick={handleClearAllStudents}
-                  disabled={clearLoading}
+                  onClick={handleConfirmDeleteStudent}
+                  disabled={deleteLoading}
                 >
-                  {clearLoading ? (
+                  {deleteLoading ? (
                     <>
                       <span className="spinner-border spinner-border-sm me-1"></span>
-                      Wiping Data...
+                      Deleting...
                     </>
                   ) : (
                     <>
-                      <Trash2 size={14} /> Yes, Wipe All Student Records
+                      <Trash2 size={14} /> Confirm & Delete Student
                     </>
                   )}
                 </button>

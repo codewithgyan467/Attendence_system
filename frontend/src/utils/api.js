@@ -168,6 +168,7 @@ export const api = {
     commitRosterUpload: (validRecords, preCreateLogins = true) =>
       request('/admin/allotment/upload-commit', { method: 'POST', body: JSON.stringify({ validRecords, preCreateLogins }) }),
     manualAddStudent: (data) => request('/admin/students/manual-add', { method: 'POST', body: JSON.stringify(data) }),
+    deleteStudent: (id) => request(`/admin/students/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     clearAllStudents: () => request('/admin/students/clear-all', { method: 'POST' }),
     getGeofence: () => request('/admin/geofence'),
     updateGeofence: (config) => request('/admin/geofence', { method: 'POST', body: JSON.stringify(config) }),
