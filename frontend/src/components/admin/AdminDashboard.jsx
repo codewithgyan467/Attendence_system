@@ -52,7 +52,7 @@ export default function AdminDashboard({ onNavigate }) {
   const s = data?.summary || {};
 
   return (
-    <div className="container-fluid p-4">
+    <div className="container-fluid px-0">
       {/* Page Header */}
       <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
         <div>

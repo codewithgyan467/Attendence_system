@@ -95,6 +95,15 @@ function AppContent() {
         onCloseMobile={() => setShowMobileSidebar(false)}
       />
 
+      {/* Mobile Drawer Backdrop */}
+      {showMobileSidebar && (
+        <div
+          className="hg-sidebar-backdrop"
+          onClick={() => setShowMobileSidebar(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Main Content Area */}
       <div className="hg-main-layout">
         <Navbar onToggleSidebar={() => setShowMobileSidebar(!showMobileSidebar)} />

@@ -169,7 +169,7 @@ export default function StudentRosterManager() {
   };
 
   return (
-    <div className="container-fluid p-4">
+    <div className="container-fluid px-0">
       {/* Toast */}
       {toast.show && (
         <div className={`alert alert-${toast.type} alert-dismissible fade show mb-3`} role="alert">

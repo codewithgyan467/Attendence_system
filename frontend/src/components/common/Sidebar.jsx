@@ -69,7 +69,7 @@ export default function Sidebar({ activeTab, onSelectTab, showMobile, onCloseMob
       </div>
 
       {/* Nav List */}
-      <div className="p-3 flex-grow-1 overflow-auto">
+      <div className="p-3 flex-grow-1 overflow-auto hg-sidebar-nav">
         <div className="text-uppercase text-muted fw-bold mb-2" style={{ fontSize: '11px', letterSpacing: '0.8px' }}>
           {role} Workspace
         </div>

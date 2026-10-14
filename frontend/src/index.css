@@ -3,27 +3,40 @@
 :root {
   --hg-primary: #4f46e5;
   --hg-primary-hover: #4338ca;
-  --hg-primary-light: rgba(79, 70, 229, 0.1);
+  --hg-primary-light: rgba(79, 70, 229, 0.08);
+  --hg-primary-glow: rgba(79, 70, 229, 0.25);
   --hg-success: #10b981;
-  --hg-success-light: rgba(16, 185, 129, 0.12);
+  --hg-success-light: rgba(16, 185, 129, 0.1);
   --hg-danger: #ef4444;
-  --hg-danger-light: rgba(239, 68, 68, 0.12);
+  --hg-danger-light: rgba(239, 68, 68, 0.1);
   --hg-warning: #f59e0b;
-  --hg-warning-light: rgba(245, 158, 11, 0.12);
+  --hg-warning-light: rgba(245, 158, 11, 0.1);
   --hg-info: #0ea5e9;
+  --hg-info-light: rgba(14, 165, 233, 0.1);
 
   --hg-bg-body: #f8fafc;
   --hg-bg-sidebar: #0f172a;
+  --hg-bg-sidebar-hover: rgba(255, 255, 255, 0.06);
   --hg-bg-card: #ffffff;
   --hg-border: #e2e8f0;
+  --hg-border-light: #f1f5f9;
   --hg-border-dark: rgba(255, 255, 255, 0.08);
 
-  --hg-text-main: #1e293b;
+  --hg-text-main: #0f172a;
+  --hg-text-secondary: #334155;
   --hg-text-muted: #64748b;
   --hg-text-light: #f8fafc;
 
   --hg-font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  --hg-font-mono: 'JetBrains Mono', SFMono-Regular, monospace;
+  --hg-font-mono: 'JetBrains Mono', SFMono-Regular, Menlo, Monaco, monospace;
+
+  --hg-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --hg-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+  --hg-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.03);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
 body {
@@ -33,17 +46,61 @@ body {
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* ==========================================================================
+   1. CORE APPLICATION LAYOUT (DESKTOP & MOBILE RESPONSIVE)
+   ========================================================================== */
+
+.hg-app-layout {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  position: relative;
+  background-color: var(--hg-bg-body);
+  overflow-x: hidden;
 }
 
 /* Sidebar Navigation */
 .hg-sidebar {
   width: 260px;
+  min-width: 260px;
+  max-width: 260px;
   background-color: var(--hg-bg-sidebar);
-  min-height: 100vh;
+  height: 100vh;
+  position: sticky;
+  top: 0;
   display: flex;
   flex-direction: column;
-  transition: all 0.25s ease-in-out;
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  border-right: 1px solid var(--hg-border-dark);
+  z-index: 1030;
+  flex-shrink: 0;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Sleek Scrollbar for Sidebar */
+.hg-sidebar-nav {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.hg-sidebar-nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.hg-sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.hg-sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.hg-sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .hg-sidebar-link {
@@ -51,27 +108,45 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
+  padding: 10px 14px;
   border-radius: 8px;
   text-decoration: none;
   font-weight: 500;
-  font-size: 14px;
+  font-size: 13.5px;
   transition: all 0.18s ease;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
   cursor: pointer;
   border: 1px solid transparent;
+  user-select: none;
 }
 
 .hg-sidebar-link:hover {
   color: #ffffff;
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: var(--hg-bg-sidebar-hover);
 }
 
 .hg-sidebar-link.active {
   color: #ffffff;
-  background-color: var(--hg-primary);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+  background: linear-gradient(135deg, var(--hg-primary) 0%, var(--hg-primary-hover) 100%);
+  box-shadow: 0 4px 14px var(--hg-primary-glow);
   font-weight: 600;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Main Content Area */
+.hg-main-layout {
+  flex: 1 1 0%;
+  min-width: 0; /* Essential: prevents flex child from expanding beyond viewport */
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: var(--hg-bg-body);
+}
+
+.hg-main-layout > main {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
 }
 
 /* Header Navbar */
@@ -86,21 +161,42 @@ body {
   position: sticky;
   top: 0;
   z-index: 1020;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
 }
 
-/* KPI Cards */
+/* Mobile Sidebar Backdrop Overlay */
+.hg-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 1045;
+  animation: hgFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes hgFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ==========================================================================
+   2. DASHBOARD CARDS & KPI METRICS
+   ========================================================================== */
+
 .hg-kpi-card {
   background: var(--hg-bg-card);
   border: 1px solid var(--hg-border);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: var(--hg-shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .hg-kpi-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--hg-shadow-md);
+  border-color: #cbd5e1;
 }
 
 .hg-kpi-value {
@@ -108,72 +204,97 @@ body {
   font-weight: 800;
   letter-spacing: -0.5px;
   color: var(--hg-text-main);
+  line-height: 1.2;
   margin-top: 6px;
 }
 
 .hg-kpi-icon {
   width: 44px;
   height: 44px;
-  border-radius: 10px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
-/* Chart Container Cards */
-.hg-card {
+/* Container Cards */
+.hg-card,
+.card {
   background: var(--hg-bg-card);
-  border: 1px solid var(--hg-border);
+  border: 1px solid var(--hg-border) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--hg-shadow-sm);
+  transition: box-shadow 0.2s ease;
+}
+
+.hg-card-header,
+.card-header {
+  padding: 16px 20px !important;
+  border-bottom: 1px solid var(--hg-border) !important;
+  background-color: #ffffff !important;
+  border-top-left-radius: 14px !important;
+  border-top-right-radius: 14px !important;
+}
+
+.hg-card-body,
+.card-body {
+  padding: 20px !important;
+}
+
+/* ==========================================================================
+   3. DATA TABLES & MOBILE RESPONSIVE SCROLL
+   ========================================================================== */
+
+.table-responsive {
   border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  margin-bottom: 24px;
-  overflow: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
-.hg-card-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--hg-border);
-  background-color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.table {
+  margin-bottom: 0;
 }
 
-.hg-card-body {
-  padding: 20px;
-}
-
-/* Data Tables */
 .table thead th {
   background-color: #f8fafc;
   color: var(--hg-text-muted);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
   border-bottom: 1px solid var(--hg-border);
   padding: 12px 16px;
+  white-space: nowrap;
 }
 
 .table tbody td {
-  padding: 14px 16px;
+  padding: 13px 16px;
   vertical-align: middle;
-  border-bottom: 1px solid var(--hg-border);
+  border-bottom: 1px solid var(--hg-border-light);
   font-size: 13.5px;
+  color: var(--hg-text-secondary);
+}
+
+.table-hover tbody tr {
+  transition: background-color 0.15s ease;
 }
 
 .table-hover tbody tr:hover {
   background-color: #f1f5f9;
 }
 
-/* Status Badges */
+/* ==========================================================================
+   4. STATUS PILLS & BADGES
+   ========================================================================== */
+
 .badge-soft-success {
   background-color: var(--hg-success-light);
   color: #047857;
   border: 1px solid rgba(16, 185, 129, 0.25);
   font-weight: 600;
-  padding: 4px 8px;
+  padding: 4px 10px;
   border-radius: 6px;
+  font-size: 11.5px;
 }
 
 .badge-soft-danger {
@@ -181,8 +302,9 @@ body {
   color: #b91c1c;
   border: 1px solid rgba(239, 68, 68, 0.25);
   font-weight: 600;
-  padding: 4px 8px;
+  padding: 4px 10px;
   border-radius: 6px;
+  font-size: 11.5px;
 }
 
 .badge-soft-warning {
@@ -190,8 +312,9 @@ body {
   color: #b45309;
   border: 1px solid rgba(245, 158, 11, 0.25);
   font-weight: 600;
-  padding: 4px 8px;
+  padding: 4px 10px;
   border-radius: 6px;
+  font-size: 11.5px;
 }
 
 .badge-soft-primary {
@@ -199,11 +322,25 @@ body {
   color: #4338ca;
   border: 1px solid rgba(79, 70, 229, 0.25);
   font-weight: 600;
-  padding: 4px 8px;
+  padding: 4px 10px;
   border-radius: 6px;
+  font-size: 11.5px;
 }
 
-/* Face Camera Guide Visor */
+.badge-soft-info {
+  background-color: var(--hg-info-light);
+  color: #0369a1;
+  border: 1px solid rgba(14, 165, 233, 0.25);
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+}
+
+/* ==========================================================================
+   5. HARDWARE / VISION / FORM CONTROLS
+   ========================================================================== */
+
 .hg-camera-visor {
   position: relative;
   width: 100%;
@@ -230,30 +367,97 @@ body {
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
 }
 
-/* Code & Coordinates styling */
 .font-mono {
-  font-family: var(--hg-font-mono);
+  font-family: var(--hg-font-mono) !important;
 }
 
-/* Responsive Utilities */
+/* Form inputs & buttons polish */
+.form-control,
+.form-select {
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  font-size: 13.5px;
+  padding: 8px 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--hg-primary);
+  box-shadow: 0 0 0 3px var(--hg-primary-glow);
+  outline: none;
+}
+
+.btn {
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 7px 14px;
+  transition: all 0.15s ease;
+}
+
+.btn-primary {
+  background-color: var(--hg-primary);
+  border-color: var(--hg-primary);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: var(--hg-primary-hover);
+  border-color: var(--hg-primary-hover);
+  box-shadow: 0 4px 12px var(--hg-primary-glow);
+}
+
+/* ==========================================================================
+   6. RESPONSIVE BREAKPOINTS (TABLET & MOBILE)
+   ========================================================================== */
+
 @media (max-width: 991.98px) {
+  /* Off-canvas mobile drawer */
   .hg-sidebar {
     position: fixed;
     top: 0;
-    left: -260px;
-    z-index: 1040;
-    height: 100vh;
-  }
-  .hg-sidebar.show {
     left: 0;
+    bottom: 0;
+    width: 280px;
+    max-width: 85vw;
+    height: 100vh;
+    transform: translateX(-100%);
+    z-index: 1050;
+    box-shadow: none;
   }
-  .hg-main-content {
-    margin-left: 0 !important;
+
+  .hg-sidebar.show {
+    transform: translateX(0);
+    box-shadow: 0 0 50px rgba(0, 0, 0, 0.6);
+  }
+
+  .hg-main-layout {
+    width: 100%;
+    min-width: 100%;
+  }
+
+  .hg-navbar {
+    padding: 0 16px;
+    height: 58px;
+  }
+
+  .hg-main-layout > main {
+    padding: 16px !important;
+  }
+
+  .hg-kpi-value {
+    font-size: 24px;
+  }
+
+  .hg-card-body,
+  .card-body {
+    padding: 16px !important;
   }
 }
 
 @media (min-width: 992px) {
-  .hg-main-content {
-    margin-left: 260px;
+  .hg-sidebar-backdrop {
+    display: none !important;
   }
 }
