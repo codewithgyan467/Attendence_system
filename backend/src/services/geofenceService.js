@@ -39,7 +39,8 @@ function validateLocation({
   isMockLocation = false,
   hostelLat,
   hostelLon,
-  permittedRadiusMeters = 20.0
+  permittedRadiusMeters = 20.0,
+  maxAccuracyMeters = 65.0
 }) {
   // 1. Device Mock Location Check
   const mockDetected = Boolean(isMockLocation === true || isMockLocation === 'true' || isMockLocation === 1);
@@ -54,13 +55,14 @@ function validateLocation({
     };
   }
 
-  // 2. Accuracy threshold check (reject if cell-tower GPS accuracy is too coarse, e.g. > 50m)
-  if (accuracy > 40) {
+  // 2. Accuracy threshold check (allow realistic indoor hostel tolerance, default 65m)
+  const allowedCoarseLimit = Math.max(maxAccuracyMeters, permittedRadiusMeters * 1.5);
+  if (accuracy > allowedCoarseLimit) {
     return {
       isValid: false,
       isMockLocationDetected: false,
       reason: 'POOR_GPS_ACCURACY',
-      message: `GPS signal accuracy too coarse (${Math.round(accuracy)}m). Please step outside or enable high-accuracy mode.`,
+      message: `GPS signal accuracy too coarse (${Math.round(accuracy)}m > limit ${Math.round(allowedCoarseLimit)}m). Please step near a window or enable high-accuracy mode.`,
       distanceMeters: null,
       permittedRadiusMeters
     };

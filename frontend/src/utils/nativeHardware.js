@@ -13,12 +13,13 @@ export function isNativeMobile() {
 /**
  * Unified Location Provider:
  * - Uses native Android GPS hardware via @capacitor/geolocation when on mobile.
- * - Gracefully falls back to HTML5 navigator.geolocation in web browsers.
+ * - Gracefully falls back to HTML5 navigator.geolocation in web browsers with progressive settling.
  */
-export async function getNativeOrBrowserLocation() {
+export async function getNativeOrBrowserLocation(options = {}) {
+  const { onProgress = null, maxWaitMs = 3500, targetAccuracy = 20 } = options;
+
   if (isNativeMobile()) {
     try {
-      // 1. Check and request location permission on native device
       let perm = await Geolocation.checkPermissions();
       if (perm.location !== 'granted') {
         perm = await Geolocation.requestPermissions();
@@ -27,14 +28,12 @@ export async function getNativeOrBrowserLocation() {
         }
       }
 
-      // 2. Fetch high-accuracy native Android/iOS coordinates
       const coordinates = await Geolocation.getCurrentPosition({
         enableHighAccuracy: true,
-        timeout: 15000,
+        timeout: 10000,
         maximumAge: 0
       });
 
-      // 3. Inspect native coordinate properties for mock spoofer indicators
       const isMock = Boolean(
         coordinates.coords?.isMock ||
         coordinates.coords?.mocked ||
@@ -53,26 +52,97 @@ export async function getNativeOrBrowserLocation() {
     }
   }
 
-  // Fallback: Browser Geolocation API
+  // Browser Geolocation API with Progressive Sampling & Satellite Settling
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       return reject(new Error('Geolocation is not supported on this device.'));
     }
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        resolve({
-          latitude: parseFloat(pos.coords.latitude.toFixed(6)),
-          longitude: parseFloat(pos.coords.longitude.toFixed(6)),
-          accuracy: pos.coords.accuracy || 10,
-          isMockLocation: false,
-          source: 'BROWSER_HTML5_GPS'
-        });
-      },
-      (err) => reject(new Error(`GPS sensor error: ${err.message}`)),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
+    let bestReading = null;
+    let watchId = null;
+    let timer = null;
+
+    const finalize = () => {
+      if (watchId !== null) {
+        try { navigator.geolocation.clearWatch(watchId); } catch (_) {}
+        watchId = null;
+      }
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+
+      if (bestReading) {
+        resolve(bestReading);
+      } else {
+        // Fallback to one-shot if watch didn't yield a sample in time
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            resolve({
+              latitude: parseFloat(pos.coords.latitude.toFixed(6)),
+              longitude: parseFloat(pos.coords.longitude.toFixed(6)),
+              accuracy: pos.coords.accuracy || 10,
+              isMockLocation: false,
+              source: 'BROWSER_HTML5_GPS'
+            });
+          },
+          (err) => reject(new Error(`GPS sensor error: ${err.message}`)),
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+        );
+      }
+    };
+
+    // Give GPS hardware up to maxWaitMs to warm up and lock satellites
+    timer = setTimeout(finalize, maxWaitMs);
+
+    try {
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const acc = pos.coords.accuracy || 999;
+          if (onProgress) {
+            onProgress(Math.round(acc));
+          }
+
+          if (!bestReading || acc < bestReading.accuracy) {
+            bestReading = {
+              latitude: parseFloat(pos.coords.latitude.toFixed(6)),
+              longitude: parseFloat(pos.coords.longitude.toFixed(6)),
+              accuracy: acc,
+              isMockLocation: false,
+              source: 'BROWSER_HTML5_GPS_SETTLED'
+            };
+          }
+
+          // If phone locked onto accurate satellite fix (<= targetAccuracy), finish early
+          if (acc <= targetAccuracy) {
+            finalize();
+          }
+        },
+        () => {
+          // In case of error in watchPosition, finalize immediately
+          finalize();
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+      );
+    } catch (_) {
+      finalize();
+    }
   });
+}
+
+/**
+ * Directly launches native Android Location Settings or opens Google Maps calibration.
+ * Eliminates manual menu searching for the user.
+ */
+export function openNativeLocationSettings() {
+  if (typeof window !== 'undefined') {
+    try {
+      // Direct Android Settings Intent URL
+      window.location.href = 'intent:#Intent;action=android.settings.LOCATION_SOURCE_SETTINGS;end';
+    } catch (_) {
+      window.open('https://www.google.com/maps/search/?api=1&query=my+location', '_blank');
+    }
+  }
 }
 
 /**

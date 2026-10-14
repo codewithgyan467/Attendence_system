@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
-import { getNativeOrBrowserLocation, isNativeMobile } from '../../utils/nativeHardware';
+import { getNativeOrBrowserLocation, isNativeMobile, openNativeLocationSettings } from '../../utils/nativeHardware';
 import {
   UserCheck,
   History,
@@ -28,6 +28,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [corrections, setCorrections] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [gpsLiveAccuracy, setGpsLiveAccuracy] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const [statusMsg, setStatusMsg] = useState(null);
 
@@ -80,9 +81,14 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const handleVerifyLocation = async () => {
     setCheckinStep('verifying_gps');
     setCheckinError(null);
+    setGpsLiveAccuracy(null);
 
     try {
-      const pos = await getNativeOrBrowserLocation();
+      const pos = await getNativeOrBrowserLocation({
+        onProgress: (acc) => setGpsLiveAccuracy(acc),
+        maxWaitMs: 3500,
+        targetAccuracy: 25
+      });
       const res = await api.attendance.verifyLocation({
         roll_number: dashboard?.student?.roll_number || user?.username,
         latitude: pos.latitude,
@@ -316,8 +322,14 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     {checkinStep === 'verifying_gps' && (
                       <div className="py-4">
                         <div className="spinner-border text-primary mb-3" role="status"></div>
-                        <h6 className="fw-semibold mb-1">Querying GPS Hardware & Calculating Distance...</h6>
-                        <p className="text-muted small">Server enforcing Haversine great-circle validation.</p>
+                        <h6 className="fw-semibold mb-1">
+                          {gpsLiveAccuracy ? `Locking onto Satellite Signals (${gpsLiveAccuracy}m)...` : 'Querying GPS Hardware & Calculating Distance...'}
+                        </h6>
+                        <p className="text-muted small">
+                          {gpsLiveAccuracy
+                            ? 'Progressively refining GPS satellite fix for precision...'
+                            : 'Server enforcing Haversine great-circle validation.'}
+                        </p>
                       </div>
                     )}
 
@@ -384,18 +396,32 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                       <div className="py-4">
                         <AlertTriangle size={56} className="text-danger mb-3" />
                         <h5 className="fw-bold text-danger mb-2">Check-In Verification Failed</h5>
-                        <div className="alert alert-danger py-2 px-3 small mx-auto mb-3" style={{ maxWidth: '440px' }}>
+                        <div className="alert alert-danger py-2 px-3 small mx-auto mb-3" style={{ maxWidth: '460px' }}>
                           {checkinError || 'Verification was rejected.'}
                         </div>
-                        <button
-                          className="btn btn-outline-primary btn-sm px-4"
-                          onClick={() => {
-                            setCheckinStep('idle');
-                            setCheckinError(null);
-                          }}
-                        >
-                          <RefreshCw size={14} className="me-1 inline" /> Try Again
-                        </button>
+                        <div className="d-flex flex-wrap justify-content-center gap-2">
+                          <button
+                            className="btn btn-primary btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
+                            onClick={handleVerifyLocation}
+                          >
+                            <RefreshCw size={14} /> Auto-Calibrate & Retry
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline-secondary btn-sm px-3 d-inline-flex align-items-center gap-1"
+                            onClick={openNativeLocationSettings}
+                          >
+                            ⚙️ Location Settings
+                          </button>
+                          <a
+                            href="https://www.google.com/maps/search/?api=1&query=my+location"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-outline-secondary btn-sm px-3 d-inline-flex align-items-center gap-1 text-decoration-none"
+                          >
+                            📍 Quick Maps Fix
+                          </a>
+                        </div>
                       </div>
                     )}
                   </>
