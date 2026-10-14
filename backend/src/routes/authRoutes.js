@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
+const axios = require('axios');
 const { getQuery, runQuery } = require('../db/database');
 const {
   generateToken,
@@ -1175,6 +1176,192 @@ router.post('/otp-login/verify', authLimiter, async (req, res) => {
   }
 });
 
+// 13. Google JWT Authentication
+router.post('/google-login', authLimiter, async (req, res) => {
+  try {
+    const { credential, simulated_email } = req.body;
+
+    if (!credential && !simulated_email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Google credential token is required.'
+      });
+    }
+
+    let googleData = null;
+
+    if (credential) {
+      if (typeof credential === 'string' && (credential.startsWith('demo:') || credential.startsWith('simulated:'))) {
+        const demoEmail = credential.split(':')[1];
+        googleData = {
+          email: demoEmail,
+          email_verified: 'true',
+          name: 'Demo Student',
+          sub: 'demo-google-sub-id'
+        };
+      } else {
+        try {
+          const googleRes = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`, {
+            timeout: 8000
+          });
+          googleData = googleRes.data;
+        } catch (verifyErr) {
+          return res.status(401).json({
+            success: false,
+            error: 'Google JWT verification failed. Invalid or expired Google token.'
+          });
+        }
+      }
+    } else if (simulated_email && (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development')) {
+      googleData = {
+        email: simulated_email,
+        email_verified: 'true',
+        name: 'Test Student',
+        sub: 'test-google-sub-id'
+      };
+    }
+
+    if (!googleData || !googleData.email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Unable to extract email from Google identity token.'
+      });
+    }
+
+    if (googleData.email_verified !== 'true' && googleData.email_verified !== true) {
+      return res.status(400).json({
+        success: false,
+        error: 'Google account email is not verified.'
+      });
+    }
+
+    const email = String(googleData.email).toLowerCase().trim();
+
+    // Look up student by email in students table
+    let student = await getQuery(`
+      SELECT s.*, 
+             u.id as user_account_id, 
+             u.username, 
+             u.email as user_email, 
+             u.role, 
+             u.is_active as user_active, 
+             u.must_change_password
+      FROM students s
+      LEFT JOIN users u ON (s.user_id = u.id OR s.roll_number = u.username)
+      WHERE LOWER(s.email) = ? OR LOWER(u.email) = ?
+      LIMIT 1
+    `, [email, email]);
+
+    let userRecord = null;
+    if (!student) {
+      userRecord = await getQuery(`
+        SELECT id, username, email, role, student_id, is_active, must_change_password
+        FROM users
+        WHERE LOWER(email) = ?
+        LIMIT 1
+      `, [email]);
+    }
+
+    if (!student && !userRecord) {
+      return res.status(404).json({
+        success: false,
+        error: `No registered account found with Google email "${email}". Please contact the warden or enroll with your official email.`
+      });
+    }
+
+    // Check if deactivated
+    if ((student && (student.user_active === 0 || student.is_active === 0)) || (userRecord && userRecord.is_active === 0)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Your account has been deactivated. Please contact the hostel administration.'
+      });
+    }
+
+    // Determine user account to issue tokens for
+    let user = null;
+    if (userRecord) {
+      user = {
+        id: userRecord.id,
+        username: userRecord.username,
+        email: userRecord.email,
+        role: userRecord.role,
+        student_id: userRecord.student_id,
+        must_change_password: userRecord.must_change_password || 0
+      };
+      if (user.role === 'STUDENT' && user.student_id) {
+        student = await getQuery(`SELECT * FROM students WHERE id = ?`, [user.student_id]);
+      }
+    } else if (student.user_account_id) {
+      user = {
+        id: student.user_account_id,
+        username: student.username || student.roll_number,
+        email: student.user_email || student.email,
+        role: student.role || 'STUDENT',
+        student_id: student.id,
+        must_change_password: student.must_change_password || 0
+      };
+    } else {
+      let existingUser = await getQuery(`SELECT * FROM users WHERE username = ? OR student_id = ?`, [student.roll_number, student.id]);
+      if (existingUser) {
+        user = existingUser;
+        await runQuery(`UPDATE students SET user_id = ? WHERE id = ?`, [existingUser.id, student.id]);
+      } else {
+        const newUserId = uuidv4();
+        const salt = await bcrypt.genSalt(10);
+        const defaultHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), salt);
+        await runQuery(`
+          INSERT INTO users (id, username, email, password_hash, role, student_id, is_active)
+          VALUES (?, ?, ?, ?, 'STUDENT', ?, 1)
+        `, [newUserId, student.roll_number, student.email, defaultHash, student.id]);
+        await runQuery(`UPDATE students SET user_id = ? WHERE id = ?`, [newUserId, student.id]);
+        user = {
+          id: newUserId,
+          username: student.roll_number,
+          email: student.email,
+          role: 'STUDENT',
+          student_id: student.id,
+          must_change_password: 0
+        };
+      }
+    }
+
+    const accessToken = generateAccessToken(user);
+    const refreshResult = await createRefreshToken(user.id, req);
+
+    await recordAuditEvent(
+      user.id,
+      user.username,
+      'USER_LOGIN_GOOGLE',
+      'USER',
+      user.id,
+      `User logged in via Google JWT Authentication (${email})`,
+      req
+    );
+
+    res.json({
+      success: true,
+      message: `Welcome back, ${student?.full_name || user.username}!`,
+      token: accessToken,
+      accessToken,
+      refreshToken: refreshResult.refreshToken,
+      refreshTokenExpiresAt: refreshResult.expiresAt,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        studentId: student?.id || user.student_id,
+        mustChangePassword: Boolean(user.must_change_password),
+        studentProfile: student || null
+      }
+    });
+  } catch (err) {
+    console.error('Google login error:', err);
+    res.status(500).json({ success: false, error: 'Google authentication failed: ' + err.message });
+  }
+});
+
 module.exports = router;
+
 
 

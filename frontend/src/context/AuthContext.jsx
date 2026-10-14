@@ -122,6 +122,26 @@ export function AuthProvider({ children }) {
     throw new Error('OTP verification failed');
   };
 
+  const loginWithGoogle = async (credentialOrPayload) => {
+    const payload = typeof credentialOrPayload === 'string'
+      ? { credential: credentialOrPayload }
+      : credentialOrPayload;
+
+    const res = await api.auth.googleLogin(payload);
+    if ((res.accessToken || res.token) && res.user) {
+      const access = res.accessToken || res.token;
+      authStorage.setToken(access);
+      if (res.refreshToken) {
+        authStorage.setRefreshToken(res.refreshToken);
+      }
+      authStorage.setUser(res.user);
+      setToken(access);
+      setUser(res.user);
+      return res;
+    }
+    throw new Error('Google authentication failed');
+  };
+
   const value = {
     user,
     token,
@@ -131,6 +151,7 @@ export function AuthProvider({ children }) {
     login,
     loginWithPhone,
     loginWithOtp,
+    loginWithGoogle,
     logout,
     logoutAll,
     changePassword,

@@ -134,7 +134,8 @@ export const api = {
     verifyMagicLink: (token) => request('/auth/forgot-password/verify-magic-link', { method: 'POST', body: JSON.stringify({ token }) }),
     phoneEmailLogin: (data) => request('/auth/phone-login', { method: 'POST', body: JSON.stringify(data) }),
     requestLoginOtp: (data) => request('/auth/otp-login/request', { method: 'POST', body: JSON.stringify(data) }),
-    verifyLoginOtp: (data) => request('/auth/otp-login/verify', { method: 'POST', body: JSON.stringify(data) })
+    verifyLoginOtp: (data) => request('/auth/otp-login/verify', { method: 'POST', body: JSON.stringify(data) }),
+    googleLogin: (data) => request('/auth/google-login', { method: 'POST', body: JSON.stringify(data) })
   },
 
   // Admin APIs

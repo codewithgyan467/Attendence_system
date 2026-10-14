@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, Server, Check, CheckCircle2, Smartphone, Mail, Send } from 'lucide-react';
-import { getApiBaseUrl, authStorage, api } from '../../utils/api';
+import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, Server, Check, CheckCircle2 } from 'lucide-react';
+import { getApiBaseUrl, authStorage } from '../../utils/api';
 import ForgotPasswordModal from './ForgotPasswordModal';
-import SignInWithPhoneButton from './SignInWithPhoneButton';
+import GoogleSignInButton from './GoogleSignInButton';
 
 export default function LoginPage({ onNavigateOnboarding }) {
-  const { login, loginWithPhone, loginWithOtp } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,16 +17,6 @@ export default function LoginPage({ onNavigateOnboarding }) {
   const [showServerConfig, setShowServerConfig] = useState(false);
   const [customServerUrl, setCustomServerUrl] = useState(authStorage.getBackendUrl());
   const [serverSavedMsg, setServerSavedMsg] = useState(false);
-  const [otpVerifyMode, setOtpVerifyMode] = useState('phone'); // 'phone' | 'email'
-
-  // Direct OTP State (Takes ONLY 6-digit OTP from user, no first/last name)
-  const [directOtpIdentifier, setDirectOtpIdentifier] = useState('');
-  const [directOtpCode, setDirectOtpCode] = useState('');
-  const [directOtpSent, setDirectOtpSent] = useState(false);
-  const [directOtpLoading, setDirectOtpLoading] = useState(false);
-  const [directOtpDestination, setDirectOtpDestination] = useState('');
-  const [directOtpCountdown, setDirectOtpCountdown] = useState(0);
-  const [showPhoneEmailWidget, setShowPhoneEmailWidget] = useState(false);
 
   // Check URL query parameters (e.g. ?mode=reset or ?token=... or ?roll=2023CS01)
   useEffect(() => {
@@ -64,67 +54,16 @@ export default function LoginPage({ onNavigateOnboarding }) {
     }
   };
 
-  useEffect(() => {
-    let timer;
-    if (directOtpCountdown > 0) {
-      timer = setTimeout(() => setDirectOtpCountdown(directOtpCountdown - 1), 1000);
-    }
-    return () => clearTimeout(timer);
-  }, [directOtpCountdown]);
-
-  const handlePhoneLoginSuccess = async (userJsonUrl) => {
+  const handleGoogleSuccess = async (credential) => {
     setLoading(true);
     setErrorMsg('');
     try {
-      const res = await loginWithPhone(userJsonUrl);
-      setSuccessBanner(res.message || 'Identity verified successfully! Welcome back.');
+      const res = await loginWithGoogle(credential);
+      setSuccessBanner(res.message || 'Google identity verified successfully! Welcome back.');
     } catch (err) {
-      setErrorMsg(err.message || 'Verification sign-in failed. Please ensure your mobile/email is registered.');
+      setErrorMsg(err.message || 'Google authentication failed. Please ensure your email is registered in the hostel system.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSendDirectOtp = async (e) => {
-    e?.preventDefault();
-    if (!directOtpIdentifier.trim()) {
-      setErrorMsg('Please enter your mobile number, roll number, or registered email.');
-      return;
-    }
-    setDirectOtpLoading(true);
-    setErrorMsg('');
-    try {
-      const res = await api.auth.requestLoginOtp({
-        identifier: directOtpIdentifier.trim(),
-        method: otpVerifyMode === 'email' ? 'EMAIL' : 'SMS'
-      });
-      if (res.success) {
-        setDirectOtpSent(true);
-        setDirectOtpDestination(res.maskedDestination || directOtpIdentifier.trim());
-        setDirectOtpCountdown(60);
-      }
-    } catch (err) {
-      setErrorMsg(err.message || 'Failed to dispatch OTP code. Please check your number.');
-    } finally {
-      setDirectOtpLoading(false);
-    }
-  };
-
-  const handleVerifyDirectOtp = async (e) => {
-    e?.preventDefault();
-    if (!directOtpCode.trim() || directOtpCode.trim().length !== 6) {
-      setErrorMsg('Please enter the full 6-digit OTP verification code.');
-      return;
-    }
-    setDirectOtpLoading(true);
-    setErrorMsg('');
-    try {
-      const res = await loginWithOtp(directOtpIdentifier.trim(), directOtpCode.trim());
-      setSuccessBanner(res.message || 'Signed in successfully via 6-digit OTP!');
-    } catch (err) {
-      setErrorMsg(err.message || 'Incorrect or expired OTP verification code.');
-    } finally {
-      setDirectOtpLoading(false);
     }
   };
 
@@ -168,6 +107,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
             </div>
           )}
 
+          {/* Primary Credentials Form */}
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
               <label className="form-label small fw-medium text-dark">Username, Roll Number, or Email</label>
@@ -217,7 +157,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
 
             <button
               type="submit"
-              className="btn btn-primary w-100 py-2 d-flex align-items-center justify-content-center gap-2 fw-semibold mb-3"
+              className="btn btn-primary w-100 py-2 d-flex align-items-center justify-content-center gap-2 fw-semibold mb-3 shadow-sm"
               disabled={loading}
             >
               {loading ? (
@@ -234,165 +174,24 @@ export default function LoginPage({ onNavigateOnboarding }) {
             </button>
           </form>
 
-          {/* Direct 6-Digit OTP Sign In (Takes ONLY the OTP code, no first/last name required) */}
-          <div className="position-relative my-3 text-center">
-            <hr className="text-secondary opacity-25" />
-            <span className="position-absolute top-50 start-50 translate-middle bg-white px-2 small text-muted fw-semibold" style={{ fontSize: '11px' }}>
-              OR SIGN IN WITH 6-DIGIT OTP
+          {/* Sleek Modern Divider */}
+          <div className="position-relative my-4 text-center">
+            <hr className="text-secondary opacity-25 m-0" />
+            <span
+              className="position-absolute top-50 start-50 translate-middle bg-white px-3 text-muted fw-bold"
+              style={{ fontSize: '11px', letterSpacing: '0.08em' }}
+            >
+              OR CONTINUE WITH
             </span>
           </div>
 
-          <div className="card bg-light border-0 p-3 rounded-3 mb-3">
-            {!directOtpSent ? (
-              <form onSubmit={handleSendDirectOtp}>
-                <div className="mb-2">
-                  <div className="d-flex justify-content-between align-items-center mb-1">
-                    <label className="form-label small fw-medium text-dark mb-0">Mobile or Roll Number</label>
-                    <div className="btn-group btn-group-sm" role="group">
-                      <button
-                        type="button"
-                        className={`btn btn-xs py-0 px-2 rounded-start-pill ${otpVerifyMode === 'phone' ? 'btn-primary text-white fw-bold' : 'btn-light border'}`}
-                        style={{ fontSize: '10px' }}
-                        onClick={() => setOtpVerifyMode('phone')}
-                      >
-                        SMS OTP
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn btn-xs py-0 px-2 rounded-end-pill ${otpVerifyMode === 'email' ? 'btn-primary text-white fw-bold' : 'btn-light border'}`}
-                        style={{ fontSize: '10px' }}
-                        onClick={() => setOtpVerifyMode('email')}
-                      >
-                        Email OTP
-                      </button>
-                    </div>
-                  </div>
-                  <div className="input-group input-group-sm">
-                    <span className="input-group-text bg-white">
-                      {otpVerifyMode === 'email' ? <Mail size={14} className="text-muted" /> : <Smartphone size={14} className="text-muted" />}
-                    </span>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder={otpVerifyMode === 'email' ? 'e.g. student@hostel.local' : 'e.g. +919127155033 or 2024CS001'}
-                      value={directOtpIdentifier}
-                      onChange={(e) => setDirectOtpIdentifier(e.target.value)}
-                      disabled={directOtpLoading}
-                      required
-                    />
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  className="btn btn-outline-primary btn-sm w-100 fw-semibold d-flex align-items-center justify-content-center gap-1"
-                  disabled={directOtpLoading}
-                >
-                  {directOtpLoading ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm" role="status"></span>
-                      Sending Code...
-                    </>
-                  ) : (
-                    <>
-                      <Send size={13} />
-                      <span>Send 6-Digit Code</span>
-                    </>
-                  )}
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handleVerifyDirectOtp}>
-                <div className="text-center mb-2">
-                  <span className="badge bg-success bg-opacity-10 text-success small mb-1">
-                    Code Sent to {directOtpDestination}
-                  </span>
-                  <div className="text-muted small" style={{ fontSize: '11px' }}>
-                    Enter the 6-digit OTP code:
-                  </div>
-                </div>
-
-                <div className="mb-3">
-                  <input
-                    type="text"
-                    maxLength={6}
-                    autoFocus
-                    className="form-control form-control-lg text-center font-monospace fw-bold border-primary shadow-xs"
-                    placeholder="• • • • • •"
-                    style={{ letterSpacing: '0.4em', fontSize: '1.3rem' }}
-                    value={directOtpCode}
-                    onChange={(e) => setDirectOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
-                    disabled={directOtpLoading}
-                    required
-                  />
-                </div>
-
-                <div className="d-flex gap-2">
-                  <button
-                    type="button"
-                    className="btn btn-outline-secondary btn-sm flex-grow-1"
-                    onClick={() => {
-                      setDirectOtpSent(false);
-                      setDirectOtpCode('');
-                    }}
-                    disabled={directOtpLoading}
-                  >
-                    Change
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn btn-primary btn-sm flex-grow-1 fw-semibold d-flex align-items-center justify-content-center gap-1"
-                    disabled={directOtpLoading || directOtpCode.length !== 6}
-                  >
-                    {directOtpLoading ? (
-                      <span className="spinner-border spinner-border-sm" role="status"></span>
-                    ) : (
-                      <>
-                        <CheckCircle2 size={14} />
-                        Verify & Sign In
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                <div className="text-center mt-2">
-                  <button
-                    type="button"
-                    className="btn btn-link btn-sm text-decoration-none text-muted p-0"
-                    style={{ fontSize: '11px' }}
-                    onClick={handleSendDirectOtp}
-                    disabled={directOtpLoading || directOtpCountdown > 0}
-                  >
-                    {directOtpCountdown > 0 ? `Resend code in ${directOtpCountdown}s` : 'Resend code'}
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* Optional Phone.Email third-party popup widget */}
-            <div className="text-center mt-2 pt-2 border-top">
-              <button
-                type="button"
-                className="btn btn-link btn-sm text-decoration-none text-muted p-0"
-                style={{ fontSize: '11px' }}
-                onClick={() => setShowPhoneEmailWidget(!showPhoneEmailWidget)}
-              >
-                {showPhoneEmailWidget ? 'Hide Phone.Email Widget ▲' : 'Or use Phone.Email Widget ▼'}
-              </button>
-
-              {showPhoneEmailWidget && (
-                <div className="d-flex flex-column align-items-center justify-content-center mt-2 pt-1">
-                  <SignInWithPhoneButton
-                    key={otpVerifyMode}
-                    mode={otpVerifyMode}
-                    onSuccess={handlePhoneLoginSuccess}
-                    onError={(err) => setErrorMsg(err)}
-                  />
-                  <div className="text-muted mt-1" style={{ fontSize: '10px' }}>
-                    Opens Phone.Email verification window
-                  </div>
-                </div>
-              )}
-            </div>
+          {/* Modern Google JWT Authentication */}
+          <div className="mb-3">
+            <GoogleSignInButton
+              onSuccess={handleGoogleSuccess}
+              onError={(err) => setErrorMsg(err)}
+              disabled={loading}
+            />
           </div>
 
           {/* Student Onboarding Action */}

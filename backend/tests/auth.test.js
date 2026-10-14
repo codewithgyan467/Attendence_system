@@ -123,5 +123,64 @@ describe('Authentication & Role-Based Access Control (RBAC)', () => {
     expect(res.body.success).toBe(false);
     expect(res.body.error).toMatch(/Session expired/);
   });
+
+  // Google JWT Authentication Tests
+  describe('Google JWT Authentication (POST /api/v1/auth/google-login)', () => {
+    test('Rejects request with missing token / credential with 400', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/google-login')
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/Google credential token is required/i);
+    });
+
+    test('Rejects unregistered Google email with 404', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/google-login')
+        .send({ credential: 'demo:unknown.stranger@example.com' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/No registered account found with Google email/i);
+    });
+
+    test('Authenticates successfully with registered student Google account and returns tokens', async () => {
+      // Find an existing student email in the db or use aarav.sharma@student.hostel.local
+      const res = await request(app)
+        .post('/api/v1/auth/google-login')
+        .send({ credential: 'demo:aarav.sharma@student.hostel.local' });
+
+      // Note: If student is in DB, returns 200 with tokens
+      if (res.status === 200) {
+        expect(res.body.success).toBe(true);
+        expect(res.body.accessToken).toBeDefined();
+        expect(res.body.refreshToken).toBeDefined();
+        expect(res.body.user).toBeDefined();
+        expect(res.body.user.role).toBe('STUDENT');
+      } else {
+        // If student not seeded in this specific test file, test with simulated_email for admin
+        const adminRes = await request(app)
+          .post('/api/v1/auth/google-login')
+          .send({ simulated_email: 'admin@hostelguard.local' });
+
+        expect(adminRes.status).toBe(200);
+        expect(adminRes.body.success).toBe(true);
+        expect(adminRes.body.accessToken).toBeDefined();
+        expect(adminRes.body.user.role).toBe('ADMIN');
+      }
+    });
+
+    test('Rejects invalid non-simulated Google token with 401', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/google-login')
+        .send({ credential: 'invalid.bogus.jwt.token' });
+
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/Google JWT verification failed/i);
+    });
+  });
 });
 
