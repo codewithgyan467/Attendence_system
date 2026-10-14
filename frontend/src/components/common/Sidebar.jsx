@@ -34,6 +34,7 @@ export default function Sidebar({ activeTab, onSelectTab, showMobile, onCloseMob
     } else if (role === 'WARDEN') {
       return [
         { id: 'warden_overview', label: 'Warden Overview', icon: Building },
+        { id: 'warden_students', label: 'Student Roster & Uploads', icon: Users },
         { id: 'warden_exceptions', label: 'Absence & Exceptions', icon: ShieldAlert },
         { id: 'warden_corrections', label: 'Correction Requests', icon: FileCheck2 },
         { id: 'warden_feedback', label: 'Facility Feedback', icon: LifeBuoy },

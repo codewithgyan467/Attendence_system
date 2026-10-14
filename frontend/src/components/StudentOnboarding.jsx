@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../utils/api';
-import { Camera, CheckCircle, AlertCircle, RefreshCw, UserCheck, Sparkles, Smartphone } from 'lucide-react';
+import { Camera, CheckCircle, AlertCircle, RefreshCw, UserCheck, Sparkles, Smartphone, Mail, Phone, Shield, Info } from 'lucide-react';
 
 export default function StudentOnboarding({ onComplete }) {
   const [unregisteredList, setUnregisteredList] = useState([]);
@@ -9,8 +9,10 @@ export default function StudentOnboarding({ onComplete }) {
 
   const [formData, setFormData] = useState({
     course: 'B.Tech Computer Science',
-    admission_year: 2023,
-    semester: 4,
+    admission_year: new Date().getFullYear(),
+    semester: 1,
+    email: '',
+    phone: '',
     device_model: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Laptop / PC Workstation'
   });
 
@@ -26,6 +28,20 @@ export default function StudentOnboarding({ onComplete }) {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [registeredStudentResult, setRegisteredStudentResult] = useState(null);
+
+  // Auto-populate form when student is selected from allotment
+  useEffect(() => {
+    if (selectedStudent) {
+      setFormData((prev) => ({
+        ...prev,
+        course: selectedStudent.course || prev.course,
+        admission_year: selectedStudent.admission_year || prev.admission_year,
+        semester: selectedStudent.semester || prev.semester,
+        email: selectedStudent.email || prev.email || '',
+        phone: selectedStudent.phone || prev.phone || ''
+      }));
+    }
+  }, [selectedStudent]);
 
   // Load available allotment list
   useEffect(() => {
@@ -93,6 +109,20 @@ export default function StudentOnboarding({ onComplete }) {
     }
   };
 
+  const handleProceedToCamera = () => {
+    setErrorMsg('');
+    if (!formData.email || !/^\S+@\S+\.\S+$/.test(formData.email.trim())) {
+      setErrorMsg('Please enter a valid student email address for real OTP password resets.');
+      return;
+    }
+    if (!formData.phone || formData.phone.trim().length < 8) {
+      setErrorMsg('Please enter a valid mobile phone number with country code (e.g. +91 9876543210) for Phone.email OTP authentication.');
+      return;
+    }
+    setCurrentStep('camera');
+    startCamera();
+  };
+
   // Submit Onboarding
   const handleSubmitOnboarding = async () => {
     if (!selectedStudent) {
@@ -116,6 +146,8 @@ export default function StudentOnboarding({ onComplete }) {
         course: formData.course,
         admission_year: formData.admission_year,
         semester: formData.semester,
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
         device_id: deviceFingerprint,
         device_model: formData.device_model,
         photos: photos
@@ -321,14 +353,14 @@ export default function StudentOnboarding({ onComplete }) {
               </div>
 
               <div>
-                <label className="form-label">Admission Year (Add Year)</label>
+                <label className="form-label">Admission Year</label>
                 <input
                   className="form-input"
                   type="number"
                   min="2018"
                   max="2030"
                   value={formData.admission_year}
-                  onChange={(e) => setFormData({ ...formData, admission_year: parseInt(e.target.value) || 2023 })}
+                  onChange={(e) => setFormData({ ...formData, admission_year: parseInt(e.target.value) || new Date().getFullYear() })}
                 />
               </div>
 
@@ -346,17 +378,72 @@ export default function StudentOnboarding({ onComplete }) {
                   ))}
                 </select>
               </div>
+
+              {/* Real OTP Contact Credentials */}
+              <div style={{ gridColumn: '1 / -1', marginTop: '8px' }}>
+                <div style={{
+                  padding: '12px 16px',
+                  borderRadius: '10px',
+                  background: 'rgba(99, 102, 241, 0.08)',
+                  border: '1px solid rgba(99, 102, 241, 0.25)',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px'
+                }}>
+                  <Shield size={20} color="#818cf8" style={{ marginTop: '2px', flexShrink: 0 }} />
+                  <div style={{ fontSize: '13px', color: '#c7d2fe', lineHeight: 1.5 }}>
+                    <strong>Real OTP Security Verification:</strong> Enter your active email address and mobile number. Real OTP codes and password reset links will be securely dispatched to these coordinates via Phone.email and Email verification.
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="form-label">
+                  <Mail size={14} style={{ display: 'inline', marginRight: '6px' }} />
+                  Student Email Address <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <input
+                  className="form-input"
+                  type="email"
+                  required
+                  placeholder="e.g. yourname@student.college.edu"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                />
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Used for real Email OTPs & 1-click Magic Links</span>
+              </div>
+
+              <div>
+                <label className="form-label">
+                  <Phone size={14} style={{ display: 'inline', marginRight: '6px' }} />
+                  Mobile Phone Number <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <input
+                  className="form-input"
+                  type="tel"
+                  required
+                  placeholder="e.g. +91 9876543210"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                />
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Used for Phone.email instant SMS/WhatsApp OTP</span>
+              </div>
             </div>
+
+            {errorMsg && (
+              <div className="alert alert-danger d-flex align-items-center gap-2 mb-3">
+                <AlertCircle size={18} />
+                <span>{errorMsg}</span>
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '24px' }}>
               <button onClick={() => setCurrentStep('identity')} className="btn-secondary">
                 ← Back
               </button>
               <button
-                onClick={() => {
-                  setCurrentStep('camera');
-                  startCamera();
-                }}
+                onClick={handleProceedToCamera}
                 className="btn-primary"
               >
                 Proceed to Facial Capture →

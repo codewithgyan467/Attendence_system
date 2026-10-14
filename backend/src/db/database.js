@@ -394,6 +394,11 @@ const initDatabase = async () => {
   });
 
   await ensureColumns('hostel_allotments', {
+    email: 'TEXT',
+    phone: 'TEXT',
+    course: 'TEXT',
+    admission_year: 'INTEGER',
+    semester: 'INTEGER',
     is_registered: 'INTEGER DEFAULT 0'
   });
 
@@ -411,6 +416,20 @@ const initDatabase = async () => {
 
   // 14. Initial Data Seeding
   await seedInitialData();
+};
+
+const clearAllStudentData = async () => {
+  return await withTransaction(async ({ runQuery }) => {
+    await runQuery('DELETE FROM student_face_embeddings');
+    await runQuery('DELETE FROM attendance_records');
+    await runQuery('DELETE FROM attendance_challenges');
+    await runQuery('DELETE FROM attendance_corrections');
+    await runQuery('DELETE FROM password_reset_otps');
+    await runQuery('DELETE FROM students');
+    await runQuery('DELETE FROM hostel_allotments');
+    await runQuery("DELETE FROM users WHERE role = 'STUDENT'");
+    return { success: true };
+  });
 };
 
 const seedInitialData = async () => {
@@ -465,116 +484,112 @@ const seedInitialData = async () => {
     `, [uuidv4()]);
   }
 
-  // E. Seed Initial Roster Allotments
-  const allotCount = await getQuery(`SELECT COUNT(*) as count FROM hostel_allotments`);
-  if (allotCount.count === 0) {
-    const demoRoster = [
-      ['2023CS01', 'Aarav Sharma', 'A-101', 'Block A'],
-      ['2023CS02', 'Ananya Patel', 'A-102', 'Block A'],
-      ['2023EC01', 'Rohan Verma', 'A-103', 'Block A'],
-      ['2023ME05', 'Diya Sen', 'B-201', 'Block B'],
-      ['2023IT12', 'Kabir Mehta', 'B-202', 'Block B']
+  // E. Optional Demo Student Seeding (Disabled by default so wardens start with a clean production slate)
+  if (process.env.SEED_DEMO_DATA === 'true') {
+    const allotCount = await getQuery(`SELECT COUNT(*) as count FROM hostel_allotments`);
+    if (allotCount.count === 0) {
+      const demoRoster = [
+        ['2023CS01', 'Aarav Sharma', 'A-101', 'Block A'],
+        ['2023CS02', 'Ananya Patel', 'A-102', 'Block A'],
+        ['2023EC01', 'Rohan Verma', 'A-103', 'Block A'],
+        ['2023ME05', 'Diya Sen', 'B-201', 'Block B'],
+        ['2023IT12', 'Kabir Mehta', 'B-202', 'Block B']
+      ];
+      for (const item of demoRoster) {
+        await runQuery(`
+          INSERT INTO hostel_allotments (id, roll_number, full_name, room_number, hostel_block, is_registered)
+          VALUES (?, ?, ?, ?, ?, 0)
+        `, [uuidv4(), item[0], item[1], item[2], item[3]]);
+      }
+    }
+
+    const demoStudents = [
+      {
+        roll: '2023CS01',
+        name: 'Aarav Sharma',
+        email: 'aarav.sharma@student.hostel.local',
+        phone: '+919876543210',
+        course: 'B.Tech Computer Science',
+        year: 2023,
+        sem: 4,
+        block: 'Block A',
+        room: 'A-101'
+      },
+      {
+        roll: '2023CS02',
+        name: 'Ananya Patel',
+        email: 'ananya.patel@student.hostel.local',
+        phone: '+919876543211',
+        course: 'B.Tech Computer Science',
+        year: 2023,
+        sem: 4,
+        block: 'Block A',
+        room: 'A-102'
+      },
+      {
+        roll: '2023EC01',
+        name: 'Rohan Verma',
+        email: 'rohan.verma@student.hostel.local',
+        phone: '+919876543212',
+        course: 'B.Tech Electronics & Comm',
+        year: 2023,
+        sem: 4,
+        block: 'Block A',
+        room: 'A-103'
+      }
     ];
-    for (const item of demoRoster) {
-      await runQuery(`
-        INSERT INTO hostel_allotments (id, roll_number, full_name, room_number, hostel_block, is_registered)
-        VALUES (?, ?, ?, ?, ?, 0)
-      `, [uuidv4(), item[0], item[1], item[2], item[3]]);
-    }
-  }
 
-  // F. Ensure Standard Demo Students exist with User Credentials & Contact Info for OTP testing
-  const demoStudents = [
-    {
-      roll: '2023CS01',
-      name: 'Aarav Sharma',
-      email: 'aarav.sharma@student.hostel.local',
-      phone: '+919876543210',
-      course: 'B.Tech Computer Science',
-      year: 2023,
-      sem: 4,
-      block: 'Block A',
-      room: 'A-101'
-    },
-    {
-      roll: '2023CS02',
-      name: 'Ananya Patel',
-      email: 'ananya.patel@student.hostel.local',
-      phone: '+919876543211',
-      course: 'B.Tech Computer Science',
-      year: 2023,
-      sem: 4,
-      block: 'Block A',
-      room: 'A-102'
-    },
-    {
-      roll: '2023EC01',
-      name: 'Rohan Verma',
-      email: 'rohan.verma@student.hostel.local',
-      phone: '+919876543212',
-      course: 'B.Tech Electronics & Comm',
-      year: 2023,
-      sem: 4,
-      block: 'Block A',
-      room: 'A-103'
-    }
-  ];
+    const defaultStudentHash = await bcrypt.hash('Student@12345', 10);
 
-  const defaultStudentHash = await bcrypt.hash('Student@12345', 10);
+    for (const ds of demoStudents) {
+      const studentId = `HSTL-${ds.year}-${ds.roll}`;
+      
+      let existingUser = await getQuery(`SELECT id FROM users WHERE username = ?`, [ds.roll]);
+      let userId = existingUser?.id;
 
-  for (const ds of demoStudents) {
-    const studentId = `HSTL-${ds.year}-${ds.roll}`;
-    
-    // Check if user exists
-    let existingUser = await getQuery(`SELECT id FROM users WHERE username = ?`, [ds.roll]);
-    let userId = existingUser?.id;
+      if (!existingUser) {
+        userId = uuidv4();
+        await runQuery(`
+          INSERT INTO users (id, username, email, password_hash, role, student_id, is_active, must_change_password)
+          VALUES (?, ?, ?, ?, 'STUDENT', ?, 1, 0)
+        `, [userId, ds.roll, ds.email, defaultStudentHash, studentId]);
+      } else {
+        await runQuery(`UPDATE users SET email = COALESCE(email, ?), student_id = ? WHERE id = ?`, [ds.email, studentId, userId]);
+      }
 
-    if (!existingUser) {
-      userId = uuidv4();
-      await runQuery(`
-        INSERT INTO users (id, username, email, password_hash, role, student_id, is_active, must_change_password)
-        VALUES (?, ?, ?, ?, 'STUDENT', ?, 1, 0)
-      `, [userId, ds.roll, ds.email, defaultStudentHash, studentId]);
-    } else {
-      // Ensure user has email
-      await runQuery(`UPDATE users SET email = COALESCE(email, ?), student_id = ? WHERE id = ?`, [ds.email, studentId, userId]);
-    }
-
-    // Check if student record exists
-    let existingStudent = await getQuery(`SELECT id FROM students WHERE roll_number = ?`, [ds.roll]);
-    if (!existingStudent) {
-      await runQuery(`
-        INSERT INTO students (
-          id, user_id, roll_number, full_name, email, phone,
-          course, admission_year, semester, room_number, hostel_block,
-          device_id, device_model, is_active
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-      `, [
-        studentId,
-        userId,
-        ds.roll,
-        ds.name,
-        ds.email,
-        ds.phone,
-        ds.course,
-        ds.year,
-        ds.sem,
-        ds.room,
-        ds.block,
-        `DEV-${ds.roll.toLowerCase()}`,
-        'Samsung Galaxy A54'
-      ]);
-      // Mark allotment registered
-      await runQuery(`UPDATE hostel_allotments SET is_registered = 1 WHERE roll_number = ?`, [ds.roll]);
-    } else {
-      // Update contact details and user_id if null
-      await runQuery(`
-        UPDATE students
-        SET user_id = ?, email = COALESCE(email, ?), phone = COALESCE(phone, ?),
-            room_number = COALESCE(room_number, ?), hostel_block = COALESCE(hostel_block, ?)
-        WHERE roll_number = ?
-      `, [userId, ds.email, ds.phone, ds.room, ds.block, ds.roll]);
-      await runQuery(`UPDATE hostel_allotments SET is_registered = 1 WHERE roll_number = ?`, [ds.roll]);
+      let existingStudent = await getQuery(`SELECT id FROM students WHERE roll_number = ?`, [ds.roll]);
+      if (!existingStudent) {
+        await runQuery(`
+          INSERT INTO students (
+            id, user_id, roll_number, full_name, email, phone,
+            course, admission_year, semester, room_number, hostel_block,
+            device_id, device_model, is_active
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        `, [
+          studentId,
+          userId,
+          ds.roll,
+          ds.name,
+          ds.email,
+          ds.phone,
+          ds.course,
+          ds.year,
+          ds.sem,
+          ds.room,
+          ds.block,
+          `DEV-${ds.roll.toLowerCase()}`,
+          'Samsung Galaxy A54'
+        ]);
+        await runQuery(`UPDATE hostel_allotments SET is_registered = 1 WHERE roll_number = ?`, [ds.roll]);
+      } else {
+        await runQuery(`
+          UPDATE students
+          SET user_id = ?, email = COALESCE(email, ?), phone = COALESCE(phone, ?),
+              room_number = COALESCE(room_number, ?), hostel_block = COALESCE(hostel_block, ?)
+          WHERE roll_number = ?
+        `, [userId, ds.email, ds.phone, ds.room, ds.block, ds.roll]);
+        await runQuery(`UPDATE hostel_allotments SET is_registered = 1 WHERE roll_number = ?`, [ds.roll]);
+      }
     }
   }
 };
@@ -585,5 +600,7 @@ module.exports = {
   getQuery,
   allQuery,
   withTransaction,
-  initDatabase
+  initDatabase,
+  clearAllStudentData
 };
+

@@ -15,11 +15,38 @@ describe('Student Password Reset System (Email & Phone OTP)', () => {
 
   beforeAll(async () => {
     await runQuery('DELETE FROM password_reset_otps');
+    await runQuery("DELETE FROM users WHERE username IN ('2023CS01', '2023CS02')");
+    await runQuery("DELETE FROM students WHERE roll_number IN ('2023CS01', '2023CS02')");
+    await runQuery("DELETE FROM hostel_allotments WHERE roll_number IN ('2023CS01', '2023CS02')");
+
+    const salt = await bcrypt.genSalt(10);
+    const passHash = await bcrypt.hash('Student@12345', salt);
+
+    await runQuery(`
+      INSERT INTO users (id, username, email, password_hash, role, student_id, is_active, must_change_password)
+      VALUES
+        ('user-test-cs01', '2023CS01', 'aarav.sharma@student.hostel.local', ?, 'STUDENT', 'HSTL-2023-2023CS01', 1, 0),
+        ('user-test-cs02', '2023CS02', 'ananya.patel@student.hostel.local', ?, 'STUDENT', 'HSTL-2023-2023CS02', 1, 0)
+    `, [passHash, passHash]);
+
+    await runQuery(`
+      INSERT INTO students (id, user_id, roll_number, full_name, email, phone, course, admission_year, semester, room_number, hostel_block, device_id, device_model, is_active)
+      VALUES
+        ('HSTL-2023-2023CS01', 'user-test-cs01', '2023CS01', 'Aarav Sharma', 'aarav.sharma@student.hostel.local', '+919876543210', 'B.Tech CS', 2023, 4, 'A-101', 'Block A', 'DEV-2023cs01', 'Samsung A54', 1),
+        ('HSTL-2023-2023CS02', 'user-test-cs02', '2023CS02', 'Ananya Patel', 'ananya.patel@student.hostel.local', '+919876543211', 'B.Tech CS', 2023, 4, 'A-102', 'Block A', 'DEV-2023cs02', 'iPhone 13', 1)
+    `);
+
     // Obtain admin token for admin credentials endpoint
     const res = await request(app)
       .post('/api/v1/auth/login')
       .send({ username: 'admin', password: 'Admin@12345' });
     adminToken = res.body.token;
+  });
+
+  afterAll(async () => {
+    await runQuery('DELETE FROM password_reset_otps');
+    await runQuery("DELETE FROM students WHERE roll_number IN ('2023CS01', '2023CS02')");
+    await runQuery("DELETE FROM users WHERE username IN ('2023CS01', '2023CS02')");
   });
 
   test('POST /api/v1/auth/forgot-password/request-otp - Rejects empty identifier with 400', async () => {

@@ -7,6 +7,15 @@ let adminToken = '';
 beforeAll(async () => {
   await initDatabase();
 
+  await runQuery(`DELETE FROM students WHERE roll_number IN ('ROSTER_TEST_01', 'ROSTER_TEST_02', '2023CS01')`);
+  await runQuery(`DELETE FROM hostel_allotments WHERE roll_number IN ('ROSTER_TEST_01', 'ROSTER_TEST_02', '2023CS01')`);
+
+  // Ensure test fixture for conflict detection
+  await runQuery(`
+    INSERT INTO hostel_allotments (id, roll_number, full_name, room_number, hostel_block, is_registered)
+    VALUES ('test-allot-2023cs01', '2023CS01', 'Aarav Sharma', 'A-101', 'Block A', 0)
+  `);
+
   const loginRes = await request(app)
     .post('/api/v1/auth/login')
     .send({ username: 'admin', password: 'Admin@12345' });
@@ -14,7 +23,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await runQuery(`DELETE FROM hostel_allotments WHERE roll_number IN ('ROSTER_TEST_01', 'ROSTER_TEST_02')`);
+  await runQuery(`DELETE FROM students WHERE roll_number IN ('ROSTER_TEST_01', 'ROSTER_TEST_02', '2023CS01')`);
+  await runQuery(`DELETE FROM hostel_allotments WHERE roll_number IN ('ROSTER_TEST_01', 'ROSTER_TEST_02', '2023CS01')`);
 });
 
 describe('Roster Upload & Pre-Registration Verification', () => {

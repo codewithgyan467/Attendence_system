@@ -10,7 +10,7 @@ const aiServiceClient = require('../services/aiServiceClient');
 router.get('/allotment-list', async (req, res) => {
   try {
     const list = await allQuery(`
-      SELECT id, roll_number, full_name, room_number, hostel_block
+      SELECT id, roll_number, full_name, room_number, hostel_block, email, phone, course, admission_year, semester
       FROM hostel_allotments
       WHERE is_registered = 0
       ORDER BY full_name ASC
@@ -45,6 +45,13 @@ router.post('/onboard', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Course, admission year, and semester are required.' });
     }
 
+    if (!email || !phone) {
+      return res.status(400).json({
+        success: false,
+        error: 'Student Email Address and Mobile Phone Number are strictly required for Real OTP Authentication & Account Recovery.'
+      });
+    }
+
     if (!photos || !Array.isArray(photos) || photos.length === 0) {
       return res.status(400).json({ success: false, error: 'Facial capture required. Please capture at least one face photo.' });
     }
@@ -56,7 +63,14 @@ router.post('/onboard', async (req, res) => {
     }
 
     if (allotment.is_registered === 1) {
-      return res.status(400).json({ success: false, error: 'This student has already completed onboarding.' });
+      // Check if student already has face embeddings
+      const studentRec = await getQuery(`SELECT id FROM students WHERE roll_number = ?`, [roll_number.trim()]);
+      if (studentRec) {
+        const existingFaces = await getQuery(`SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ?`, [studentRec.id]);
+        if (existingFaces && existingFaces.count > 0) {
+          return res.status(400).json({ success: false, error: 'This student has already completed onboarding and face registration.' });
+        }
+      }
     }
 
     // Call Python AI microservice to extract 128D mathematical vectors
@@ -76,44 +90,71 @@ router.post('/onboard', async (req, res) => {
 
     // Generate credentials & IDs
     const studentId = `HSTL-${admission_year}-${roll_number.replace(/[^a-zA-Z0-9]/g, '')}`;
-    const userId = uuidv4();
     const devId = device_id || `DEV-${uuidv4().substring(0, 8)}`;
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
-    const userEmail = email || `${roll_number.toLowerCase()}@student.hostel.local`;
+    const userEmail = email.trim().toLowerCase();
+    const userPhone = phone.trim();
+
+    let existingUser = await getQuery(`SELECT id FROM users WHERE username = ?`, [roll_number.trim()]);
+    let existingStudent = await getQuery(`SELECT id FROM students WHERE roll_number = ?`, [roll_number.trim()]);
+    let userId = existingUser ? existingUser.id : uuidv4();
 
     // Commit atomically in transaction
     await withTransaction(async ({ runQuery }) => {
-      // Create user
-      await runQuery(`
-        INSERT INTO users (id, username, email, password_hash, role, student_id, is_active, must_change_password)
-        VALUES (?, ?, ?, ?, 'STUDENT', ?, 1, 0)
-      `, [userId, roll_number.trim(), userEmail, passwordHash, studentId]);
+      if (!existingUser) {
+        // Create user
+        await runQuery(`
+          INSERT INTO users (id, username, email, password_hash, role, student_id, is_active, must_change_password)
+          VALUES (?, ?, ?, ?, 'STUDENT', ?, 1, 0)
+        `, [userId, roll_number.trim(), userEmail, passwordHash, studentId]);
+      } else {
+        // Update user email and student_id
+        await runQuery(`
+          UPDATE users
+          SET email = ?, student_id = ?
+          WHERE id = ?
+        `, [userEmail, studentId, userId]);
+      }
 
-      // Create student profile
-      await runQuery(`
-        INSERT INTO students (
-          id, user_id, allotment_id, roll_number, full_name, email, phone,
-          course, admission_year, semester, room_number, hostel_block,
-          device_id, device_model
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [
-        studentId,
-        userId,
-        allotment.id,
-        allotment.roll_number,
-        allotment.full_name,
-        userEmail,
-        phone || null,
-        course,
-        parseInt(admission_year),
-        parseInt(semester),
-        allotment.room_number,
-        allotment.hostel_block,
-        devId,
-        device_model || 'Unknown Device'
-      ]);
+      if (!existingStudent) {
+        // Create student profile
+        await runQuery(`
+          INSERT INTO students (
+            id, user_id, allotment_id, roll_number, full_name, email, phone,
+            course, admission_year, semester, room_number, hostel_block,
+            device_id, device_model
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          studentId,
+          userId,
+          allotment.id,
+          allotment.roll_number,
+          allotment.full_name,
+          userEmail,
+          userPhone,
+          course,
+          parseInt(admission_year),
+          parseInt(semester),
+          allotment.room_number,
+          allotment.hostel_block,
+          devId,
+          device_model || 'Unknown Device'
+        ]);
+      } else {
+        // Update student contact details and device
+        await runQuery(`
+          UPDATE students
+          SET email = ?, phone = ?, course = ?, admission_year = ?, semester = ?,
+              device_id = ?, device_model = ?
+          WHERE id = ?
+        `, [
+          userEmail, userPhone, course, parseInt(admission_year), parseInt(semester),
+          devId, device_model || 'Unknown Device',
+          existingStudent.id
+        ]);
+      }
 
       // Store face embeddings
       for (const embItem of aiResponse.embeddings) {
@@ -131,8 +172,12 @@ router.post('/onboard', async (req, res) => {
         ]);
       }
 
-      // Mark allotment registered
-      await runQuery(`UPDATE hostel_allotments SET is_registered = 1 WHERE id = ?`, [allotment.id]);
+      // Mark allotment registered and update contact info
+      await runQuery(`
+        UPDATE hostel_allotments
+        SET is_registered = 1, email = ?, phone = ?
+        WHERE id = ?
+      `, [userEmail, userPhone, allotment.id]);
     });
 
     const userObj = { id: userId, username: roll_number.trim(), role: 'STUDENT', student_id: studentId };

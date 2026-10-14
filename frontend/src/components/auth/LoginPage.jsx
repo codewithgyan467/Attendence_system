@@ -187,22 +187,9 @@ export default function LoginPage({ onNavigateOnboarding }) {
                 <span>🏢 Hostel Warden</span>
                 <code className="text-primary small">warden</code>
               </button>
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-secondary d-flex align-items-center justify-content-between px-3"
-                onClick={() => handleQuickLogin('2023CS01', 'Student@12345')}
-              >
-                <span>🎓 Student: Aarav Sharma</span>
-                <code className="text-primary small">2023CS01</code>
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-secondary d-flex align-items-center justify-content-between px-3"
-                onClick={() => handleQuickLogin('2023CS02', 'Student@12345')}
-              >
-                <span>🎓 Student: Ananya Patel</span>
-                <code className="text-primary small">2023CS02</code>
-              </button>
+            </div>
+            <div className="text-center mt-2 text-muted" style={{ fontSize: '11px' }}>
+              🎓 <em>Students sign in using their official Roll Number or Email.</em>
             </div>
           </div>
 

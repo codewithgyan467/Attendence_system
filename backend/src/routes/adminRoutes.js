@@ -3,18 +3,22 @@ const router = express.Router();
 const multer = require('multer');
 const csv = require('csv-parser');
 const fs = require('fs');
+const path = require('path');
+const XLSX = require('xlsx');
+const mammoth = require('mammoth');
+const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
-const { runQuery, getQuery, allQuery, withTransaction } = require('../db/database');
+const { runQuery, getQuery, allQuery, withTransaction, clearAllStudentData } = require('../db/database');
 const { requireAuth, requireRole, recordAuditEvent } = require('../middleware/auth');
 const { clearForgeFlag } = require('../services/fraudService');
 
 const upload = multer({ dest: 'uploads/' });
 
-// Enforce Admin role on all endpoints in this router
-router.use(requireAuth, requireRole('ADMIN'));
+// Base router authentication guard
+router.use(requireAuth);
 
-// 1. Executive Dashboard KPIs & Real Chart.js Datasets
-router.get('/dashboard-stats', async (req, res) => {
+// 1. Executive Dashboard KPIs & Real Chart.js Datasets (Admin only)
+router.get('/dashboard-stats', requireRole('ADMIN'), async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
 
@@ -225,7 +229,80 @@ router.put('/students/:id', async (req, res) => {
   }
 });
 
-// 3. Roster Upload Preview (Conflict Detection before Commit)
+// Helper: Multi-Format Roster Parser (Excel .xlsx/.xls, Word .docx/.doc, CSV .csv)
+async function parseRosterFile(filePath, originalFilename = '') {
+  const ext = path.extname(originalFilename || filePath).toLowerCase();
+  let records = [];
+
+  if (ext === '.xlsx' || ext === '.xls') {
+    // 1. Microsoft Excel Workbook (.xlsx, .xls)
+    const workbook = XLSX.readFile(filePath);
+    const firstSheetName = workbook.SheetNames[0];
+    if (firstSheetName) {
+      const sheet = workbook.Sheets[firstSheetName];
+      records = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    }
+  } else if (ext === '.docx' || ext === '.doc') {
+    // 2. Microsoft Word Document (.docx, .doc)
+    try {
+      const { value: rawText } = await mammoth.extractRawText({ path: filePath });
+      const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      let headers = null;
+
+      for (const line of lines) {
+        // Delimiters supported: Tab, Comma, Pipe, Semicolon
+        const parts = line.split(/[\t,|;]+/).map(p => p.trim()).filter(Boolean);
+        if (parts.length >= 2) {
+          const isHeader = parts.some(p => /roll/i.test(p)) || parts.some(p => /name/i.test(p));
+          if (!headers && isHeader) {
+            headers = parts.map(h => h.toLowerCase());
+          } else if (headers) {
+            const obj = {};
+            parts.forEach((val, i) => {
+              const h = headers[i] || `col_${i}`;
+              obj[h] = val;
+            });
+            records.push(obj);
+          } else {
+            // Unstructured table line: assume [roll, name, room, block, email, phone]
+            records.push({
+              roll_number: parts[0] || '',
+              full_name: parts[1] || '',
+              room_number: parts[2] || 'A-101',
+              hostel_block: parts[3] || 'Block A',
+              email: parts[4] || '',
+              phone: parts[5] || ''
+            });
+          }
+        }
+      }
+    } catch (docxErr) {
+      console.error('Word extraction error:', docxErr);
+      throw new Error('Failed to parse Word document. Please ensure it contains readable student rows or tables: ' + docxErr.message);
+    }
+  } else {
+    // 3. Comma Separated Values (CSV) or Delimited Text
+    try {
+      const workbook = XLSX.readFile(filePath);
+      const sheetName = workbook.SheetNames[0];
+      if (sheetName) {
+        records = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+      }
+    } catch (csvFallbackErr) {
+      await new Promise((resolve, reject) => {
+        fs.createReadStream(filePath)
+          .pipe(csv())
+          .on('data', (d) => records.push(d))
+          .on('end', resolve)
+          .on('error', reject);
+      });
+    }
+  }
+
+  return records;
+}
+
+// 3. Roster Upload Preview (Excel .xlsx/.xls, Word .docx/.doc, CSV .csv)
 router.post('/allotment/upload-preview', upload.single('file'), async (req, res) => {
   try {
     let records = [];
@@ -237,24 +314,33 @@ router.post('/allotment/upload-preview', upload.single('file'), async (req, res)
     } else if (Array.isArray(req.body)) {
       records = req.body;
     } else if (req.file) {
-      await new Promise((resolve, reject) => {
-        fs.createReadStream(req.file.path)
-          .pipe(csv())
-          .on('data', (d) => records.push(d))
-          .on('end', resolve)
-          .on('error', reject);
-      });
+      records = await parseRosterFile(req.file.path, req.file.originalname);
       if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     } else {
-      return res.status(400).json({ success: false, error: 'Please upload a CSV file or provide an allotments/records JSON array.' });
+      return res.status(400).json({
+        success: false,
+        error: 'Please upload an Excel (.xlsx, .xls), Word (.docx), or CSV file, or submit a records array.'
+      });
+    }
+
+    if (!records || records.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No valid data rows found in the uploaded file. Please verify file content and structure.'
+      });
     }
 
     const parsedRows = records.map((row, idx) => ({
       index: idx + 1,
-      roll_number: (row.roll_number || row.rollNumber || row.RollNo || row['Roll Number'] || '').trim(),
-      full_name: (row.full_name || row.fullName || row.Name || row['Student Name'] || '').trim(),
-      room_number: (row.room_number || row.roomNumber || row.Room || row['Room No'] || 'A-101').trim(),
-      hostel_block: (row.hostel_block || row.block || row.Hostel || row['Hostel Block'] || 'Block A').trim()
+      roll_number: String(row.roll_number || row.rollNumber || row.RollNo || row['Roll Number'] || row['Roll No'] || row['roll_no'] || row['Roll'] || '').trim().toUpperCase(),
+      full_name: String(row.full_name || row.fullName || row.Name || row['Student Name'] || row['Student'] || row['Full Name'] || '').trim(),
+      room_number: String(row.room_number || row.roomNumber || row.Room || row['Room No'] || row['Room'] || 'A-101').trim(),
+      hostel_block: String(row.hostel_block || row.block || row.Hostel || row['Hostel Block'] || row['Block'] || 'Block A').trim(),
+      email: String(row.email || row.Email || row['Email ID'] || row['Email Address'] || row['Student Email'] || '').trim().toLowerCase(),
+      phone: String(row.phone || row.Phone || row['Phone Number'] || row['Mobile'] || row['Mobile No'] || row['Contact'] || '').trim(),
+      course: String(row.course || row.Course || row['Department'] || row['Branch'] || 'B.Tech Computer Science').trim(),
+      admission_year: parseInt(row.admission_year || row.admissionYear || row.Year || row['Batch'] || new Date().getFullYear()) || new Date().getFullYear(),
+      semester: parseInt(row.semester || row.Semester || row.Sem || 1) || 1
     }));
 
     const conflicts = [];
@@ -273,9 +359,11 @@ router.post('/allotment/upload-preview', upload.single('file'), async (req, res)
       }
       seenInFile.add(r.roll_number);
 
-      const existing = await getQuery(`SELECT roll_number FROM hostel_allotments WHERE roll_number = ?`, [r.roll_number]);
-      if (existing) {
-        conflicts.push({ ...r, issue: 'Roll number already exists on roster', status: 'CONFLICT_ALREADY_EXISTS' });
+      const existingAllotment = await getQuery(`SELECT roll_number FROM hostel_allotments WHERE roll_number = ?`, [r.roll_number]);
+      const existingStudent = await getQuery(`SELECT roll_number FROM students WHERE roll_number = ?`, [r.roll_number]);
+
+      if (existingAllotment || existingStudent) {
+        conflicts.push({ ...r, issue: 'Roll number already exists on hostel roster', status: 'CONFLICT_ALREADY_EXISTS' });
       } else {
         valid.push({ ...r, status: 'VALID' });
       }
@@ -302,44 +390,231 @@ router.post('/allotment/upload-preview', upload.single('file'), async (req, res)
     });
   } catch (err) {
     console.error('Upload preview failed:', err);
-    res.status(500).json({ success: false, error: 'CSV Preview Error: ' + err.message });
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    res.status(500).json({ success: false, error: 'File Preview Error: ' + err.message });
   }
 });
 
 // Commit Roster Allotments Atomically in a Transaction
 router.post('/allotment/upload-commit', async (req, res) => {
   try {
-    const { validRecords } = req.body;
+    const { validRecords, preCreateLogins = false } = req.body;
     if (!validRecords || !Array.isArray(validRecords) || validRecords.length === 0) {
       return res.status(400).json({ success: false, error: 'No valid records provided for commit.' });
     }
+
+    const defaultStudentHash = await bcrypt.hash('Student@12345', 10);
 
     const inserted = await withTransaction(async ({ runQuery, getQuery }) => {
       let count = 0;
       for (const item of validRecords) {
         const existing = await getQuery(`SELECT id FROM hostel_allotments WHERE roll_number = ?`, [item.roll_number]);
         if (!existing) {
+          const allotmentId = uuidv4();
+          const studentEmail = item.email || `${item.roll_number.toLowerCase()}@student.hostel.local`;
+          const studentPhone = item.phone || '';
+          const admYear = item.admission_year || new Date().getFullYear();
+          const sem = item.semester || 1;
+          const course = item.course || 'B.Tech Computer Science';
+          const studentId = `HSTL-${admYear}-${item.roll_number.replace(/[^a-zA-Z0-9]/g, '')}`;
+
           await runQuery(`
-            INSERT INTO hostel_allotments (id, roll_number, full_name, room_number, hostel_block, is_registered)
-            VALUES (?, ?, ?, ?, ?, 0)
-          `, [uuidv4(), item.roll_number, item.full_name, item.room_number || 'A-101', item.hostel_block || 'Block A']);
+            INSERT INTO hostel_allotments (
+              id, roll_number, full_name, room_number, hostel_block,
+              email, phone, course, admission_year, semester, is_registered
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            allotmentId, item.roll_number, item.full_name,
+            item.room_number || 'A-101', item.hostel_block || 'Block A',
+            studentEmail, studentPhone, course, admYear, sem,
+            preCreateLogins ? 1 : 0
+          ]);
+
+          if (preCreateLogins) {
+            const userId = uuidv4();
+            await runQuery(`
+              INSERT INTO users (id, username, email, password_hash, role, student_id, is_active, must_change_password)
+              VALUES (?, ?, ?, ?, 'STUDENT', ?, 1, 0)
+            `, [userId, item.roll_number, studentEmail, defaultStudentHash, studentId]);
+
+            await runQuery(`
+              INSERT INTO students (
+                id, user_id, allotment_id, roll_number, full_name, email, phone,
+                course, admission_year, semester, room_number, hostel_block,
+                device_id, device_model, is_active
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            `, [
+              studentId, userId, allotmentId, item.roll_number, item.full_name,
+              studentEmail, studentPhone, course, admYear, sem,
+              item.room_number || 'A-101', item.hostel_block || 'Block A',
+              `DEV-${item.roll_number.toLowerCase()}`,
+              'Pending Biometric Enrollment'
+            ]);
+          }
+
           count++;
         }
       }
       return count;
     });
 
-    await recordAuditEvent(req.user.id, req.user.username, 'ROSTER_CSV_COMMIT', 'ALLOTMENT', null, `Imported ${inserted} students to hostel roster`, req);
+    await recordAuditEvent(
+      req.user.id,
+      req.user.username,
+      'ROSTER_UPLOAD_COMMIT',
+      'ALLOTMENT',
+      null,
+      `Imported ${inserted} students into hostel roster (Pre-create logins: ${preCreateLogins})`,
+      req
+    );
 
     res.json({
       success: true,
-      message: `Successfully committed ${inserted} new allotment records into database!`,
+      message: `Successfully imported and activated ${inserted} student records!`,
       insertedCount: inserted,
       committedCount: inserted
     });
   } catch (err) {
     console.error('Upload commit failed:', err);
     res.status(500).json({ success: false, error: 'Database transaction error: ' + err.message });
+  }
+});
+
+// Manual Student Registration / Onboarding (Warden/Admin Form)
+router.post('/students/manual-add', async (req, res) => {
+  try {
+    const {
+      roll_number,
+      full_name,
+      room_number = 'A-101',
+      hostel_block = 'Block A',
+      email,
+      phone,
+      course = 'B.Tech Computer Science',
+      admission_year = new Date().getFullYear(),
+      semester = 1,
+      create_login = true,
+      default_password = 'Student@12345'
+    } = req.body;
+
+    if (!roll_number || !full_name) {
+      return res.status(400).json({ success: false, error: 'Roll number and Full Name are required.' });
+    }
+
+    if (!email || !phone) {
+      return res.status(400).json({ success: false, error: 'Student email and phone number are required for real OTP authentication.' });
+    }
+
+    const cleanRoll = roll_number.trim().toUpperCase();
+    const cleanName = full_name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPhone = phone.trim();
+
+    // Check if roll number already exists
+    const existingAllotment = await getQuery(`SELECT id FROM hostel_allotments WHERE roll_number = ?`, [cleanRoll]);
+    const existingStudent = await getQuery(`SELECT id FROM students WHERE roll_number = ?`, [cleanRoll]);
+
+    if (existingAllotment || existingStudent) {
+      return res.status(400).json({ success: false, error: `Student with roll number ${cleanRoll} already exists.` });
+    }
+
+    const allotmentId = uuidv4();
+    const studentId = `HSTL-${admission_year}-${cleanRoll.replace(/[^a-zA-Z0-9]/g, '')}`;
+    const userId = uuidv4();
+
+    await withTransaction(async ({ runQuery }) => {
+      // 1. Insert allotment record
+      await runQuery(`
+        INSERT INTO hostel_allotments (
+          id, roll_number, full_name, room_number, hostel_block,
+          email, phone, course, admission_year, semester, is_registered
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        allotmentId, cleanRoll, cleanName, room_number.trim(), hostel_block.trim(),
+        cleanEmail, cleanPhone, course.trim(), parseInt(admission_year), parseInt(semester),
+        create_login ? 1 : 0
+      ]);
+
+      // 2. Pre-create User & Student Profile if requested
+      if (create_login) {
+        const salt = await bcrypt.genSalt(10);
+        const passHash = await bcrypt.hash(default_password, salt);
+
+        await runQuery(`
+          INSERT INTO users (id, username, email, password_hash, role, student_id, is_active, must_change_password)
+          VALUES (?, ?, ?, ?, 'STUDENT', ?, 1, 0)
+        `, [userId, cleanRoll, cleanEmail, passHash, studentId]);
+
+        await runQuery(`
+          INSERT INTO students (
+            id, user_id, allotment_id, roll_number, full_name, email, phone,
+            course, admission_year, semester, room_number, hostel_block,
+            device_id, device_model, is_active
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        `, [
+          studentId, userId, allotmentId, cleanRoll, cleanName, cleanEmail, cleanPhone,
+          course.trim(), parseInt(admission_year), parseInt(semester),
+          room_number.trim(), hostel_block.trim(),
+          `DEV-${cleanRoll.toLowerCase()}`,
+          'Pending Biometric Enrollment'
+        ]);
+      }
+    });
+
+    await recordAuditEvent(
+      req.user.id,
+      req.user.username,
+      'MANUAL_ADD_STUDENT',
+      'STUDENT',
+      studentId,
+      `Manually registered student ${cleanName} (${cleanRoll}) - Email: ${cleanEmail}, Phone: ${cleanPhone}`,
+      req
+    );
+
+    res.json({
+      success: true,
+      message: `Student ${cleanName} (${cleanRoll}) added successfully!`,
+      student: {
+        id: studentId,
+        roll_number: cleanRoll,
+        full_name: cleanName,
+        email: cleanEmail,
+        phone: cleanPhone,
+        room_number: room_number.trim(),
+        hostel_block: hostel_block.trim(),
+        credentials: create_login ? {
+          username: cleanRoll,
+          default_password,
+          reset_url: `/?mode=reset&user=${encodeURIComponent(cleanRoll)}`
+        } : null
+      }
+    });
+  } catch (err) {
+    console.error('Manual student add failed:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Clear All Student Data (Fresh Slate)
+router.post('/students/clear-all', async (req, res) => {
+  try {
+    await clearAllStudentData();
+    await recordAuditEvent(
+      req.user.id,
+      req.user.username,
+      'CLEAR_ALL_STUDENTS',
+      'SYSTEM',
+      null,
+      'Wiped all student accounts, allotments, and biometric records for fresh production setup',
+      req
+    );
+    res.json({
+      success: true,
+      message: 'All student accounts, roster allotments, and attendance data have been successfully cleared.'
+    });
+  } catch (err) {
+    console.error('Failed to clear student data:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -691,8 +966,6 @@ router.post('/feedback/:id/resolve', async (req, res) => {
 });
 
 // 11. Complete System Credentials & Student Password Hub
-const bcrypt = require('bcryptjs');
-
 router.get('/credentials-directory', async (req, res) => {
   try {
     // 1. Staff users

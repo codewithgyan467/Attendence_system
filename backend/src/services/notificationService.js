@@ -28,7 +28,21 @@ let etherealTransporter = null;
 async function getMailTransporter() {
   if (mailTransporter) return mailTransporter;
 
-  if (process.env.SMTP_HOST && process.env.SMTP_USER) {
+  if (process.env.EMAIL_SERVICE && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      mailTransporter = nodemailer.createTransport({
+        service: process.env.EMAIL_SERVICE,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS
+        }
+      });
+      console.log(`✅ Connected to Production Email Service (${process.env.EMAIL_SERVICE}):`, process.env.SMTP_USER);
+      return mailTransporter;
+    } catch (err) {
+      console.warn(`⚠️ Email Service (${process.env.EMAIL_SERVICE}) transporter failed, falling back:`, err.message);
+    }
+  } else if (process.env.SMTP_HOST && process.env.SMTP_USER) {
     try {
       mailTransporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,

@@ -127,6 +127,7 @@ function AppContent() {
           {role === 'WARDEN' && (
             <>
               {activeTab === 'warden_overview' && <WardenDashboard subTab="warden_overview" onSelectTab={setActiveTab} />}
+              {activeTab === 'warden_students' && <StudentRosterManager />}
               {activeTab === 'warden_exceptions' && <WardenDashboard subTab="warden_exceptions" onSelectTab={setActiveTab} />}
               {activeTab === 'warden_corrections' && <WardenDashboard subTab="warden_corrections" onSelectTab={setActiveTab} />}
               {activeTab === 'warden_feedback' && <WardenDashboard subTab="warden_feedback" onSelectTab={setActiveTab} />}

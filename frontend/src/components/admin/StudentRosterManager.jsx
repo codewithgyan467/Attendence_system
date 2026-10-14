@@ -21,7 +21,12 @@ import {
   Shield,
   Lock,
   Mail,
-  Phone
+  Phone,
+  UserPlus,
+  Trash2,
+  FileText,
+  Download,
+  Sparkles
 } from 'lucide-react';
 
 export default function StudentRosterManager() {
@@ -41,6 +46,28 @@ export default function StudentRosterManager() {
   const [previewData, setPreviewData] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [commitLoading, setCommitLoading] = useState(false);
+  const [preCreateLogins, setPreCreateLogins] = useState(true);
+
+  // Manual Add Student Modal state
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [manualFormData, setManualFormData] = useState({
+    roll_number: '',
+    full_name: '',
+    room_number: 'A-101',
+    hostel_block: 'Block A',
+    email: '',
+    phone: '',
+    course: 'B.Tech Computer Science',
+    admission_year: new Date().getFullYear(),
+    semester: 1,
+    create_login: true,
+    default_password: 'Student@12345'
+  });
+  const [manualLoading, setManualLoading] = useState(false);
+
+  // Clear All Students Modal state
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [clearLoading, setClearLoading] = useState(false);
 
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -117,13 +144,13 @@ export default function StudentRosterManager() {
     }
   };
 
-  // Commit verified records
+  // Commit verified records (Excel, Word, CSV)
   const handleCommitImport = async () => {
     if (!previewData?.validRecords || previewData.validRecords.length === 0) return;
 
     try {
       setCommitLoading(true);
-      const res = await api.admin.commitRosterUpload(previewData.validRecords);
+      const res = await api.admin.commitRosterUpload(previewData.validRecords, preCreateLogins);
       showFeedback(res.message, 'success');
       setShowUploadModal(false);
       setPreviewData(null);
@@ -135,31 +162,149 @@ export default function StudentRosterManager() {
     }
   };
 
-  // Quick Seed Sample Students
-  const handleSeedSamples = async () => {
-    const samples = [
-      { roll_number: '2023CS01', full_name: 'Aarav Sharma', room_number: 'A-101', hostel_block: 'Block A' },
-      { roll_number: '2023CS02', full_name: 'Ananya Patel', room_number: 'A-102', hostel_block: 'Block A' },
-      { roll_number: '2023EC01', full_name: 'Rohan Verma', room_number: 'A-103', hostel_block: 'Block A' },
-      { roll_number: '2023ME05', full_name: 'Diya Sen', room_number: 'B-201', hostel_block: 'Block B' },
-      { roll_number: '2023IT12', full_name: 'Kabir Mehta', room_number: 'B-202', hostel_block: 'Block B' },
-      { roll_number: '2023CS99', full_name: 'Ishita Roy', room_number: 'B-203', hostel_block: 'Block B' }
-    ];
+  // 1. Download Official Excel Roster Template (.xlsx)
+  const handleDownloadExcelTemplate = async () => {
+    try {
+      const XLSX = await import('xlsx');
+      const sampleRows = [
+        {
+          'Roll Number': '2024CS01',
+          'Full Name': 'Aditya Sharma',
+          'Room Number': 'A-101',
+          'Hostel Block': 'Block A',
+          'Email': 'aditya.sharma@example.edu',
+          'Phone': '+919876543210',
+          'Course': 'B.Tech Computer Science',
+          'Admission Year': 2024,
+          'Semester': 1
+        },
+        {
+          'Roll Number': '2024CS02',
+          'Full Name': 'Priya Nair',
+          'Room Number': 'A-102',
+          'Hostel Block': 'Block A',
+          'Email': 'priya.nair@example.edu',
+          'Phone': '+919876543211',
+          'Course': 'B.Tech Computer Science',
+          'Admission Year': 2024,
+          'Semester': 1
+        },
+        {
+          'Roll Number': '2024EC01',
+          'Full Name': 'Rahul Verma',
+          'Room Number': 'B-201',
+          'Hostel Block': 'Block B',
+          'Email': 'rahul.verma@example.edu',
+          'Phone': '+919876543212',
+          'Course': 'B.Tech Electronics & Comm',
+          'Admission Year': 2024,
+          'Semester': 1
+        }
+      ];
+
+      const ws = XLSX.utils.json_to_sheet(sampleRows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'StudentRoster');
+      XLSX.writeFile(wb, 'hostelguard_student_roster_template.xlsx');
+      showFeedback('Official Excel Template (.xlsx) downloaded successfully!', 'success');
+    } catch (err) {
+      showFeedback('Failed to generate Excel template: ' + err.message, 'danger');
+    }
+  };
+
+  // 2. Download Official CSV Roster Template (.csv)
+  const handleDownloadCsvTemplate = () => {
+    const csvContent =
+      "Roll Number,Full Name,Room Number,Hostel Block,Email,Phone,Course,Admission Year,Semester\n" +
+      "2024CS01,Aditya Sharma,A-101,Block A,aditya.sharma@example.edu,+919876543210,B.Tech Computer Science,2024,1\n" +
+      "2024CS02,Priya Nair,A-102,Block A,priya.nair@example.edu,+919876543211,B.Tech Computer Science,2024,1\n" +
+      "2024EC01,Rahul Verma,B-201,Block B,rahul.verma@example.edu,+919876543212,B.Tech Electronics & Comm,2024,1\n";
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', 'hostelguard_student_roster_template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showFeedback('CSV Template (.csv) downloaded successfully!', 'success');
+  };
+
+  // 3. Download Word / Document Roster Template (.docx format preview)
+  const handleDownloadDocTemplate = () => {
+    const docContent =
+      "HOSTELGUARD STUDENT ROSTER IMPORT GUIDE & WORD TEMPLATE\n" +
+      "========================================================================\n\n" +
+      "Instructions for Warden / Admin:\n" +
+      "1. You can paste a table or line-separated student list directly into Microsoft Word (.docx).\n" +
+      "2. Ensure each row contains: Roll Number, Full Name, Room Number, Hostel Block, Email, Phone.\n" +
+      "3. Real OTP authentication will use the Email and Mobile Phone specified for each student.\n\n" +
+      "Sample Table Format:\n" +
+      "Roll Number\tFull Name\tRoom Number\tHostel Block\tEmail\tPhone\n" +
+      "2024CS01\tAditya Sharma\tA-101\tBlock A\taditya.sharma@example.edu\t+919876543210\n" +
+      "2024CS02\tPriya Nair\tA-102\tBlock A\tpriya.nair@example.edu\t+919876543211\n" +
+      "2024EC01\tRahul Verma\tB-201\tBlock B\trahul.verma@example.edu\t+919876543212\n";
+
+    const blob = new Blob([docContent], { type: 'text/plain;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', 'hostelguard_student_roster_template.docx');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showFeedback('Word/Document Template guide (.docx) downloaded successfully!', 'success');
+  };
+
+  // 4. Handle Manual Single Student Registration
+  const handleManualAddSubmit = async (e) => {
+    e.preventDefault();
+    if (!manualFormData.roll_number?.trim() || !manualFormData.full_name?.trim()) {
+      showFeedback('Roll Number and Full Name are strictly required.', 'danger');
+      return;
+    }
+    if (!manualFormData.email?.trim() || !manualFormData.phone?.trim()) {
+      showFeedback('Student Email Address and Mobile Phone are required for real OTP authentication.', 'danger');
+      return;
+    }
 
     try {
-      setLoading(true);
-      const preview = await api.admin.previewRosterUpload({ allotments: samples });
-      if (preview.validRecords.length > 0) {
-        const res = await api.admin.commitRosterUpload(preview.validRecords);
-        showFeedback(res.message, 'success');
-        loadStudents();
-      } else {
-        showFeedback('All sample students already exist on the roster.', 'info');
-      }
+      setManualLoading(true);
+      const res = await api.admin.manualAddStudent(manualFormData);
+      showFeedback(res.message || 'Student record added successfully!', 'success');
+      setShowManualModal(false);
+      setManualFormData({
+        roll_number: '',
+        full_name: '',
+        room_number: 'A-101',
+        hostel_block: 'Block A',
+        email: '',
+        phone: '',
+        course: 'B.Tech Computer Science',
+        admission_year: new Date().getFullYear(),
+        semester: 1,
+        create_login: true,
+        default_password: 'Student@12345'
+      });
+      loadStudents();
     } catch (err) {
-      showFeedback(err.message, 'danger');
+      showFeedback(err.message || 'Failed to add student manually', 'danger');
     } finally {
-      setLoading(false);
+      setManualLoading(false);
+    }
+  };
+
+  // 5. Clear All Student Records
+  const handleClearAllStudents = async () => {
+    try {
+      setClearLoading(true);
+      const res = await api.admin.clearAllStudents();
+      showFeedback(res.message || 'All student records successfully cleared!', 'success');
+      setShowClearModal(false);
+      loadStudents();
+    } catch (err) {
+      showFeedback(err.message || 'Failed to clear student records', 'danger');
+    } finally {
+      setClearLoading(false);
     }
   };
 
@@ -292,14 +437,17 @@ export default function StudentRosterManager() {
           </p>
         </div>
         <div className="d-flex align-items-center gap-2 flex-wrap">
+          <button onClick={() => setShowManualModal(true)} className="btn btn-sm btn-success d-flex align-items-center gap-1 shadow-sm">
+            <UserPlus size={14} /> + Add Student Manually
+          </button>
+          <button onClick={() => setShowUploadModal(true)} className="btn btn-sm btn-primary d-flex align-items-center gap-1 shadow-sm">
+            <Upload size={14} /> Upload Records (Excel / Word / CSV)
+          </button>
           <button onClick={handleOpenCredentialsHub} className="btn btn-sm btn-dark d-flex align-items-center gap-1 shadow-sm">
             <KeyRound size={14} className="text-warning" /> Credentials & Password Hub
           </button>
-          <button onClick={() => setShowUploadModal(true)} className="btn btn-sm btn-primary d-flex align-items-center gap-1">
-            <Upload size={14} /> Import CSV Roster
-          </button>
-          <button onClick={handleSeedSamples} className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">
-            <Plus size={14} /> Load Demo Allotments
+          <button onClick={() => setShowClearModal(true)} className="btn btn-sm btn-outline-danger d-flex align-items-center gap-1">
+            <Trash2 size={14} /> Clear All Records
           </button>
         </div>
       </div>
@@ -479,48 +627,100 @@ export default function StudentRosterManager() {
         </div>
       </div>
 
-      {/* MODAL 1: CSV Upload with Validation Preview */}
+      {/* MODAL 1: Multi-Format Upload with Validation Preview (Excel, Word, CSV) */}
       {showUploadModal && (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog modal-lg">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title fw-bold">Upload Hostel Allotment Roster (CSV)</h5>
+                <div className="d-flex align-items-center gap-2">
+                  <div className="p-2 rounded bg-primary-subtle text-primary">
+                    <FileSpreadsheet size={18} />
+                  </div>
+                  <div>
+                    <h5 className="modal-title fw-bold mb-0">Upload Student Records</h5>
+                    <small className="text-muted" style={{ fontSize: '11px' }}>
+                      Supports Excel (.xlsx, .xls), Word (.docx, .doc), and CSV (.csv)
+                    </small>
+                  </div>
+                </div>
                 <button type="button" className="btn-close" onClick={() => { setShowUploadModal(false); setPreviewData(null); }}></button>
               </div>
               <div className="modal-body">
+                {/* Download Sample Templates Banner */}
+                <div className="p-3 mb-3 rounded-3" style={{ background: 'rgba(99, 102, 241, 0.06)', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
+                  <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <div>
+                      <div className="fw-bold" style={{ fontSize: '13px', color: '#4338ca' }}>
+                        📥 Download Official Roster Templates
+                      </div>
+                      <div className="text-muted" style={{ fontSize: '11px' }}>
+                        Required columns: <code>Roll Number</code>, <code>Full Name</code>, <code>Room Number</code>, <code>Hostel Block</code>, <code>Email</code>, <code>Phone</code>
+                      </div>
+                    </div>
+                    <div className="d-flex gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={handleDownloadExcelTemplate}
+                        className="btn btn-sm btn-outline-success d-flex align-items-center gap-1 shadow-sm"
+                        style={{ fontSize: '11px' }}
+                      >
+                        <FileSpreadsheet size={13} /> Excel (.xlsx)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadCsvTemplate}
+                        className="btn btn-sm btn-outline-primary d-flex align-items-center gap-1 shadow-sm"
+                        style={{ fontSize: '11px' }}
+                      >
+                        <FileText size={13} /> CSV (.csv)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadDocTemplate}
+                        className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1 shadow-sm"
+                        style={{ fontSize: '11px' }}
+                      >
+                        <Download size={13} /> Word Guide (.docx)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="mb-3">
                   <label className="form-label fw-semibold" style={{ fontSize: '13px' }}>
-                    Select CSV File (Columns: roll_number, full_name, room_number, hostel_block)
+                    Select File to Upload
                   </label>
                   <input
                     type="file"
                     className="form-control form-control-sm"
-                    accept=".csv"
+                    accept=".xlsx, .xls, .docx, .doc, .csv"
                     onChange={handleFilePreview}
                     disabled={previewLoading || commitLoading}
                   />
-                  <small className="text-muted">Upload will be validated for conflicts before committing to database.</small>
+                  <small className="text-muted" style={{ fontSize: '11px' }}>
+                    Automatic conflict detection checks for duplicate roll numbers or existing registered students.
+                  </small>
                 </div>
 
                 {previewLoading && (
                   <div className="text-center py-4">
                     <div className="spinner-border spinner-border-sm text-primary me-2"></div>
-                    Validating CSV records & detecting conflicts...
+                    Parsing document & validating student records...
                   </div>
                 )}
 
                 {previewData && (
                   <div>
-                    <div className="d-flex gap-2 mb-3">
+                    <div className="d-flex gap-2 mb-3 flex-wrap">
                       <span className="badge bg-success p-2">Valid Records: {previewData.validCount}</span>
                       <span className="badge bg-danger p-2">Conflicts / Duplicates: {previewData.conflictCount}</span>
-                      <span className="badge bg-secondary p-2">Total Submitted: {previewData.totalSubmitted}</span>
+                      <span className="badge bg-secondary p-2">Total Rows: {previewData.totalSubmitted}</span>
                     </div>
 
-                    {previewData.conflictRecords.length > 0 && (
+                    {previewData.conflictRecords?.length > 0 && (
                       <div className="alert alert-warning p-2 mb-3" style={{ fontSize: '12px' }}>
-                        <strong>Conflicts Found:</strong>
+                        <strong>Conflicts Found (Will be skipped on commit):</strong>
                         <ul className="mb-0 ps-3">
                           {previewData.conflictRecords.map((c, i) => (
                             <li key={i}>{c.roll_number} ({c.full_name}): {c.issue}</li>
@@ -529,28 +729,47 @@ export default function StudentRosterManager() {
                       </div>
                     )}
 
-                    <h6 className="fw-bold" style={{ fontSize: '13px' }}>Valid Records Ready to Commit:</h6>
-                    <div className="table-responsive" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                    <h6 className="fw-bold" style={{ fontSize: '13px' }}>Verified Records Ready for Import:</h6>
+                    <div className="table-responsive" style={{ maxHeight: '220px', overflowY: 'auto' }}>
                       <table className="table table-sm table-bordered" style={{ fontSize: '12px' }}>
-                        <thead>
+                        <thead className="table-light">
                           <tr>
                             <th>Roll Number</th>
                             <th>Student Name</th>
-                            <th>Room No</th>
-                            <th>Hostel Block</th>
+                            <th>Room & Block</th>
+                            <th>Email Address</th>
+                            <th>Phone (For OTP)</th>
                           </tr>
                         </thead>
                         <tbody>
                           {previewData.validRecords.map((r, i) => (
                             <tr key={i}>
-                              <td className="font-mono text-primary">{r.roll_number}</td>
+                              <td className="font-mono text-primary fw-bold">{r.roll_number}</td>
                               <td>{r.full_name}</td>
-                              <td>{r.room_number}</td>
-                              <td>{r.hostel_block}</td>
+                              <td>{r.room_number} ({r.hostel_block})</td>
+                              <td className="text-muted">{r.email || 'Will auto-generate'}</td>
+                              <td className="font-mono">{r.phone || 'N/A'}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
+                    </div>
+
+                    {/* Pre-create student logins toggle */}
+                    <div className="form-check form-switch mt-3 p-3 rounded" style={{ background: 'rgba(0,0,0,0.02)', border: '1px solid #e2e8f0' }}>
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        id="preCreateLoginsSwitch"
+                        checked={preCreateLogins}
+                        onChange={(e) => setPreCreateLogins(e.target.checked)}
+                      />
+                      <label className="form-check-label fw-bold text-dark" htmlFor="preCreateLoginsSwitch" style={{ fontSize: '13px' }}>
+                        Automatically create login accounts with default password (Student@12345)
+                      </label>
+                      <div className="text-muted" style={{ fontSize: '11px', marginTop: '2px' }}>
+                        Enables students to log in immediately and self-reset passwords via Phone.email or Email OTP.
+                      </div>
                     </div>
                   </div>
                 )}
@@ -566,7 +785,7 @@ export default function StudentRosterManager() {
                     onClick={handleCommitImport}
                     disabled={commitLoading}
                   >
-                    {commitLoading ? 'Committing...' : `Commit ${previewData.validCount} Valid Records`}
+                    {commitLoading ? 'Committing...' : `Commit & Activate ${previewData.validCount} Records`}
                   </button>
                 )}
               </div>
@@ -687,6 +906,232 @@ export default function StudentRosterManager() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Manual Add Student Record */}
+      {showManualModal && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 1055 }}>
+          <div className="modal-dialog modal-lg">
+            <form onSubmit={handleManualAddSubmit} className="modal-content shadow-lg border-0 rounded-3">
+              <div className="modal-header bg-success text-white py-3">
+                <div className="d-flex align-items-center gap-2">
+                  <UserPlus size={20} />
+                  <h5 className="modal-title fw-bold mb-0 text-white">Manual Student Registration</h5>
+                </div>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setShowManualModal(false)}></button>
+              </div>
+
+              <div className="modal-body p-4">
+                <div className="alert alert-info py-2 px-3 mb-3 d-flex align-items-center gap-2" style={{ fontSize: '13px' }}>
+                  <Shield size={18} className="text-primary flex-shrink-0" />
+                  <span>
+                    <strong>Authentic OTP Setup:</strong> The student's email and phone number entered here are linked directly to their profile for real Email OTP and Phone.email verification requests.
+                  </span>
+                </div>
+
+                <div className="row g-3">
+                  <div className="col-12 col-md-6">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>
+                      Full Name <span className="text-danger">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Vikram Malhotra"
+                      className="form-control form-control-sm"
+                      value={manualFormData.full_name}
+                      onChange={(e) => setManualFormData({ ...manualFormData, full_name: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="col-12 col-md-6">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>
+                      Roll / Student Number <span className="text-danger">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 2024CS01"
+                      className="form-control form-control-sm font-mono text-uppercase"
+                      value={manualFormData.roll_number}
+                      onChange={(e) => setManualFormData({ ...manualFormData, roll_number: e.target.value.toUpperCase() })}
+                    />
+                  </div>
+
+                  <div className="col-12 col-md-6">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>
+                      <Mail size={13} className="me-1 text-primary" /> Student Email Address <span className="text-danger">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="e.g. vikram.m@college.edu"
+                      className="form-control form-control-sm"
+                      value={manualFormData.email}
+                      onChange={(e) => setManualFormData({ ...manualFormData, email: e.target.value })}
+                    />
+                    <small className="text-muted" style={{ fontSize: '11px' }}>Direct recipient for 6-digit Email OTPs and Magic Link recovery.</small>
+                  </div>
+
+                  <div className="col-12 col-md-6">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>
+                      <Phone size={13} className="me-1 text-success" /> Mobile Phone Number <span className="text-danger">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      placeholder="e.g. +91 9876543210"
+                      className="form-control form-control-sm font-mono"
+                      value={manualFormData.phone}
+                      onChange={(e) => setManualFormData({ ...manualFormData, phone: e.target.value })}
+                    />
+                    <small className="text-muted" style={{ fontSize: '11px' }}>Used for Phone.email instant SMS/WhatsApp OTP verification.</small>
+                  </div>
+
+                  <div className="col-6 col-md-3">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Hostel Block</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Block A"
+                      className="form-control form-control-sm"
+                      value={manualFormData.hostel_block}
+                      onChange={(e) => setManualFormData({ ...manualFormData, hostel_block: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="col-6 col-md-3">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Room Number</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. A-101"
+                      className="form-control form-control-sm font-mono"
+                      value={manualFormData.room_number}
+                      onChange={(e) => setManualFormData({ ...manualFormData, room_number: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="col-6 col-md-3">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Admission Year</label>
+                    <input
+                      type="number"
+                      min="2018"
+                      max="2035"
+                      className="form-control form-control-sm"
+                      value={manualFormData.admission_year}
+                      onChange={(e) => setManualFormData({ ...manualFormData, admission_year: parseInt(e.target.value) || new Date().getFullYear() })}
+                    />
+                  </div>
+
+                  <div className="col-6 col-md-3">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Semester</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={manualFormData.semester}
+                      onChange={(e) => setManualFormData({ ...manualFormData, semester: parseInt(e.target.value) || 1 })}
+                    >
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="col-12">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Degree / Course Program</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. B.Tech Computer Science & Engineering"
+                      className="form-control form-control-sm"
+                      value={manualFormData.course}
+                      onChange={(e) => setManualFormData({ ...manualFormData, course: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-check form-switch mt-3 p-3 rounded" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="createLoginSwitch"
+                    checked={manualFormData.create_login}
+                    onChange={(e) => setManualFormData({ ...manualFormData, create_login: e.target.checked })}
+                  />
+                  <label className="form-check-label fw-bold" htmlFor="createLoginSwitch" style={{ fontSize: '13px' }}>
+                    Pre-create Student Login Account Immediately
+                  </label>
+                  <div className="text-muted" style={{ fontSize: '11px' }}>
+                    Creates username <code>{manualFormData.roll_number || 'ROLL_NO'}</code> with default password <code>Student@12345</code>. Student can log in directly or use OTP password reset.
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer bg-light py-2">
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => setShowManualModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-sm btn-success d-flex align-items-center gap-1" disabled={manualLoading}>
+                  {manualLoading ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-1"></span>
+                      Registering...
+                    </>
+                  ) : (
+                    <>
+                      <Check size={14} /> Register & Activate Student
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Clear All Students Confirmation */}
+      {showClearModal && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg rounded-3">
+              <div className="modal-header bg-danger text-white py-3">
+                <div className="d-flex align-items-center gap-2">
+                  <Trash2 size={20} />
+                  <h5 className="modal-title fw-bold mb-0 text-white">Wipe All Student Records?</h5>
+                </div>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setShowClearModal(false)}></button>
+              </div>
+              <div className="modal-body p-4">
+                <p className="mb-2 text-danger fw-bold">⚠️ Warning: This action cannot be undone!</p>
+                <p className="text-muted" style={{ fontSize: '13px', lineHeight: 1.6 }}>
+                  This will completely remove all student accounts, hostel allotments, biometric facial embeddings, and daily attendance history from the database. Administrative and Warden staff accounts will remain safe.
+                </p>
+                <div className="p-3 rounded bg-light border text-muted" style={{ fontSize: '12px' }}>
+                  Use this to wipe out demo or old academic year student records so you can upload a clean roster via Excel, Word, or manual entry.
+                </div>
+              </div>
+              <div className="modal-footer bg-light py-2">
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => setShowClearModal(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger d-flex align-items-center gap-1"
+                  onClick={handleClearAllStudents}
+                  disabled={clearLoading}
+                >
+                  {clearLoading ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-1"></span>
+                      Wiping Data...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={14} /> Yes, Wipe All Student Records
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
