@@ -15,6 +15,9 @@ export const getApiBaseUrl = () => {
   if (Capacitor.isNativePlatform()) {
     return 'https://hostelguard-backend-oimp.onrender.com/api/v1';
   }
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return 'https://hostelguard-backend-oimp.onrender.com/api/v1';
+  }
   return '/api/v1';
 };
 
