@@ -212,4 +212,36 @@ describe('Student Password Reset System (Email & Phone OTP)', () => {
     expect(verifyRes.body.identifier).toBe('2023CS02');
     expect(verifyRes.body.resetToken).toBe(token);
   });
+
+  test('POST /api/v1/auth/phone-login - Rejects request with missing phone/json url with 400', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/phone-login')
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  test('POST /api/v1/auth/phone-login - Rejects unregistered phone number with 404', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/phone-login')
+      .send({ simulated_phone: '+919999988888' });
+
+    expect(res.status).toBe(404);
+    expect(res.body.success).toBe(false);
+  });
+
+  test('POST /api/v1/auth/phone-login - Successfully logs in student via verified phone number', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/phone-login')
+      .send({ simulated_phone: '+919876543210' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.token).toBeDefined();
+    expect(res.body.user).toBeDefined();
+    expect(res.body.user.username).toBe('2023CS01');
+    expect(res.body.user.role).toBe('STUDENT');
+  });
 });
+

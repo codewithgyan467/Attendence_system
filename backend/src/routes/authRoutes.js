@@ -665,5 +665,128 @@ router.post('/forgot-password/verify-magic-link', authLimiter, async (req, res) 
   }
 });
 
+// 10. Phone.Email ("Sign in with Phone") Direct Login / Authentication
+router.post('/phone-login', authLimiter, async (req, res) => {
+  try {
+    const { user_json_url, simulated_phone } = req.body;
+
+    if (!user_json_url && !simulated_phone) {
+      return res.status(400).json({ success: false, error: 'Phone.Email user_json_url is required.' });
+    }
+
+    let verifiedPhone = '';
+    if (user_json_url) {
+      const verifiedData = await verifyPhoneEmailJsonUrl(user_json_url);
+      verifiedPhone = verifiedData.fullPhone;
+    } else if (simulated_phone && process.env.NODE_ENV === 'test') {
+      verifiedPhone = String(simulated_phone).trim();
+    }
+
+    if (!verifiedPhone) {
+      return res.status(400).json({ success: false, error: 'Valid Phone.Email verification data is required.' });
+    }
+
+    const cleanDigits = verifiedPhone.replace(/[^0-9]/g, '');
+
+    // Look up student by phone in students table
+    const student = await getQuery(`
+      SELECT s.*, 
+             u.id as user_account_id, 
+             u.username, 
+             u.email as user_email, 
+             u.role, 
+             u.is_active as user_active, 
+             u.must_change_password
+      FROM students s
+      LEFT JOIN users u ON (s.user_id = u.id OR s.roll_number = u.username)
+      WHERE s.phone = ? OR s.phone LIKE ? OR s.phone LIKE ?
+      LIMIT 1
+    `, [verifiedPhone, `%${cleanDigits.slice(-10)}`, `%${cleanDigits}`]);
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        error: `Verified mobile number (${verifiedPhone}) is not registered with any student in the hostel system. Please contact your hostel warden or register as a resident.`
+      });
+    }
+
+    if (student.user_active === 0 || student.is_active === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Your account has been deactivated. Please contact the hostel administration or warden.'
+      });
+    }
+
+    // Determine or construct user object
+    let user = null;
+    if (student.user_account_id) {
+      user = {
+        id: student.user_account_id,
+        username: student.username || student.roll_number,
+        email: student.user_email || student.email,
+        role: student.role || 'STUDENT',
+        student_id: student.id,
+        must_change_password: student.must_change_password || 0
+      };
+    } else {
+      // Find or create user record for this registered student
+      let existingUser = await getQuery(`SELECT * FROM users WHERE username = ? OR student_id = ?`, [student.roll_number, student.id]);
+      if (existingUser) {
+        user = existingUser;
+        await runQuery(`UPDATE students SET user_id = ? WHERE id = ?`, [existingUser.id, student.id]);
+      } else {
+        const newUserId = uuidv4();
+        const salt = await bcrypt.genSalt(10);
+        const defaultHash = await bcrypt.hash('Student@12345', salt);
+        await runQuery(`
+          INSERT INTO users (id, username, email, password_hash, role, student_id, is_active)
+          VALUES (?, ?, ?, ?, 'STUDENT', ?, 1)
+        `, [newUserId, student.roll_number, student.email, defaultHash, student.id]);
+        await runQuery(`UPDATE students SET user_id = ? WHERE id = ?`, [newUserId, student.id]);
+        user = {
+          id: newUserId,
+          username: student.roll_number,
+          email: student.email,
+          role: 'STUDENT',
+          student_id: student.id,
+          must_change_password: 0
+        };
+      }
+    }
+
+    const token = generateToken(user);
+
+    await recordAuditEvent(
+      user.id,
+      user.username,
+      'USER_LOGIN_PHONE_EMAIL',
+      'USER',
+      user.id,
+      `User logged in via Phone.Email verified mobile: ${verifiedPhone}`,
+      req
+    );
+
+    res.json({
+      success: true,
+      message: `Welcome back, ${student.full_name}! (Username: ${user.username})`,
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        studentId: student.id,
+        mustChangePassword: Boolean(user.must_change_password),
+        studentProfile: student
+      },
+      verifiedPhone
+    });
+  } catch (err) {
+    console.error('Phone login error:', err);
+    res.status(500).json({ success: false, error: 'Phone login failed: ' + err.message });
+  }
+});
+
 module.exports = router;
+
 

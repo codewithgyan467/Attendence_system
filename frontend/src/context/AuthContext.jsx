@@ -73,6 +73,18 @@ export function AuthProvider({ children }) {
     setUser(userObj);
   };
 
+  const loginWithPhone = async (userJsonUrl) => {
+    const res = await api.auth.phoneEmailLogin({ user_json_url: userJsonUrl });
+    if (res.token && res.user) {
+      authStorage.setToken(res.token);
+      authStorage.setUser(res.user);
+      setToken(res.token);
+      setUser(res.user);
+      return res;
+    }
+    throw new Error('Phone authentication failed');
+  };
+
   const value = {
     user,
     token,
@@ -80,6 +92,7 @@ export function AuthProvider({ children }) {
     isAuthenticated: Boolean(user && token),
     loading,
     login,
+    loginWithPhone,
     logout,
     changePassword,
     setAuthenticatedStudent

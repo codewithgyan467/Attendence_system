@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, Server, Check, CheckCircle2 } from 'lucide-react';
+import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, Server, Check, CheckCircle2, Smartphone } from 'lucide-react';
 import { getApiBaseUrl, authStorage } from '../../utils/api';
 import ForgotPasswordModal from './ForgotPasswordModal';
+import SignInWithPhoneButton from './SignInWithPhoneButton';
 
 export default function LoginPage({ onNavigateOnboarding }) {
-  const { login } = useAuth();
+  const { login, loginWithPhone } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -53,6 +54,19 @@ export default function LoginPage({ onNavigateOnboarding }) {
     }
   };
 
+  const handlePhoneLoginSuccess = async (userJsonUrl) => {
+    setLoading(true);
+    setErrorMsg('');
+    try {
+      const res = await loginWithPhone(userJsonUrl);
+      setSuccessBanner(res.message || 'Phone verification successful! Welcome back.');
+    } catch (err) {
+      setErrorMsg(err.message || 'Phone sign-in failed. Please ensure your mobile is registered.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSaveServer = (e) => {
     e.preventDefault();
     authStorage.setBackendUrl(customServerUrl);
@@ -95,7 +109,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
 
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
-              <label className="form-label small fw-medium text-dark">Username or Roll Number</label>
+              <label className="form-label small fw-medium text-dark">Username, Roll Number, or Email</label>
               <div className="input-group">
                 <span className="input-group-text bg-light border-end-0">
                   <User size={16} className="text-muted" />
@@ -103,7 +117,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
                 <input
                   type="text"
                   className="form-control border-start-0 ps-0"
-                  placeholder="e.g. admin or 2024CS001"
+                  placeholder="e.g. 2024CS001, admin, or student@hostel.local"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={loading}
@@ -121,7 +135,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
                   style={{ fontSize: '12px' }}
                   onClick={() => setShowForgotModal(true)}
                 >
-                  <Key size={12} /> Forgot / Reset Password?
+                  <Key size={12} /> Forgot Password?
                 </button>
               </div>
               <div className="input-group">
@@ -158,6 +172,24 @@ export default function LoginPage({ onNavigateOnboarding }) {
               )}
             </button>
           </form>
+
+          {/* Sign in with Phone (Phone.Email Free Global OTP) */}
+          <div className="position-relative my-3 text-center">
+            <hr className="text-secondary opacity-25" />
+            <span className="position-absolute top-50 start-50 translate-middle bg-white px-2 small text-muted fw-semibold" style={{ fontSize: '11px' }}>
+              OR SIGN IN WITH PHONE
+            </span>
+          </div>
+
+          <div className="d-flex flex-column align-items-center justify-content-center mb-3">
+            <SignInWithPhoneButton
+              onSuccess={handlePhoneLoginSuccess}
+              onError={(err) => setErrorMsg(err)}
+            />
+            <div className="text-center text-muted mt-2" style={{ fontSize: '11px' }}>
+              Forgot your username? Sign in instantly with your verified mobile number OTP.
+            </div>
+          </div>
 
           {/* Student Onboarding Action */}
           <div className="text-center mt-4 pt-3 border-top">
