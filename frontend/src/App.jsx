@@ -1,21 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/common/Navbar';
 import Sidebar from './components/common/Sidebar';
 import LoginPage from './components/auth/LoginPage';
-import StudentOnboarding from './components/StudentOnboarding';
-import AdminDashboard from './components/admin/AdminDashboard';
-import StudentRosterManager from './components/admin/StudentRosterManager';
-import GeofenceManager from './components/admin/GeofenceManager';
-import AttendanceManager from './components/admin/AttendanceManager';
-import SecurityIncidentDesk from './components/admin/SecurityIncidentDesk';
-import CorrectionRequestDesk from './components/admin/CorrectionRequestDesk';
-import FeedbackTicketDesk from './components/admin/FeedbackTicketDesk';
-import AuditLogViewer from './components/admin/AuditLogViewer';
-import WardenDashboard from './components/warden/WardenDashboard';
-import StudentPortal from './components/student/StudentPortal';
 import { ArrowLeft } from 'lucide-react';
 import { initOtaUpdater } from './utils/otaUpdater';
+
+// Lazy-loaded role-scoped dashboard modules
+const StudentOnboarding = lazy(() => import('./components/StudentOnboarding'));
+const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard'));
+const StudentRosterManager = lazy(() => import('./components/admin/StudentRosterManager'));
+const GeofenceManager = lazy(() => import('./components/admin/GeofenceManager'));
+const AttendanceManager = lazy(() => import('./components/admin/AttendanceManager'));
+const SecurityIncidentDesk = lazy(() => import('./components/admin/SecurityIncidentDesk'));
+const CorrectionRequestDesk = lazy(() => import('./components/admin/CorrectionRequestDesk'));
+const FeedbackTicketDesk = lazy(() => import('./components/admin/FeedbackTicketDesk'));
+const AuditLogViewer = lazy(() => import('./components/admin/AuditLogViewer'));
+const WardenDashboard = lazy(() => import('./components/warden/WardenDashboard'));
+const StudentPortal = lazy(() => import('./components/student/StudentPortal'));
+
 
 function AppContent() {
   const { user, role, loading } = useAuth();
@@ -64,11 +67,13 @@ function AppContent() {
               <ArrowLeft size={16} /> Back to Sign In
             </button>
           </div>
-          <StudentOnboarding
-            onComplete={() => {
-              setShowOnboarding(false);
-            }}
-          />
+          <Suspense fallback={<div className="d-flex justify-content-center p-5 text-muted"><div className="spinner-border text-primary spinner-border-sm me-2" role="status" />Loading Enrollment...</div>}>
+            <StudentOnboarding
+              onComplete={() => {
+                setShowOnboarding(false);
+              }}
+            />
+          </Suspense>
         </div>
       );
     }
@@ -104,36 +109,43 @@ function AppContent() {
         <Navbar onToggleSidebar={() => setShowMobileSidebar(!showMobileSidebar)} />
 
         <main className="p-3 p-lg-4 flex-grow-1">
-          {/* Admin Views */}
-          {role === 'ADMIN' && (
-            <>
-              {activeTab === 'admin_dashboard' && <AdminDashboard onNavigate={setActiveTab} />}
-              {activeTab === 'admin_students' && <StudentRosterManager />}
-              {activeTab === 'admin_geofence' && <GeofenceManager />}
-              {activeTab === 'admin_attendance' && <AttendanceManager />}
-              {activeTab === 'admin_security' && <SecurityIncidentDesk />}
-              {activeTab === 'admin_corrections' && <CorrectionRequestDesk />}
-              {activeTab === 'admin_feedback' && <FeedbackTicketDesk />}
-              {activeTab === 'admin_audit' && <AuditLogViewer />}
-            </>
-          )}
+          <Suspense fallback={
+            <div className="d-flex flex-column align-items-center justify-content-center p-5 text-muted">
+              <div className="spinner-border text-primary spinner-border-sm mb-2" role="status" />
+              <div className="small">Loading Dashboard Module...</div>
+            </div>
+          }>
+            {/* Admin Views */}
+            {role === 'ADMIN' && (
+              <>
+                {activeTab === 'admin_dashboard' && <AdminDashboard onNavigate={setActiveTab} />}
+                {activeTab === 'admin_students' && <StudentRosterManager />}
+                {activeTab === 'admin_geofence' && <GeofenceManager />}
+                {activeTab === 'admin_attendance' && <AttendanceManager />}
+                {activeTab === 'admin_security' && <SecurityIncidentDesk />}
+                {activeTab === 'admin_corrections' && <CorrectionRequestDesk />}
+                {activeTab === 'admin_feedback' && <FeedbackTicketDesk />}
+                {activeTab === 'admin_audit' && <AuditLogViewer />}
+              </>
+            )}
 
-          {/* Warden Views */}
-          {role === 'WARDEN' && (
-            <>
-              {activeTab === 'warden_overview' && <WardenDashboard subTab="warden_overview" onSelectTab={setActiveTab} />}
-              {activeTab === 'warden_students' && <StudentRosterManager />}
-              {activeTab === 'warden_exceptions' && <WardenDashboard subTab="warden_exceptions" onSelectTab={setActiveTab} />}
-              {activeTab === 'warden_corrections' && <WardenDashboard subTab="warden_corrections" onSelectTab={setActiveTab} />}
-              {activeTab === 'warden_feedback' && <WardenDashboard subTab="warden_feedback" onSelectTab={setActiveTab} />}
-              {activeTab === 'warden_attendance' && <AttendanceManager />}
-            </>
-          )}
+            {/* Warden Views */}
+            {role === 'WARDEN' && (
+              <>
+                {activeTab === 'warden_overview' && <WardenDashboard subTab="warden_overview" onSelectTab={setActiveTab} />}
+                {activeTab === 'warden_students' && <StudentRosterManager />}
+                {activeTab === 'warden_exceptions' && <WardenDashboard subTab="warden_exceptions" onSelectTab={setActiveTab} />}
+                {activeTab === 'warden_corrections' && <WardenDashboard subTab="warden_corrections" onSelectTab={setActiveTab} />}
+                {activeTab === 'warden_feedback' && <WardenDashboard subTab="warden_feedback" onSelectTab={setActiveTab} />}
+                {activeTab === 'warden_attendance' && <AttendanceManager />}
+              </>
+            )}
 
-          {/* Student Views */}
-          {role === 'STUDENT' && (
-            <StudentPortal activeTab={activeTab} onSelectTab={setActiveTab} />
-          )}
+            {/* Student Views */}
+            {role === 'STUDENT' && (
+              <StudentPortal activeTab={activeTab} onSelectTab={setActiveTab} />
+            )}
+          </Suspense>
         </main>
 
         {/* Global Footer */}
