@@ -15,8 +15,12 @@ const backupService = require('../services/backupService');
 const aiServiceClient = require('../services/aiServiceClient');
 
 // Security Hardened Multer Configuration: 10MB limit and strict file format filter
+const uploadDir = path.join(__dirname, '../../uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 const upload = multer({
-  dest: 'uploads/',
+  dest: uploadDir,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
     files: 1

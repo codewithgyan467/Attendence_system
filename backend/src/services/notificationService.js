@@ -180,16 +180,18 @@ async function sendEmailOtp({
     }
   }
 
-  // Developer / Local Evaluation Log
-  console.log('\n=============================================================');
-  console.log('📧 [HOSTELGUARD EMAIL AUTHENTICATION]');
-  console.log(`To: ${email} (${studentName} - ${rollNumber})`);
-  console.log(`Subject: Password Reset Verification OTP & Magic Link`);
-  console.log(`🔐 OTP Code: >>> ${otpCode} <<<`);
-  if (magicLinkUrl) console.log(`⚡ Magic Reset Link: ${magicLinkUrl}`);
-  if (previewUrl) console.log(`🌐 Live Web Preview: ${previewUrl}`);
-  console.log('⏱ Expiration: 10 minutes');
-  console.log('=============================================================\n');
+  // Developer / Local Evaluation Log (Disabled in production to protect secret tokens)
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('\n=============================================================');
+    console.log('📧 [HOSTELGUARD EMAIL AUTHENTICATION]');
+    console.log(`To: ${email} (${studentName} - ${rollNumber})`);
+    console.log(`Subject: Password Reset Verification OTP & Magic Link`);
+    console.log(`🔐 OTP Code: >>> ${otpCode} <<<`);
+    if (magicLinkUrl) console.log(`⚡ Magic Reset Link: ${magicLinkUrl}`);
+    if (previewUrl) console.log(`🌐 Live Web Preview: ${previewUrl}`);
+    console.log('⏱ Expiration: 10 minutes');
+    console.log('=============================================================\n');
+  }
 
   return {
     success: true,
@@ -287,13 +289,16 @@ async function sendSmsOtp({ phone, otpCode, studentName = 'Student', rollNumber 
     }
   }
 
-  console.log('\n=============================================================');
-  console.log('📱 [HOSTELGUARD SMS NOTIFICATION]');
-  console.log(`To: ${phone} (${studentName} - ${rollNumber})`);
-  console.log(`Message: ${smsBody}`);
-  console.log(`🔐 OTP Verification Code: >>> ${otpCode} <<<`);
-  console.log('⏱ Expiration: 10 minutes');
-  console.log('=============================================================\n');
+  // Developer / Local Evaluation Log (Disabled in production to protect secret tokens)
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('\n=============================================================');
+    console.log('📱 [HOSTELGUARD SMS NOTIFICATION]');
+    console.log(`To: ${phone} (${studentName} - ${rollNumber})`);
+    console.log(`Message: ${smsBody}`);
+    console.log(`🔐 OTP Verification Code: >>> ${otpCode} <<<`);
+    console.log('⏱ Expiration: 10 minutes');
+    console.log('=============================================================\n');
+  }
 
   return {
     success: true,

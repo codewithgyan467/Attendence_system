@@ -53,7 +53,7 @@ app.use(cors({
     ) {
       return callback(null, true);
     }
-    return callback(null, true); // Permissive fallback for client deployments
+    return callback(new Error(`Blocked by CORS policy: Origin '${origin}' is not authorized.`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
