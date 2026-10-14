@@ -91,4 +91,59 @@ describe('Roster Upload & Pre-Registration Verification', () => {
     expect(audit).toBeDefined();
     expect(audit.username).toBe('admin');
   });
+
+  test('POST /api/v1/admin/students/manual-add - Rejects duplicate email with friendly 400 error instead of SQLITE_CONSTRAINT crash', async () => {
+    // Attempt to add a student using the admin's email 'admin@hostelguard.local'
+    const res = await request(app)
+      .post('/api/v1/admin/students/manual-add')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roll_number: 'UNIQUE_ROLL_99',
+        full_name: 'Test Student Conflict',
+        room_number: 'B-101',
+        hostel_block: 'Block B',
+        email: 'admin@hostelguard.local',
+        phone: '+919999988888',
+        course: 'B.Tech IT',
+        admission_year: 2024,
+        semester: 1,
+        create_login: true
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/already registered/i);
+    expect(res.body.error).not.toMatch(/SQLITE_CONSTRAINT/i);
+  });
+
+  test('POST /api/v1/admin/students/manual-add - Successfully registers student with unique email', async () => {
+    await runQuery(`DELETE FROM students WHERE roll_number = 'UNIQUE_ROLL_99'`);
+    await runQuery(`DELETE FROM hostel_allotments WHERE roll_number = 'UNIQUE_ROLL_99'`);
+    await runQuery(`DELETE FROM users WHERE username = 'UNIQUE_ROLL_99'`);
+
+    const res = await request(app)
+      .post('/api/v1/admin/students/manual-add')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roll_number: 'UNIQUE_ROLL_99',
+        full_name: 'Test Unique Student',
+        room_number: 'B-101',
+        hostel_block: 'Block B',
+        email: 'unique.student.99@student.hostel.local',
+        phone: '+919999977777',
+        course: 'B.Tech IT',
+        admission_year: 2024,
+        semester: 1,
+        create_login: true
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.student.roll_number).toBe('UNIQUE_ROLL_99');
+
+    // Clean up
+    await runQuery(`DELETE FROM students WHERE roll_number = 'UNIQUE_ROLL_99'`);
+    await runQuery(`DELETE FROM hostel_allotments WHERE roll_number = 'UNIQUE_ROLL_99'`);
+    await runQuery(`DELETE FROM users WHERE username = 'UNIQUE_ROLL_99'`);
+  });
 });

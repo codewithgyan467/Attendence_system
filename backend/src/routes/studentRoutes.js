@@ -101,6 +101,18 @@ router.post('/onboard', async (req, res) => {
     let existingStudent = await getQuery(`SELECT id FROM students WHERE roll_number = ?`, [roll_number.trim()]);
     let userId = existingUser ? existingUser.id : uuidv4();
 
+    // Verify email is not already used by another user account
+    const emailConflictUser = await getQuery(
+      `SELECT username FROM users WHERE LOWER(email) = LOWER(?) AND id != ?`,
+      [userEmail, userId]
+    );
+    if (emailConflictUser) {
+      return res.status(400).json({
+        success: false,
+        error: `The email "${userEmail}" is already registered to another account (${emailConflictUser.username}). Each student requires a unique email address.`
+      });
+    }
+
     // Commit atomically in transaction
     await withTransaction(async ({ runQuery }) => {
       if (!existingUser) {
@@ -203,6 +215,13 @@ router.post('/onboard', async (req, res) => {
     });
   } catch (err) {
     console.error('Onboarding failed:', err);
+    const msg = String(err.message || '');
+    if (msg.includes('UNIQUE constraint failed: users.email') || msg.includes('UNIQUE constraint failed: students.email')) {
+      return res.status(400).json({
+        success: false,
+        error: `The email "${userEmail}" is already associated with another account. Please use your unique college email.`
+      });
+    }
     res.status(500).json({ success: false, error: 'Onboarding error: ' + err.message });
   }
 });

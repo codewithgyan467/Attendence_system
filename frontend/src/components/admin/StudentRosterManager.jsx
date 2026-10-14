@@ -255,6 +255,25 @@ export default function StudentRosterManager() {
       return;
     }
 
+    const trimmedEmail = manualFormData.email.trim().toLowerCase();
+    if (trimmedEmail === 'admin@hostelguard.local' || trimmedEmail === 'warden@hostelguard.local') {
+      showFeedback(`The email "${trimmedEmail}" is reserved for system administrators. Please enter the student's unique email address.`, 'danger');
+      return;
+    }
+
+    const trimmedRoll = manualFormData.roll_number.trim().toUpperCase();
+    const existingStudentWithEmail = students.find(s => s.email && s.email.toLowerCase() === trimmedEmail);
+    if (existingStudentWithEmail) {
+      showFeedback(`The email "${trimmedEmail}" is already used by student ${existingStudentWithEmail.full_name} (${existingStudentWithEmail.roll_number}). Each student requires a unique email address.`, 'danger');
+      return;
+    }
+
+    const existingStudentWithRoll = students.find(s => s.roll_number && s.roll_number.toUpperCase() === trimmedRoll);
+    if (existingStudentWithRoll) {
+      showFeedback(`Student with Roll Number "${trimmedRoll}" already exists on the roster (${existingStudentWithRoll.full_name}).`, 'danger');
+      return;
+    }
+
     try {
       setManualLoading(true);
       const res = await api.admin.manualAddStudent(manualFormData);
@@ -846,7 +865,7 @@ export default function StudentRosterManager() {
       {showManualModal && (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 1055 }}>
           <div className="modal-dialog modal-lg">
-            <form onSubmit={handleManualAddSubmit} className="modal-content shadow-lg border-0 rounded-3">
+            <form onSubmit={handleManualAddSubmit} autoComplete="off" className="modal-content shadow-lg border-0 rounded-3">
               <div className="modal-header bg-success text-white py-3">
                 <div className="d-flex align-items-center gap-2">
                   <UserPlus size={20} />
@@ -871,6 +890,7 @@ export default function StudentRosterManager() {
                     <input
                       type="text"
                       required
+                      autoComplete="off"
                       placeholder="e.g. Vikram Malhotra"
                       className="form-control form-control-sm"
                       value={manualFormData.full_name}
@@ -885,6 +905,7 @@ export default function StudentRosterManager() {
                     <input
                       type="text"
                       required
+                      autoComplete="off"
                       placeholder="e.g. 2024CS01"
                       className="form-control form-control-sm font-mono text-uppercase"
                       value={manualFormData.roll_number}
@@ -899,12 +920,18 @@ export default function StudentRosterManager() {
                     <input
                       type="email"
                       required
+                      autoComplete="off"
                       placeholder="e.g. vikram.m@college.edu"
                       className="form-control form-control-sm"
                       value={manualFormData.email}
                       onChange={(e) => setManualFormData({ ...manualFormData, email: e.target.value })}
                     />
-                    <small className="text-muted" style={{ fontSize: '11px' }}>Direct recipient for 6-digit Email OTPs and Magic Link recovery.</small>
+                    <small className="text-muted d-block" style={{ fontSize: '11px' }}>
+                      Direct recipient for 6-digit Email OTPs and password reset.
+                    </small>
+                    <small className="text-primary fw-semibold" style={{ fontSize: '10.5px' }}>
+                      ℹ Must be unique. Do not use admin or warden email (e.g. admin@hostelguard.local).
+                    </small>
                   </div>
 
                   <div className="col-12 col-md-6">
@@ -914,6 +941,7 @@ export default function StudentRosterManager() {
                     <input
                       type="tel"
                       required
+                      autoComplete="off"
                       placeholder="e.g. +91 9876543210"
                       className="form-control form-control-sm font-mono"
                       value={manualFormData.phone}

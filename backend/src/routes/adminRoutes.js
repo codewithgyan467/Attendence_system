@@ -378,6 +378,7 @@ router.post('/allotment/upload-preview', upload.single('file'), async (req, res)
     const conflicts = [];
     const valid = [];
     const seenInFile = new Set();
+    const seenEmailsInFile = new Set();
 
     for (const r of parsedRows) {
       if (!r.roll_number || !r.full_name) {
@@ -390,6 +391,22 @@ router.post('/allotment/upload-preview', upload.single('file'), async (req, res)
         continue;
       }
       seenInFile.add(r.roll_number);
+
+      if (r.email) {
+        if (seenEmailsInFile.has(r.email)) {
+          conflicts.push({ ...r, issue: `Duplicate email address "${r.email}" in uploaded file`, status: 'CONFLICT_ALREADY_EXISTS' });
+          continue;
+        }
+        seenEmailsInFile.add(r.email);
+
+        const existingEmailUser = await getQuery(`SELECT username FROM users WHERE LOWER(email) = LOWER(?)`, [r.email]);
+        const existingEmailStudent = await getQuery(`SELECT roll_number FROM students WHERE LOWER(email) = LOWER(?)`, [r.email]);
+
+        if (existingEmailUser || existingEmailStudent) {
+          conflicts.push({ ...r, issue: `Email address "${r.email}" is already registered in the system`, status: 'CONFLICT_ALREADY_EXISTS' });
+          continue;
+        }
+      }
 
       const existingAllotment = await getQuery(`SELECT roll_number FROM hostel_allotments WHERE roll_number = ?`, [r.roll_number]);
       const existingStudent = await getQuery(`SELECT roll_number FROM students WHERE roll_number = ?`, [r.roll_number]);
@@ -463,11 +480,20 @@ router.post('/allotment/upload-commit', async (req, res) => {
           ]);
 
           if (preCreateLogins) {
-            const userId = uuidv4();
-            await runQuery(`
-              INSERT INTO users (id, username, email, password_hash, role, student_id, is_active, must_change_password)
-              VALUES (?, ?, ?, ?, 'STUDENT', ?, 1, 0)
-            `, [userId, item.roll_number, studentEmail, defaultStudentHash, studentId]);
+            let finalEmail = studentEmail;
+            const emailInUse = await getQuery(`SELECT id FROM users WHERE LOWER(email) = LOWER(?)`, [finalEmail]);
+            if (emailInUse) {
+              finalEmail = `${item.roll_number.toLowerCase()}.${uuidv4().substring(0, 6)}@student.hostel.local`;
+            }
+
+            const existingUser = await getQuery(`SELECT id FROM users WHERE username = ?`, [item.roll_number]);
+            const userId = existingUser ? existingUser.id : uuidv4();
+            if (!existingUser) {
+              await runQuery(`
+                INSERT INTO users (id, username, email, password_hash, role, student_id, is_active, must_change_password)
+                VALUES (?, ?, ?, ?, 'STUDENT', ?, 1, 0)
+              `, [userId, item.roll_number, finalEmail, defaultStudentHash, studentId]);
+            }
 
             await runQuery(`
               INSERT INTO students (
@@ -477,7 +503,7 @@ router.post('/allotment/upload-commit', async (req, res) => {
               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             `, [
               studentId, userId, allotmentId, item.roll_number, item.full_name,
-              studentEmail, studentPhone, course, admYear, sem,
+              finalEmail, studentPhone, course, admYear, sem,
               item.room_number || 'A-101', item.hostel_block || 'Block A',
               `DEV-${item.roll_number.toLowerCase()}`,
               'Pending Biometric Enrollment'
@@ -508,6 +534,13 @@ router.post('/allotment/upload-commit', async (req, res) => {
     });
   } catch (err) {
     console.error('Upload commit failed:', err);
+    const msg = String(err.message || '');
+    if (msg.includes('UNIQUE constraint failed: users.email')) {
+      return res.status(400).json({
+        success: false,
+        error: 'One or more records contain an email address that is already registered to an existing account. Please ensure all student emails are unique.'
+      });
+    }
     res.status(500).json({ success: false, error: 'Database transaction error: ' + err.message });
   }
 });
@@ -542,12 +575,39 @@ router.post('/students/manual-add', async (req, res) => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPhone = phone.trim();
 
-    // Check if roll number already exists
+    // 1. Check if roll number already exists in allotments or students
     const existingAllotment = await getQuery(`SELECT id FROM hostel_allotments WHERE roll_number = ?`, [cleanRoll]);
     const existingStudent = await getQuery(`SELECT id FROM students WHERE roll_number = ?`, [cleanRoll]);
 
     if (existingAllotment || existingStudent) {
-      return res.status(400).json({ success: false, error: `Student with roll number ${cleanRoll} already exists.` });
+      return res.status(400).json({ success: false, error: `Student with roll number "${cleanRoll}" is already registered on the hostel roster.` });
+    }
+
+    // 2. Pre-flight check: ensure username does not conflict with existing users
+    const existingUsername = await getQuery(`SELECT username, role FROM users WHERE LOWER(username) = LOWER(?)`, [cleanRoll]);
+    if (existingUsername) {
+      return res.status(400).json({
+        success: false,
+        error: `A user account with roll number / username "${cleanRoll}" already exists (Role: ${existingUsername.role}). Please verify the roll number.`
+      });
+    }
+
+    // 3. Pre-flight check: ensure email is not already in use by any user account (admin, warden, or student)
+    const existingUserEmail = await getQuery(`SELECT username, role, email FROM users WHERE LOWER(email) = LOWER(?)`, [cleanEmail]);
+    if (existingUserEmail) {
+      return res.status(400).json({
+        success: false,
+        error: `The email "${cleanEmail}" is already registered to user account "${existingUserEmail.username}" (${existingUserEmail.role}). Each user must have a unique email address for OTP authentication and security.`
+      });
+    }
+
+    // 4. Pre-flight check: ensure email is not already assigned to another student profile
+    const existingStudentEmail = await getQuery(`SELECT roll_number, full_name FROM students WHERE LOWER(email) = LOWER(?)`, [cleanEmail]);
+    if (existingStudentEmail) {
+      return res.status(400).json({
+        success: false,
+        error: `The email "${cleanEmail}" is already assigned to student ${existingStudentEmail.full_name} (${existingStudentEmail.roll_number}). Please provide a distinct email address.`
+      });
     }
 
     const allotmentId = uuidv4();
@@ -623,6 +683,19 @@ router.post('/students/manual-add', async (req, res) => {
     });
   } catch (err) {
     console.error('Manual student add failed:', err);
+    const msg = String(err.message || '');
+    if (msg.includes('UNIQUE constraint failed: users.email') || msg.includes('UNIQUE constraint failed: students.email')) {
+      return res.status(400).json({
+        success: false,
+        error: `The email "${cleanEmail}" is already registered in the system. Each student must have a unique email address.`
+      });
+    }
+    if (msg.includes('UNIQUE constraint failed: users.username') || msg.includes('UNIQUE constraint failed: students.roll_number') || msg.includes('UNIQUE constraint failed: hostel_allotments.roll_number')) {
+      return res.status(400).json({
+        success: false,
+        error: `A student or user with roll number "${cleanRoll}" is already registered.`
+      });
+    }
     res.status(500).json({ success: false, error: err.message });
   }
 });
