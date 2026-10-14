@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
-import { getNativeOrBrowserLocation, isNativeMobile, openNativeLocationSettings } from '../../utils/nativeHardware';
+import { getNativeOrBrowserLocation, isNativeMobile } from '../../utils/nativeHardware';
 import {
   UserCheck,
   History,
@@ -399,29 +399,45 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                         <div className="alert alert-danger py-2 px-3 small mx-auto mb-3" style={{ maxWidth: '460px' }}>
                           {checkinError || 'Verification was rejected.'}
                         </div>
-                        <div className="d-flex flex-wrap justify-content-center gap-2">
-                          <button
-                            className="btn btn-primary btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
-                            onClick={handleVerifyLocation}
-                          >
-                            <RefreshCw size={14} /> Auto-Calibrate & Retry
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-outline-secondary btn-sm px-3 d-inline-flex align-items-center gap-1"
-                            onClick={openNativeLocationSettings}
-                          >
-                            ⚙️ Location Settings
-                          </button>
-                          <a
-                            href="https://www.google.com/maps/search/?api=1&query=my+location"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="btn btn-outline-secondary btn-sm px-3 d-inline-flex align-items-center gap-1 text-decoration-none"
-                          >
-                            📍 Quick Maps Fix
-                          </a>
-                        </div>
+
+                        {/* CASE A: Account is Locked by Security Policy */}
+                        {checkinError?.toLowerCase().includes('locked') ? (
+                          <div className="d-flex flex-column align-items-center gap-2">
+                            <div className="card bg-danger-subtle border-danger border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
+                              <div className="fw-bold text-danger small mb-1">🔒 Security Lockout Active</div>
+                              <div className="small text-muted">
+                                Your account is locked from roll call check-in. The hostel administrator or warden must clear your strikes in the Admin Security Desk.
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
+                              onClick={() => {
+                                if (onSelectTab) onSelectTab('support_tickets');
+                                setTicketForm({
+                                  category: 'ATTENDANCE',
+                                  subject: `Strike Reset Appeal - Roll ${student.roll_number || user?.username}`,
+                                  message: 'My check-in triggered a strike lockout due to GPS sensor variance inside the hostel room. Please reset my strikes in the Security Incident Desk so I can complete roll call.'
+                                });
+                              }}
+                            >
+                              <LifeBuoy size={14} /> Submit Strike Appeal to Warden
+                            </button>
+                          </div>
+                        ) : (
+                          /* CASE B: Standard Location / Accuracy Issue */
+                          <div className="d-flex flex-column align-items-center gap-2">
+                            <button
+                              className="btn btn-primary btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
+                              onClick={handleVerifyLocation}
+                            >
+                              <RefreshCw size={14} /> Re-Scan GPS & Try Again
+                            </button>
+                            <div className="text-muted small mt-1" style={{ fontSize: '11px', maxWidth: '380px' }}>
+                              💡 <strong>Tip:</strong> Turning on your phone's Wi-Fi (even without connecting) helps your device lock onto campus location beacons instantly.
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </>

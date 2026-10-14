@@ -9,7 +9,8 @@ import {
   Search,
   UserX,
   Compass,
-  Clock
+  Clock,
+  Unlock
 } from 'lucide-react';
 
 export default function SecurityIncidentDesk() {
@@ -23,6 +24,7 @@ export default function SecurityIncidentDesk() {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [resetReason, setResetReason] = useState('');
   const [submittingReset, setSubmittingReset] = useState(false);
+  const [submittingResetAll, setSubmittingResetAll] = useState(false);
 
   useEffect(() => {
     fetchAlerts();
@@ -33,7 +35,42 @@ export default function SecurityIncidentDesk() {
     setErrorMsg(null);
     try {
       const data = await api.admin.getSecurityAlerts();
-      setAlerts(data || { flagged_students: [], recent_logs: [] });
+      const rawStudents = data?.flagged_students || data?.flaggedStudents || [];
+      const rawLogs = data?.recent_logs || data?.recentAuditLogs || [];
+
+      // Normalize fields so the component works universally
+      const normalizedStudents = rawStudents.map(s => ({
+        id: s.id || s.student_id,
+        student_id: s.student_id || s.id,
+        roll_no: s.roll_no || s.roll_number,
+        roll_number: s.roll_number || s.roll_no,
+        full_name: s.full_name || 'Student',
+        block_name: s.block_name || s.hostel_block || 'Hostel Block',
+        course: s.course || '',
+        strike_count: typeof s.strike_count === 'number' ? s.strike_count : (s.failed_attempts || 0),
+        failed_attempts: typeof s.failed_attempts === 'number' ? s.failed_attempts : (s.strike_count || 0),
+        is_flagged: Boolean(s.is_flagged || s.is_flagged_forge === 1 || (s.failed_attempts || 0) >= 3),
+        is_flagged_forge: s.is_flagged_forge || (s.is_flagged ? 1 : 0)
+      }));
+
+      const normalizedLogs = rawLogs.map(l => ({
+        id: l.id,
+        event_type: l.event_type || l.incident_type || 'SECURITY_EVENT',
+        incident_type: l.incident_type || l.event_type || 'SECURITY_EVENT',
+        timestamp: l.timestamp || l.created_at || new Date().toISOString(),
+        created_at: l.created_at || l.timestamp,
+        student_name: l.student_name || l.full_name || (l.roll_number ? `Student ${l.roll_number}` : `Student ID: ${l.student_id}`),
+        roll_number: l.roll_number,
+        details: l.details || (l.distance_meters ? `Recorded distance: ${Math.round(l.distance_meters)}m` : 'Location check failed'),
+        distance_meters: l.distance_meters || l.calculated_distance || 0
+      }));
+
+      setAlerts({
+        flagged_students: normalizedStudents,
+        flaggedStudents: normalizedStudents,
+        recent_logs: normalizedLogs,
+        recentAuditLogs: normalizedLogs
+      });
     } catch (err) {
       setErrorMsg(err.message || 'Failed to fetch security alerts and strike logs');
     } finally {
@@ -43,7 +80,7 @@ export default function SecurityIncidentDesk() {
 
   const openResetModal = (student) => {
     setSelectedStudent(student);
-    setResetReason('');
+    setResetReason('Verified legitimate attendance attempt / GPS signal variance cleared.');
     setShowResetModal(true);
   };
 
@@ -61,9 +98,10 @@ export default function SecurityIncidentDesk() {
     try {
       const res = await api.admin.resetStrike({
         student_id: selectedStudent.student_id || selectedStudent.id,
+        rollNumber: selectedStudent.roll_number || selectedStudent.roll_no,
         reason: resetReason
       });
-      setStatusMsg(res.message || `Strike counter reset successfully for ${selectedStudent.full_name}.`);
+      setStatusMsg(res.message || `Strike counter reset successfully for ${selectedStudent.full_name}. Account unlocked!`);
       setShowResetModal(false);
       fetchAlerts();
     } catch (err) {
@@ -73,8 +111,30 @@ export default function SecurityIncidentDesk() {
     }
   };
 
-  const flaggedStudents = alerts.flagged_students || [];
-  const recentLogs = alerts.recent_logs || [];
+  const handleResetAllStrikes = async () => {
+    if (!window.confirm('Are you sure you want to reset all strikes and unlock all flagged student accounts?')) {
+      return;
+    }
+
+    setSubmittingResetAll(true);
+    setErrorMsg(null);
+    setStatusMsg(null);
+
+    try {
+      const res = await api.admin.resetAllStrikes({
+        reason: 'Administrative mass clearance of GPS/forge strikes'
+      });
+      setStatusMsg(res.message || 'All student strikes have been cleared successfully!');
+      fetchAlerts();
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to clear all strikes');
+    } finally {
+      setSubmittingResetAll(false);
+    }
+  };
+
+  const flaggedStudents = alerts.flagged_students || alerts.flaggedStudents || [];
+  const recentLogs = alerts.recent_logs || alerts.recentAuditLogs || [];
 
   return (
     <div className="container-fluid px-0">
@@ -89,13 +149,29 @@ export default function SecurityIncidentDesk() {
             Monitoring the 3-strike Forge Location rule, out-of-boundary check-in attempts, and suspicious device signatures.
           </p>
         </div>
-        <button
-          className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
-          onClick={fetchAlerts}
-          disabled={loading}
-        >
-          <RefreshCw size={14} /> Refresh Alerts
-        </button>
+        <div className="d-flex gap-2">
+          {flaggedStudents.length > 0 && (
+            <button
+              className="btn btn-danger btn-sm d-flex align-items-center gap-1 fw-semibold shadow-sm"
+              onClick={handleResetAllStrikes}
+              disabled={submittingResetAll}
+            >
+              {submittingResetAll ? (
+                <span className="spinner-border spinner-border-sm" role="status" />
+              ) : (
+                <Unlock size={14} />
+              )}
+              Unlock All Flagged Students
+            </button>
+          )}
+          <button
+            className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
+            onClick={fetchAlerts}
+            disabled={loading}
+          >
+            <RefreshCw size={14} /> Refresh Alerts
+          </button>
+        </div>
       </div>
 
       {statusMsg && (
@@ -122,7 +198,7 @@ export default function SecurityIncidentDesk() {
               <div>
                 <div className="text-muted small fw-medium">Flagged Student Accounts</div>
                 <h3 className="fw-bold text-danger mb-0 mt-1">
-                  {flaggedStudents.filter(s => (s.strike_count || 0) >= 3 || s.is_flagged).length}
+                  {flaggedStudents.filter(s => (s.strike_count || s.failed_attempts || 0) >= 3 || s.is_flagged).length}
                 </h3>
               </div>
               <div className="p-2 bg-danger-subtle rounded-3 text-danger">
@@ -139,7 +215,10 @@ export default function SecurityIncidentDesk() {
               <div>
                 <div className="text-muted small fw-medium">At-Risk Students (1-2 Strikes)</div>
                 <h3 className="fw-bold text-warning mb-0 mt-1">
-                  {flaggedStudents.filter(s => (s.strike_count || 0) > 0 && (s.strike_count || 0) < 3).length}
+                  {flaggedStudents.filter(s => {
+                    const c = s.strike_count || s.failed_attempts || 0;
+                    return c > 0 && c < 3;
+                  }).length}
                 </h3>
               </div>
               <div className="p-2 bg-warning-subtle rounded-3 text-warning">
@@ -201,12 +280,12 @@ export default function SecurityIncidentDesk() {
                     </thead>
                     <tbody>
                       {flaggedStudents.map((s, idx) => {
-                        const strikes = s.strike_count || 0;
+                        const strikes = s.strike_count || s.failed_attempts || 0;
                         const isLocked = strikes >= 3 || s.is_flagged;
                         return (
                           <tr key={s.student_id || s.id || idx}>
                             <td className="ps-3 fw-medium text-dark">{s.full_name}</td>
-                            <td><code>{s.roll_no}</code></td>
+                            <td><code>{s.roll_no || s.roll_number}</code></td>
                             <td><span className="badge bg-light text-dark">{s.block_name || 'Block A'}</span></td>
                             <td>
                               <span className={`badge ${strikes >= 3 ? 'bg-danger' : strikes > 0 ? 'bg-warning text-dark' : 'bg-success'}`}>
@@ -226,12 +305,12 @@ export default function SecurityIncidentDesk() {
                             </td>
                             <td className="text-end pe-3">
                               <button
-                                className="btn btn-sm btn-outline-danger py-0 px-2"
+                                className="btn btn-sm btn-outline-danger py-1 px-2 fw-semibold d-inline-flex align-items-center gap-1"
                                 style={{ fontSize: '12px' }}
                                 onClick={() => openResetModal(s)}
-                                title="Reset Strike Counter"
+                                title="Reset Strike Counter & Unlock"
                               >
-                                <RotateCcw size={12} className="me-1 inline" /> Reset
+                                <RotateCcw size={12} /> Reset & Unlock
                               </button>
                             </td>
                           </tr>
@@ -261,11 +340,11 @@ export default function SecurityIncidentDesk() {
                 </div>
               ) : (
                 <div className="list-group list-group-flush small" style={{ maxHeight: '420px', overflowY: 'auto' }}>
-                  {recentLogs.slice(0, 15).map((log, idx) => (
+                  {recentLogs.slice(0, 20).map((log, idx) => (
                     <div key={log.id || idx} className="list-group-item p-3">
                       <div className="d-flex justify-content-between align-items-center mb-1">
                         <span className="badge bg-danger-subtle text-danger">
-                          {log.event_type || 'FORGE_LOCATION_DETECTED'}
+                          {log.event_type || log.incident_type || 'FORGE_LOCATION_DETECTED'}
                         </span>
                         <span className="text-muted" style={{ fontSize: '11px' }}>
                           {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'Recent'}
@@ -286,7 +365,7 @@ export default function SecurityIncidentDesk() {
 
       {/* Reset Strike Modal */}
       {showResetModal && selectedStudent && (
-        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1055 }}>
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content rounded-3 border-0 shadow">
               <div className="modal-header border-bottom">
@@ -304,8 +383,10 @@ export default function SecurityIncidentDesk() {
 
                   <div className="mb-3">
                     <label className="form-label small text-muted mb-0">Target Student</label>
-                    <div className="fw-semibold text-dark">{selectedStudent.full_name} ({selectedStudent.roll_no})</div>
-                    <div className="small text-danger">Current Strike Count: {selectedStudent.strike_count || 0} / 3</div>
+                    <div className="fw-semibold text-dark">{selectedStudent.full_name} ({selectedStudent.roll_no || selectedStudent.roll_number})</div>
+                    <div className="small text-danger fw-medium">
+                      Current Strikes: {selectedStudent.strike_count || selectedStudent.failed_attempts || 0} / 3 Strikes (LOCKED)
+                    </div>
                   </div>
 
                   <div className="mb-3">
@@ -315,7 +396,7 @@ export default function SecurityIncidentDesk() {
                     <textarea
                       className="form-control"
                       rows="3"
-                      placeholder="e.g., Student demonstrated valid GPS sensor hardware failure; verified with campus network router logs."
+                      placeholder="e.g., Student demonstrated valid GPS sensor hardware variance; verified legitimate hostel presence."
                       value={resetReason}
                       onChange={(e) => setResetReason(e.target.value)}
                       required
@@ -334,10 +415,10 @@ export default function SecurityIncidentDesk() {
                   </button>
                   <button
                     type="submit"
-                    className="btn btn-sm btn-danger"
+                    className="btn btn-sm btn-danger fw-semibold px-3"
                     disabled={submittingReset}
                   >
-                    {submittingReset ? 'Resetting Strikes...' : 'Confirm Reset & Unlock'}
+                    {submittingReset ? 'Resetting Strikes...' : 'Confirm Reset & Unlock Account'}
                   </button>
                 </div>
               </form>

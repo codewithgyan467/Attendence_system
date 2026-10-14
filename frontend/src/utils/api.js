@@ -180,6 +180,7 @@ export const api = {
     reviewCorrection: (id, data) => request(`/admin/corrections/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify(data) }),
     getSecurityAlerts: () => request('/admin/security/alerts'),
     resetStrike: (data) => request('/admin/security/reset-strike', { method: 'POST', body: JSON.stringify(data) }),
+    resetAllStrikes: (data = {}) => request('/admin/security/reset-all-strikes', { method: 'POST', body: JSON.stringify(data) }),
     getAuditLogs: (params = {}) => {
       const q = new URLSearchParams(params).toString();
       return request(`/admin/audit-logs${q ? '?' + q : ''}`);

@@ -900,26 +900,66 @@ router.post('/corrections/:id/review', async (req, res) => {
 // 7. Security Alerts & Strike Reset
 router.get('/security/alerts', async (req, res) => {
   try {
-    const alerts = await allQuery(`
-      SELECT a.*, s.full_name, s.is_flagged_forge, s.failed_attempts
+    const rawAlerts = await allQuery(`
+      SELECT 
+        a.id,
+        a.student_id,
+        a.roll_number,
+        a.incident_type,
+        a.calculated_distance,
+        a.details,
+        a.ip_address,
+        a.created_at,
+        s.full_name,
+        s.is_flagged_forge,
+        s.failed_attempts
       FROM security_audit_logs a
-      LEFT JOIN students s ON a.student_id = s.id
+      LEFT JOIN students s ON (a.student_id = s.id OR a.roll_number = s.roll_number)
       ORDER BY a.created_at DESC
       LIMIT 100
     `);
 
-    const flaggedStudents = await allQuery(`
-      SELECT id, roll_number, full_name, course, semester, failed_attempts, is_flagged_forge
-      FROM students
-      WHERE is_flagged_forge = 1 OR failed_attempts > 0
-      ORDER BY failed_attempts DESC
+    const rawFlaggedStudents = await allQuery(`
+      SELECT 
+        s.id,
+        s.roll_number,
+        s.full_name,
+        s.course,
+        s.semester,
+        s.hostel_block,
+        s.room_number,
+        s.failed_attempts,
+        s.is_flagged_forge
+      FROM students s
+      WHERE s.is_flagged_forge = 1 OR s.failed_attempts > 0
+      ORDER BY s.is_flagged_forge DESC, s.failed_attempts DESC
     `);
+
+    // Normalized format supporting BOTH camelCase and snake_case
+    const formattedStudents = rawFlaggedStudents.map(s => ({
+      ...s,
+      student_id: s.id,
+      roll_no: s.roll_number,
+      block_name: s.hostel_block || 'Hostel',
+      strike_count: s.failed_attempts || 0,
+      is_flagged: Boolean(s.is_flagged_forge === 1 || (s.failed_attempts || 0) >= 3)
+    }));
+
+    const formattedLogs = rawAlerts.map(a => ({
+      ...a,
+      event_type: a.incident_type,
+      distance_meters: a.calculated_distance,
+      student_name: a.full_name || (a.roll_number ? `Student ${a.roll_number}` : `Student ID: ${a.student_id}`),
+      timestamp: a.created_at
+    }));
 
     res.json({
       success: true,
-      flaggedCount: flaggedStudents.filter(s => s.is_flagged_forge === 1).length,
-      flaggedStudents,
-      recentAuditLogs: alerts
+      flaggedCount: formattedStudents.filter(s => s.is_flagged_forge === 1 || s.failed_attempts >= 3).length,
+      flaggedStudents: formattedStudents,
+      flagged_students: formattedStudents,
+      recentAuditLogs: formattedLogs,
+      recent_logs: formattedLogs
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -929,10 +969,10 @@ router.get('/security/alerts', async (req, res) => {
 // Reset Strike Counter with Mandatory Reason and Audit Entry
 router.post('/security/reset-strike', async (req, res) => {
   try {
-    const { rollNumber, roll_number, student_id, reason } = req.body;
-    const identifier = rollNumber || roll_number || student_id;
-    if (!identifier || !reason) {
-      return res.status(400).json({ success: false, error: 'Student identifier and mandatory reset reason are required.' });
+    const { rollNumber, roll_number, student_id, studentId, id, reason } = req.body;
+    const identifier = rollNumber || roll_number || student_id || studentId || id;
+    if (!identifier) {
+      return res.status(400).json({ success: false, error: 'Student identifier is required.' });
     }
 
     const student = await getQuery(`SELECT * FROM students WHERE roll_number = ? OR id = ?`, [identifier, identifier]);
@@ -941,9 +981,21 @@ router.post('/security/reset-strike', async (req, res) => {
     }
 
     await clearForgeFlag(student.id);
-    await recordAuditEvent(req.user.id, req.user.username, 'STRIKE_COUNTER_RESET', 'STUDENT', student.id, `Reset strikes for ${student.roll_number}: ${reason}`, req);
+    await recordAuditEvent(req.user.id, req.user.username, 'STRIKE_COUNTER_RESET', 'STUDENT', student.id, `Reset strikes for ${student.roll_number}: ${reason || 'Administrative clearance'}`, req);
 
-    res.json({ success: true, message: `Successfully reset strike counter for student ${student.roll_number}.` });
+    res.json({ success: true, message: `Successfully reset strike counter for student ${student.roll_number}. Account unlocked.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Reset All Flagged Strikes (Emergency clearance for batch testing)
+router.post('/security/reset-all-strikes', async (req, res) => {
+  try {
+    const { reason = 'Batch administrative strike clearance' } = req.body;
+    await runQuery(`UPDATE students SET failed_attempts = 0, is_flagged_forge = 0 WHERE is_flagged_forge = 1 OR failed_attempts > 0`);
+    await recordAuditEvent(req.user.id, req.user.username, 'BATCH_STRIKE_RESET', 'STUDENTS', 'ALL', reason, req);
+    res.json({ success: true, message: 'All student forge strikes have been reset and accounts unlocked.' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

@@ -113,6 +113,22 @@ router.post('/verify-location', attendanceLimiter, async (req, res) => {
 
     // 5. Handle Location Failure (Out of boundary or Mock GPS Active)
     if (!validation.isValid) {
+      // Coarse GPS accuracy is an environmental/hardware limitation, NOT intentional fraud!
+      // Do NOT penalize the student with strikes for weak satellite reception!
+      if (validation.reason === 'POOR_GPS_ACCURACY') {
+        return res.status(400).json({
+          success: false,
+          stepPassed: false,
+          isAccuracyIssue: true,
+          reason: 'POOR_GPS_ACCURACY',
+          message: validation.message,
+          distanceMeters: null,
+          permittedRadiusMeters: validation.permittedRadiusMeters,
+          failedAttempts: student.failed_attempts || 0,
+          isFlaggedForge: Boolean(student.is_flagged_forge)
+        });
+      }
+
       const fraudRecord = await recordFailedLocationAttempt(
         student.id,
         student.roll_number,
