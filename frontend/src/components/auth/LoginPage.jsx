@@ -80,47 +80,47 @@ export default function LoginPage({ onNavigateOnboarding }) {
   };
 
   return (
-    <div className="container d-flex align-items-center justify-content-center" style={{ minHeight: '85vh' }}>
-      <div className="card shadow-lg border-0 rounded-4" style={{ maxWidth: '440px', width: '100%', overflow: 'hidden' }}>
+    <div className="container d-flex justify-content-center my-auto py-2">
+      <div className="card shadow-lg border-0 rounded-4" style={{ maxWidth: '420px', width: '100%', overflow: 'hidden' }}>
         {/* Card Header */}
-        <div className="p-4 text-center text-white" style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}>
-          <div className="d-inline-flex p-3 rounded-circle bg-primary bg-opacity-25 mb-3">
-            <Shield size={36} className="text-primary" />
+        <div className="px-3 py-2.5 text-center text-white" style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}>
+          <div className="d-inline-flex p-2 rounded-circle bg-primary bg-opacity-25 mb-1.5">
+            <Shield size={26} className="text-primary" />
           </div>
-          <h4 className="fw-bold mb-1">HostelGuard Portal</h4>
-          <p className="text-muted small mb-0">
-            Open-Source Biometric & Geofenced Attendance Management
+          <h5 className="fw-bold mb-0 text-white" style={{ fontSize: '16px' }}>HostelGuard Portal</h5>
+          <p className="text-muted small mb-0" style={{ fontSize: '11px' }}>
+            Biometric &amp; Geofenced Attendance Management
           </p>
         </div>
 
         {/* Card Body */}
-        <div className="card-body p-4 p-sm-5">
+        <div className="card-body p-3 p-sm-3.5">
           {successBanner && (
-            <div className="alert alert-success d-flex align-items-center gap-2 py-2 px-3 small mb-4" role="alert">
-              <CheckCircle2 size={16} className="text-success flex-shrink-0" />
-              <div>{successBanner}</div>
+            <div className="alert alert-success d-flex align-items-center gap-2 py-1.5 px-3 small mb-2.5" role="alert">
+              <CheckCircle2 size={15} className="text-success flex-shrink-0" />
+              <div style={{ fontSize: '12px' }}>{successBanner}</div>
             </div>
           )}
 
           {errorMsg && (
-            <div className="alert alert-danger d-flex align-items-center gap-2 py-2 px-3 small mb-4" role="alert">
-              <AlertTriangle size={16} className="flex-shrink-0" />
-              <div>{errorMsg}</div>
+            <div className="alert alert-danger d-flex align-items-center gap-2 py-1.5 px-3 small mb-2.5" role="alert">
+              <AlertTriangle size={15} className="flex-shrink-0" />
+              <div style={{ fontSize: '12px' }}>{errorMsg}</div>
             </div>
           )}
 
           {/* Primary Credentials Form */}
           <form onSubmit={handleSubmit}>
-            <div className="mb-3">
-              <label className="form-label small fw-medium text-dark">Username, Roll Number, or Email</label>
-              <div className="input-group">
+            <div className="mb-2">
+              <label className="form-label small fw-medium text-dark mb-1" style={{ fontSize: '12px' }}>Roll Number, Email, or Username</label>
+              <div className="input-group input-group-sm">
                 <span className="input-group-text bg-light border-end-0">
-                  <User size={16} className="text-muted" />
+                  <User size={15} className="text-muted" />
                 </span>
                 <input
                   type="text"
                   className="form-control border-start-0 ps-0"
-                  placeholder="e.g. 2024CS001, admin, or student@hostel.local"
+                  placeholder="e.g. 2024CS001 or admin"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={loading}
@@ -129,21 +129,21 @@ export default function LoginPage({ onNavigateOnboarding }) {
               </div>
             </div>
 
-            <div className="mb-4">
+            <div className="mb-2.5">
               <div className="d-flex align-items-center justify-content-between mb-1">
-                <label className="form-label small fw-medium text-dark mb-0">Account Password</label>
+                <label className="form-label small fw-medium text-dark mb-0" style={{ fontSize: '12px' }}>Account Password</label>
                 <button
                   type="button"
                   className="btn btn-link btn-sm text-decoration-none p-0 text-primary small fw-semibold d-inline-flex align-items-center gap-1"
-                  style={{ fontSize: '12px' }}
+                  style={{ fontSize: '11.5px' }}
                   onClick={() => setShowForgotModal(true)}
                 >
-                  <Key size={12} /> Forgot Password?
+                  <Key size={11} /> Forgot?
                 </button>
               </div>
-              <div className="input-group">
+              <div className="input-group input-group-sm">
                 <span className="input-group-text bg-light border-end-0">
-                  <Lock size={16} className="text-muted" />
+                  <Lock size={15} className="text-muted" />
                 </span>
                 <input
                   type="password"
@@ -159,36 +159,37 @@ export default function LoginPage({ onNavigateOnboarding }) {
 
             <button
               type="submit"
-              className="btn btn-primary w-100 py-2 d-flex align-items-center justify-content-center gap-2 fw-semibold mb-3 shadow-sm"
+              className="btn btn-primary w-100 py-1.5 d-flex align-items-center justify-content-center gap-2 fw-semibold mb-2 shadow-sm"
+              style={{ fontSize: '13px' }}
               disabled={loading}
             >
               {loading ? (
                 <>
                   <span className="spinner-border spinner-border-sm" role="status"></span>
-                  Verifying Credentials...
+                  Verifying...
                 </>
               ) : (
                 <>
                   <span>Sign In</span>
-                  <ArrowRight size={16} />
+                  <ArrowRight size={15} />
                 </>
               )}
             </button>
           </form>
 
           {/* Sleek Modern Divider */}
-          <div className="position-relative my-4 text-center">
+          <div className="position-relative my-2 text-center">
             <hr className="text-secondary opacity-25 m-0" />
             <span
-              className="position-absolute top-50 start-50 translate-middle bg-white px-3 text-muted fw-bold"
-              style={{ fontSize: '11px', letterSpacing: '0.08em' }}
+              className="position-absolute top-50 start-50 translate-middle bg-white px-2 text-muted fw-bold"
+              style={{ fontSize: '10px', letterSpacing: '0.06em' }}
             >
-              OR CONTINUE WITH
+              OR
             </span>
           </div>
 
           {/* Modern Google JWT Authentication */}
-          <div className="mb-3">
+          <div className="mb-2">
             <GoogleSignInButton
               onSuccess={handleGoogleSuccess}
               onError={(err) => setErrorMsg(err)}
@@ -196,70 +197,64 @@ export default function LoginPage({ onNavigateOnboarding }) {
             />
           </div>
 
-          {/* Student Onboarding Action */}
-          <div className="text-center mt-4 pt-3 border-top">
-            <p className="text-muted small mb-2">New resident student not enrolled yet?</p>
-            <button
-              type="button"
-              className="btn btn-outline-primary btn-sm px-3 d-inline-flex align-items-center gap-1 shadow-sm"
-              onClick={onNavigateOnboarding}
-            >
-              <UserCheck size={14} /> Student Registration & Biometrics
-            </button>
-          </div>
-
           {/* Mobile App Download & QR Code Modal Link (Android & iOS) */}
-          <div className="text-center mt-3 pt-3 border-top">
-            <p className="text-muted small mb-2">Mark attendance from your phone (Android &amp; iPhone):</p>
+          <div className="text-center mt-2 pt-2 border-top">
             <button
               type="button"
-              className="btn btn-outline-success btn-sm w-100 py-2 d-inline-flex align-items-center justify-content-center gap-2 fw-semibold shadow-sm rounded-3"
-              style={{ borderColor: '#10b981', color: '#047857', backgroundColor: '#ecfdf5' }}
+              className="btn btn-outline-success btn-sm w-100 py-1.5 d-inline-flex align-items-center justify-content-center gap-2 fw-semibold shadow-sm rounded-3"
+              style={{ borderColor: '#10b981', color: '#047857', backgroundColor: '#ecfdf5', fontSize: '12.5px' }}
               onClick={() => setShowDownloadModal(true)}
             >
-              <Smartphone size={16} className="text-success" />
+              <Smartphone size={15} className="text-success" />
               <span>Get Mobile App (Android &amp; iOS)</span>
-              <QrCode size={15} />
+              <QrCode size={14} />
             </button>
           </div>
 
-          {/* Server Connection Config (Especially helpful for Native Mobile & Emulator) */}
-          <div className="text-center mt-3 pt-2">
+          {/* Student Onboarding & Server Configuration Row */}
+          <div className="d-flex align-items-center justify-content-between mt-2 pt-2 border-top">
+            <button
+              type="button"
+              className="btn btn-link btn-sm text-decoration-none text-primary p-0 d-inline-flex align-items-center gap-1"
+              style={{ fontSize: '11.5px' }}
+              onClick={onNavigateOnboarding}
+            >
+              <UserCheck size={13} /> New Student Enrollment
+            </button>
+
             <button
               type="button"
               className="btn btn-link btn-sm text-decoration-none text-muted p-0 d-inline-flex align-items-center gap-1"
               style={{ fontSize: '11px' }}
               onClick={() => setShowServerConfig(!showServerConfig)}
             >
-              <Server size={11} /> Server: <span className="text-truncate font-monospace" style={{ maxWidth: '210px' }}>{getApiBaseUrl()}</span>
+              <Server size={11} /> Config
             </button>
-
-            {showServerConfig && (
-              <div className="card mt-2 p-3 text-start bg-light border-0 shadow-sm rounded-3">
-                <div className="d-flex align-items-center justify-content-between mb-2">
-                  <span className="small fw-bold text-dark">Backend API Endpoint</span>
-                  {serverSavedMsg && <span className="badge bg-success small"><Check size={10} /> Saved</span>}
-                </div>
-                <div className="input-group input-group-sm mb-2">
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="http://10.0.2.2:5000/api/v1"
-                    value={customServerUrl}
-                    onChange={(e) => setCustomServerUrl(e.target.value)}
-                  />
-                  <button className="btn btn-primary" type="button" onClick={handleSaveServer}>
-                    Save
-                  </button>
-                </div>
-                <div className="small text-muted" style={{ fontSize: '11px', lineHeight: 1.3 }}>
-                  • <strong>Android Emulator:</strong> <code>http://10.0.2.2:5000/api/v1</code><br />
-                  • <strong>Physical Phone:</strong> <code>http://&lt;your-pc-ip&gt;:5000/api/v1</code><br />
-                  • <strong>Web Browser:</strong> <code>/api/v1</code>
-                </div>
-              </div>
-            )}
           </div>
+
+          {showServerConfig && (
+            <div className="card mt-2 p-2.5 text-start bg-light border-0 shadow-sm rounded-3">
+              <div className="d-flex align-items-center justify-content-between mb-1.5">
+                <span className="small fw-bold text-dark" style={{ fontSize: '11.5px' }}>Backend API Endpoint</span>
+                {serverSavedMsg && <span className="badge bg-success small"><Check size={10} /> Saved</span>}
+              </div>
+              <div className="input-group input-group-sm mb-1.5">
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="http://10.0.2.2:5000/api/v1"
+                  value={customServerUrl}
+                  onChange={(e) => setCustomServerUrl(e.target.value)}
+                />
+                <button className="btn btn-primary" type="button" onClick={handleSaveServer}>
+                  Save
+                </button>
+              </div>
+              <div className="small text-muted" style={{ fontSize: '10px', lineHeight: 1.3 }}>
+                • <strong>Android:</strong> <code>http://10.0.2.2:5000/api/v1</code> &bull; <strong>Web:</strong> <code>/api/v1</code>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

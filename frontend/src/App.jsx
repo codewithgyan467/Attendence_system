@@ -78,7 +78,10 @@ function AppContent() {
       );
     }
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center' }}>
+      <div
+        className="d-flex flex-column justify-content-center py-2 py-sm-3"
+        style={{ minHeight: '100vh', backgroundColor: '#f8fafc', overflowY: 'auto' }}
+      >
         <LoginPage onNavigateOnboarding={() => setShowOnboarding(true)} />
       </div>
     );
