@@ -208,6 +208,9 @@ export const api = {
   student: {
     getAllotmentList: () => request('/students/allotment-list'),
     onboard: (data) => request('/students/onboard', { method: 'POST', body: JSON.stringify(data) }),
+    lookupOnboarding: (query) => request('/students/onboarding/lookup', { method: 'POST', body: JSON.stringify({ query }) }),
+    sendOnboardingOtp: (data) => request('/students/onboarding/send-otp', { method: 'POST', body: JSON.stringify(data) }),
+    verifyOnboardingOtp: (data) => request('/students/onboarding/verify-otp', { method: 'POST', body: JSON.stringify(data) }),
     getDashboard: () => request('/students/dashboard'),
     getHistory: () => request('/students/history'),
     submitCorrection: (data) => request('/students/corrections', { method: 'POST', body: JSON.stringify(data) }),
@@ -222,6 +225,17 @@ export const api = {
     verifyLocation: (data) => request('/attendance/verify-location', { method: 'POST', body: JSON.stringify(data) }),
     verifyFace: (data) => request('/attendance/verify-face', { method: 'POST', body: JSON.stringify(data) }),
     getStatus: (identifier) => request(`/attendance/status/${encodeURIComponent(identifier)}`)
+  },
+
+  // Onboarding Privacy-Preserving OTP Helpers
+  lookupOnboarding(query) {
+    return request('/students/onboarding/lookup', { method: 'POST', body: JSON.stringify({ query }) });
+  },
+  sendOnboardingOtp(data) {
+    return request('/students/onboarding/send-otp', { method: 'POST', body: JSON.stringify(data) });
+  },
+  verifyOnboardingOtp(data) {
+    return request('/students/onboarding/verify-otp', { method: 'POST', body: JSON.stringify(data) });
   },
 
   // Backward-compatibility aliases for legacy / simulator components

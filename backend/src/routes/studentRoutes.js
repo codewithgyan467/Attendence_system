@@ -1,47 +1,319 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { runQuery, getQuery, allQuery, withTransaction } = require('../db/database');
-const { generateToken, requireAuth, requireRole, recordAuditEvent } = require('../middleware/auth');
+const { generateToken, requireAuth, requireRole, recordAuditEvent, JWT_SECRET } = require('../middleware/auth');
+const { sendEmailOtp, sendSmsOtp, maskEmail, maskPhone } = require('../services/notificationService');
+const { authLimiter } = require('../middleware/rateLimiter');
 const aiServiceClient = require('../services/aiServiceClient');
 
-// 1. Public Searchable Allotment List (Enforces: Student cannot type name manually!)
-// Returns allotments that are either unregistered (is_registered = 0) OR pre-created but pending face enrollment
+// 1. Privacy-First Deprecation: Public scraping of all student records is disabled to protect student privacy
 router.get('/allotment-list', async (req, res) => {
+  res.json({
+    success: true,
+    allotments: [],
+    message: 'Public roster scraping is disabled for student privacy. Please use the secure OTP verification lookup.'
+  });
+});
+
+// 2. Privacy-Preserving Onboarding Lookup (Finds student by Roll No or Phone without leaking public data)
+router.post('/onboarding/lookup', authLimiter, async (req, res) => {
   try {
-    const list = await allQuery(`
+    const { query } = req.body;
+    if (!query || !query.trim()) {
+      return res.status(400).json({ success: false, error: 'Please enter your Roll Number or registered Mobile Number.' });
+    }
+
+    const clean = query.trim();
+    const cleanDigits = clean.replace(/[^0-9]/g, '');
+
+    let record = await getQuery(`
       SELECT 
-        a.id, 
-        a.roll_number, 
-        a.full_name, 
-        a.room_number, 
-        a.hostel_block, 
-        COALESCE(s.email, a.email) as email, 
-        COALESCE(s.phone, a.phone) as phone, 
-        COALESCE(s.course, a.course) as course, 
-        COALESCE(s.admission_year, a.admission_year) as admission_year, 
-        COALESCE(s.semester, a.semester) as semester
+        a.id as allotment_id,
+        a.roll_number,
+        a.full_name,
+        a.is_registered,
+        COALESCE(s.email, a.email) as email,
+        COALESCE(s.phone, a.phone) as phone,
+        COALESCE(s.course, a.course) as course,
+        s.id as student_id
       FROM hostel_allotments a
       LEFT JOIN students s ON s.roll_number = a.roll_number
-      WHERE a.is_registered = 0
-         OR (
-           SELECT COUNT(*) 
-           FROM student_face_embeddings fe 
-           WHERE fe.student_id = s.id
-         ) = 0
-      ORDER BY a.full_name ASC
-    `);
-    res.json({ success: true, allotments: list });
+      WHERE LOWER(a.roll_number) = LOWER(?)
+         OR LOWER(a.full_name) = LOWER(?)
+         OR (LENGTH(?) >= 7 AND (
+              REPLACE(REPLACE(REPLACE(a.phone, ' ', ''), '-', ''), '+', '') LIKE '%' || ?
+              OR REPLACE(REPLACE(REPLACE(s.phone, ' ', ''), '-', ''), '+', '') LIKE '%' || ?
+            ))
+         OR (a.email IS NOT NULL AND a.email != '' AND LOWER(a.email) = LOWER(?))
+         OR (s.email IS NOT NULL AND s.email != '' AND LOWER(s.email) = LOWER(?))
+      LIMIT 1
+    `, [
+      clean,
+      clean,
+      cleanDigits,
+      cleanDigits.slice(-10),
+      cleanDigits.slice(-10),
+      clean,
+      clean
+    ]);
+
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        error: `No pre-allotted resident profile found matching "${clean}". Please verify your roll number or phone number, or contact the hostel administration.`
+      });
+    }
+
+    // Check if biometric facial vectors already exist
+    if (record.student_id) {
+      const faceCount = await getQuery(`SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ?`, [record.student_id]);
+      if (faceCount && faceCount.count > 0) {
+        return res.status(400).json({
+          success: false,
+          error: `Face biometrics are already registered for Roll Number ${record.roll_number} (${record.full_name}). Your account is fully active. Please go back to Sign In and log in directly.`
+        });
+      }
+    }
+
+    const hasPhone = Boolean(record.phone && record.phone.trim().length >= 8);
+    const hasEmail = Boolean(record.email && record.email.includes('@'));
+
+    // Return ONLY masked, privacy-safe information (No room numbers or raw contacts shown to public)
+    res.json({
+      success: true,
+      student: {
+        roll_number: record.roll_number,
+        full_name: record.full_name,
+        course: record.course,
+        has_phone: hasPhone,
+        masked_phone: hasPhone ? maskPhone(record.phone) : null,
+        has_email: hasEmail,
+        masked_email: hasEmail ? maskEmail(record.email) : null
+      }
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error('Onboarding lookup error:', err);
+    res.status(500).json({ success: false, error: 'Identity lookup failed: ' + err.message });
   }
 });
 
-// 2. Student Onboarding & Face Registration (Phase 2)
+// 3. Dispatch Secure 6-Digit Verification OTP to Student's Registered Phone or Email
+router.post('/onboarding/send-otp', authLimiter, async (req, res) => {
+  try {
+    const { roll_number, method = 'PHONE', contact_override } = req.body;
+    if (!roll_number) {
+      return res.status(400).json({ success: false, error: 'Roll number is required.' });
+    }
+
+    const cleanMethod = String(method).toUpperCase();
+    if (!['PHONE', 'EMAIL'].includes(cleanMethod)) {
+      return res.status(400).json({ success: false, error: 'Verification method must be PHONE or EMAIL.' });
+    }
+
+    const record = await getQuery(`
+      SELECT 
+        a.id as allotment_id,
+        a.roll_number,
+        a.full_name,
+        COALESCE(s.email, a.email) as email,
+        COALESCE(s.phone, a.phone) as phone
+      FROM hostel_allotments a
+      LEFT JOIN students s ON s.roll_number = a.roll_number
+      WHERE LOWER(a.roll_number) = LOWER(?)
+    `, [roll_number.trim()]);
+
+    if (!record) {
+      return res.status(404).json({ success: false, error: 'Student allotment record not found.' });
+    }
+
+    let destination = '';
+    if (cleanMethod === 'PHONE') {
+      destination = record.phone || contact_override;
+      if (!destination || destination.trim().length < 8) {
+        return res.status(400).json({ success: false, error: 'No mobile phone number registered on file. Please enter your mobile number.' });
+      }
+    } else {
+      destination = record.email || contact_override;
+      if (!destination || !destination.includes('@')) {
+        return res.status(400).json({ success: false, error: 'No email address registered on file. Please enter your email.' });
+      }
+    }
+
+    destination = destination.trim();
+
+    // Rate-limit check
+    const recentOtps = await getQuery(`
+      SELECT COUNT(*) as count
+      FROM password_reset_otps
+      WHERE (identifier = ? OR destination = ?)
+        AND created_at > datetime('now', '-10 minutes')
+    `, [record.roll_number, destination]);
+
+    if (process.env.NODE_ENV !== 'test' && recentOtps && recentOtps.count >= 5) {
+      return res.status(429).json({
+        success: false,
+        error: 'Too many OTP requests. Please wait 10 minutes before requesting a new code.'
+      });
+    }
+
+    // Invalidate existing unused OTPs
+    await runQuery(`
+      UPDATE password_reset_otps
+      SET is_used = 1
+      WHERE identifier = ? AND is_used = 0
+    `, [record.roll_number]);
+
+    // Generate 6-digit OTP
+    const otpCode = crypto.randomInt(100000, 999999).toString();
+    const otpId = uuidv4();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+    await runQuery(`
+      INSERT INTO password_reset_otps (
+        id, identifier, otp_code, method, destination, expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `, [
+      otpId,
+      record.roll_number,
+      otpCode,
+      cleanMethod,
+      destination,
+      expiresAt
+    ]);
+
+    let dispatchResult;
+    if (cleanMethod === 'EMAIL') {
+      dispatchResult = await sendEmailOtp({
+        email: destination,
+        otpCode,
+        studentName: record.full_name,
+        rollNumber: record.roll_number
+      });
+    } else {
+      dispatchResult = await sendSmsOtp({
+        phone: destination,
+        otpCode,
+        studentName: record.full_name,
+        rollNumber: record.roll_number
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `A 6-digit verification code has been dispatched via ${cleanMethod === 'EMAIL' ? 'Email' : 'SMS'} to ${dispatchResult.maskedDestination}.`,
+      roll_number: record.roll_number,
+      method: cleanMethod,
+      maskedDestination: dispatchResult.maskedDestination,
+      expiresInMinutes: 10,
+      ...(process.env.NODE_ENV !== 'production' ? { debugOtp: dispatchResult.debugOtp } : {})
+    });
+  } catch (err) {
+    console.error('Send onboarding OTP error:', err);
+    res.status(500).json({ success: false, error: 'Failed to send verification code: ' + err.message });
+  }
+});
+
+// 4. Verify OTP & Reveal Initial Portal Credentials + Temporary Onboarding Session
+router.post('/onboarding/verify-otp', authLimiter, async (req, res) => {
+  try {
+    const { roll_number, otp } = req.body;
+    if (!roll_number || !otp) {
+      return res.status(400).json({ success: false, error: 'Roll number and 6-digit OTP code are required.' });
+    }
+
+    const cleanRoll = roll_number.trim();
+    const cleanOtp = String(otp).trim();
+
+    // Verify OTP
+    const otpRecord = await getQuery(`
+      SELECT * FROM password_reset_otps
+      WHERE identifier = ?
+        AND otp_code = ?
+        AND is_used = 0
+        AND datetime(expires_at) > datetime('now')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [cleanRoll, cleanOtp]);
+
+    if (!otpRecord) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired OTP code. Please check the code or request a new one.' });
+    }
+
+    // Mark OTP used
+    await runQuery(`UPDATE password_reset_otps SET is_used = 1 WHERE id = ?`, [otpRecord.id]);
+
+    // Fetch full verified allotment & student profile
+    const record = await getQuery(`
+      SELECT 
+        a.id as allotment_id,
+        a.roll_number,
+        a.full_name,
+        a.room_number,
+        a.hostel_block,
+        a.course,
+        a.admission_year,
+        a.semester,
+        COALESCE(s.email, a.email) as email,
+        COALESCE(s.phone, a.phone) as phone,
+        s.id as student_id
+      FROM hostel_allotments a
+      LEFT JOIN students s ON s.roll_number = a.roll_number
+      WHERE LOWER(a.roll_number) = LOWER(?)
+    `, [cleanRoll]);
+
+    if (!record) {
+      return res.status(404).json({ success: false, error: 'Student allotment record not found.' });
+    }
+
+    // Issue signed temporary onboarding token (valid for 30 minutes)
+    const onboardingToken = jwt.sign(
+      {
+        roll_number: record.roll_number,
+        purpose: 'BIOMETRIC_ONBOARDING',
+        allotment_id: record.allotment_id
+      },
+      JWT_SECRET,
+      { expiresIn: '30m' }
+    );
+
+    const initialPassword = 'Student@12345';
+
+    // Now identity is proven via OTP, so we safely reveal credentials and room details to the authenticated student
+    res.json({
+      success: true,
+      message: 'OTP verified successfully! Here are your official portal credentials.',
+      onboarding_token: onboardingToken,
+      credentials: {
+        username: record.roll_number,
+        initial_password: initialPassword
+      },
+      student: {
+        roll_number: record.roll_number,
+        full_name: record.full_name,
+        room_number: record.room_number,
+        hostel_block: record.hostel_block,
+        course: record.course,
+        admission_year: record.admission_year,
+        semester: record.semester,
+        email: record.email,
+        phone: record.phone
+      }
+    });
+  } catch (err) {
+    console.error('Verify onboarding OTP error:', err);
+    res.status(500).json({ success: false, error: 'OTP verification failed: ' + err.message });
+  }
+});
+
+// 5. Student Onboarding & Face Registration (Phase 2)
 router.post('/onboard', async (req, res) => {
   try {
     const {
+      onboarding_token,
       roll_number,
       course,
       admission_year,
@@ -54,19 +326,19 @@ router.post('/onboard', async (req, res) => {
       photos
     } = req.body;
 
-    if (!roll_number) {
-      return res.status(400).json({ success: false, error: 'Please select a pre-allotted student identity.' });
+    let targetRoll = roll_number ? roll_number.trim() : '';
+
+    if (onboarding_token) {
+      try {
+        const decoded = jwt.verify(onboarding_token, JWT_SECRET);
+        targetRoll = decoded.roll_number;
+      } catch (tokErr) {
+        return res.status(401).json({ success: false, error: 'Onboarding session expired. Please verify your OTP again.' });
+      }
     }
 
-    if (!course || !admission_year || !semester) {
-      return res.status(400).json({ success: false, error: 'Course, admission year, and semester are required.' });
-    }
-
-    if (!email || !phone) {
-      return res.status(400).json({
-        success: false,
-        error: 'Student Email Address and Mobile Phone Number are strictly required for Real OTP Authentication & Account Recovery.'
-      });
+    if (!targetRoll) {
+      return res.status(400).json({ success: false, error: 'Roll number or verified onboarding token is required.' });
     }
 
     if (!photos || !Array.isArray(photos) || photos.length === 0) {
@@ -74,21 +346,24 @@ router.post('/onboard', async (req, res) => {
     }
 
     // Verify allotment
-    const allotment = await getQuery(`SELECT * FROM hostel_allotments WHERE roll_number = ?`, [roll_number.trim()]);
+    const allotment = await getQuery(`SELECT * FROM hostel_allotments WHERE roll_number = ?`, [targetRoll]);
     if (!allotment) {
       return res.status(404).json({ success: false, error: 'Selected roll number is not on the hostel allotment roster.' });
     }
 
-    if (allotment.is_registered === 1) {
-      // Check if student already has face embeddings
-      const studentRec = await getQuery(`SELECT id FROM students WHERE roll_number = ?`, [roll_number.trim()]);
-      if (studentRec) {
-        const existingFaces = await getQuery(`SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ?`, [studentRec.id]);
-        if (existingFaces && existingFaces.count > 0) {
-          return res.status(400).json({ success: false, error: 'This student has already completed onboarding and face registration.' });
-        }
+    const existingStudent = await getQuery(`SELECT * FROM students WHERE roll_number = ?`, [targetRoll]);
+    if (allotment.is_registered === 1 && existingStudent) {
+      const existingFaces = await getQuery(`SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ?`, [existingStudent.id]);
+      if (existingFaces && existingFaces.count > 0) {
+        return res.status(400).json({ success: false, error: 'This student has already completed onboarding and face registration.' });
       }
     }
+
+    const targetCourse = course || allotment.course || 'B.Tech Computer Science';
+    const targetAdmYear = admission_year || allotment.admission_year || new Date().getFullYear();
+    const targetSemester = semester || allotment.semester || 1;
+    const targetEmail = (email || allotment.email || existingStudent?.email || `${targetRoll.toLowerCase()}@student.hostel.local`).trim().toLowerCase();
+    const targetPhone = (phone || allotment.phone || existingStudent?.phone || '').trim();
 
     // Call Python AI microservice to extract 128D mathematical vectors
     let aiResponse;
@@ -106,16 +381,15 @@ router.post('/onboard', async (req, res) => {
     }
 
     // Generate credentials & IDs
-    const studentId = `HSTL-${admission_year}-${roll_number.replace(/[^a-zA-Z0-9]/g, '')}`;
+    const studentId = `HSTL-${targetAdmYear}-${targetRoll.replace(/[^a-zA-Z0-9]/g, '')}`;
     const devId = device_id || `DEV-${uuidv4().substring(0, 8)}`;
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
-    const userEmail = email.trim().toLowerCase();
-    const userPhone = phone.trim();
+    const userEmail = targetEmail;
+    const userPhone = targetPhone;
 
-    let existingUser = await getQuery(`SELECT id FROM users WHERE username = ?`, [roll_number.trim()]);
-    let existingStudent = await getQuery(`SELECT id FROM students WHERE roll_number = ?`, [roll_number.trim()]);
+    let existingUser = await getQuery(`SELECT id FROM users WHERE username = ?`, [targetRoll]);
     let userId = existingUser ? existingUser.id : uuidv4();
 
     // Verify email is not already used by another user account
@@ -137,7 +411,7 @@ router.post('/onboard', async (req, res) => {
         await runQuery(`
           INSERT INTO users (id, username, email, password_hash, role, student_id, is_active, must_change_password)
           VALUES (?, ?, ?, ?, 'STUDENT', ?, 1, 0)
-        `, [userId, roll_number.trim(), userEmail, passwordHash, studentId]);
+        `, [userId, targetRoll, userEmail, passwordHash, studentId]);
       } else {
         // Update user email and student_id
         await runQuery(`
@@ -163,9 +437,9 @@ router.post('/onboard', async (req, res) => {
           allotment.full_name,
           userEmail,
           userPhone,
-          course,
-          parseInt(admission_year),
-          parseInt(semester),
+          targetCourse,
+          parseInt(targetAdmYear),
+          parseInt(targetSemester),
           allotment.room_number,
           allotment.hostel_block,
           devId,
@@ -179,7 +453,7 @@ router.post('/onboard', async (req, res) => {
               device_id = ?, device_model = ?
           WHERE id = ?
         `, [
-          userEmail, userPhone, course, parseInt(admission_year), parseInt(semester),
+          userEmail, userPhone, targetCourse, parseInt(targetAdmYear), parseInt(targetSemester),
           devId, device_model || 'Unknown Device',
           existingStudent.id
         ]);
@@ -209,7 +483,7 @@ router.post('/onboard', async (req, res) => {
       `, [userEmail, userPhone, allotment.id]);
     });
 
-    const userObj = { id: userId, username: roll_number.trim(), role: 'STUDENT', student_id: studentId };
+    const userObj = { id: userId, username: targetRoll, role: 'STUDENT', student_id: studentId };
     const token = generateToken(userObj);
 
     res.json({
@@ -221,9 +495,9 @@ router.post('/onboard', async (req, res) => {
         userId,
         rollNumber: allotment.roll_number,
         fullName: allotment.full_name,
-        course,
-        admissionYear: admission_year,
-        semester,
+        course: targetCourse,
+        admissionYear: targetAdmYear,
+        semester: targetSemester,
         roomNumber: allotment.room_number,
         hostelBlock: allotment.hostel_block,
         deviceId: devId,
@@ -236,7 +510,7 @@ router.post('/onboard', async (req, res) => {
     if (msg.includes('UNIQUE constraint failed: users.email') || msg.includes('UNIQUE constraint failed: students.email')) {
       return res.status(400).json({
         success: false,
-        error: `The email "${userEmail}" is already associated with another account. Please use your unique college email.`
+        error: 'The provided email is already associated with another account. Please use your unique institutional email.'
       });
     }
     res.status(500).json({ success: false, error: 'Onboarding error: ' + err.message });

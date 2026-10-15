@@ -1,79 +1,246 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../utils/api';
-import { Camera, CheckCircle, AlertCircle, RefreshCw, UserCheck, Sparkles, Smartphone, Mail, Phone, Shield, Info } from 'lucide-react';
+import {
+  Camera,
+  CheckCircle,
+  AlertCircle,
+  RefreshCw,
+  UserCheck,
+  Sparkles,
+  Smartphone,
+  Mail,
+  Phone,
+  Shield,
+  Key,
+  Copy,
+  Check,
+  Eye,
+  EyeOff,
+  ArrowRight,
+  ArrowLeft,
+  Lock,
+  Search,
+  Home
+} from 'lucide-react';
 
 export default function StudentOnboarding({ onComplete }) {
-  const [unregisteredList, setUnregisteredList] = useState([]);
+  // Step flow: lookup -> otp -> credentials -> camera -> success
+  const [currentStep, setCurrentStep] = useState('lookup');
+
+  // Step 1: Lookup state
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [matchedStudent, setMatchedStudent] = useState(null);
+  const [otpMethod, setOtpMethod] = useState('PHONE'); // 'PHONE' | 'EMAIL'
+  const [manualPhoneInput, setManualPhoneInput] = useState('');
+  const [manualEmailInput, setManualEmailInput] = useState('');
 
-  const [formData, setFormData] = useState({
-    course: 'B.Tech Computer Science',
-    admission_year: new Date().getFullYear(),
-    semester: 1,
-    email: '',
-    phone: '',
-    device_model: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Laptop / PC Workstation'
-  });
+  // Step 2: OTP state
+  const [otpCode, setOtpCode] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [maskedTarget, setMaskedTarget] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [debugOtp, setDebugOtp] = useState(null);
 
-  const [currentStep, setCurrentStep] = useState('identity'); // identity -> academic -> camera -> success
-  const [photos, setPhotos] = useState([]); // [{ angle: 'FRONT', imageBase64: '...' }, ...]
+  // Step 3: Verified Credentials state
+  const [onboardingToken, setOnboardingToken] = useState(null);
+  const [revealedCredentials, setRevealedCredentials] = useState(null);
+  const [verifiedStudent, setVerifiedStudent] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [copiedUser, setCopiedUser] = useState(false);
+  const [copiedPass, setCopiedPass] = useState(false);
+
+  // Step 4: Face Biometric Capture state
+  const [photos, setPhotos] = useState([]); // [{ angle: 'FRONT', imageBase64: '...' }]
   const [activeAngleIndex, setActiveAngleIndex] = useState(0);
   const anglesToCapture = ['FRONT', 'LEFT_TILT', 'RIGHT_TILT'];
-
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [submitLoading, setSubmitLoading] = useState(false);
+
+  // Global UI feedback
   const [errorMsg, setErrorMsg] = useState('');
-  const [registeredStudentResult, setRegisteredStudentResult] = useState(null);
+  const [statusMsg, setStatusMsg] = useState('');
+  const [registeredResult, setRegisteredResult] = useState(null);
 
-  // Auto-populate form when student is selected from allotment
+  // Cleanup camera when leaving
   useEffect(() => {
-    if (selectedStudent) {
-      setFormData((prev) => ({
-        ...prev,
-        course: selectedStudent.course || prev.course,
-        admission_year: selectedStudent.admission_year || prev.admission_year,
-        semester: selectedStudent.semester || prev.semester,
-        email: selectedStudent.email || prev.email || '',
-        phone: selectedStudent.phone || prev.phone || ''
-      }));
-    }
-  }, [selectedStudent]);
-
-  // Load available allotment list
-  useEffect(() => {
-    loadAllotments();
     return () => stopCamera();
   }, []);
 
-  const loadAllotments = async () => {
+  // Resend OTP countdown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
+
+  // -------------------------------------------------------------
+  // STEP 1: Search & Lookup Identity (Privacy-First)
+  // -------------------------------------------------------------
+  const handleLookupSubmit = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setStatusMsg('');
+    if (!searchQuery.trim()) {
+      setErrorMsg('Please enter your institutional Roll Number or registered Mobile Phone.');
+      return;
+    }
+
     try {
-      const data = await api.getUnregisteredAllotments();
-      setUnregisteredList(data);
-    } catch (e) {
-      console.error(e);
+      setLookupLoading(true);
+      const res = await api.studentOnboarding.lookup(searchQuery.trim());
+      if (res.success && res.student) {
+        setMatchedStudent(res.student);
+        // Default OTP method based on available contacts
+        if (res.student.has_phone) {
+          setOtpMethod('PHONE');
+        } else if (res.student.has_email) {
+          setOtpMethod('EMAIL');
+        }
+      } else {
+        setErrorMsg(res.error || 'No matching resident found on the hostel allotment roster.');
+      }
+    } catch (err) {
+      setErrorMsg(err.message || 'Identity lookup failed.');
+      setMatchedStudent(null);
+    } finally {
+      setLookupLoading(false);
     }
   };
 
-  const filteredList = unregisteredList.filter(
-    (s) =>
-      s.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.roll_number.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // -------------------------------------------------------------
+  // STEP 1b: Request OTP
+  // -------------------------------------------------------------
+  const handleSendOtp = async () => {
+    if (!matchedStudent) return;
+    setErrorMsg('');
+    setStatusMsg('');
 
-  // Camera Management
+    let contactOverride = null;
+    if (otpMethod === 'PHONE' && !matchedStudent.has_phone) {
+      if (!manualPhoneInput || manualPhoneInput.trim().length < 8) {
+        setErrorMsg('Please enter a valid mobile phone number for SMS OTP.');
+        return;
+      }
+      contactOverride = manualPhoneInput.trim();
+    } else if (otpMethod === 'EMAIL' && !matchedStudent.has_email) {
+      if (!manualEmailInput || !manualEmailInput.includes('@')) {
+        setErrorMsg('Please enter a valid email address for Email OTP.');
+        return;
+      }
+      contactOverride = manualEmailInput.trim();
+    }
+
+    try {
+      setOtpLoading(true);
+      const res = await api.studentOnboarding.sendOtp({
+        roll_number: matchedStudent.roll_number,
+        method: otpMethod,
+        contact_override: contactOverride
+      });
+
+      if (res.success) {
+        setMaskedTarget(res.maskedDestination);
+        setResendCooldown(60);
+        if (res.debugOtp) setDebugOtp(res.debugOtp);
+        setCurrentStep('otp');
+        setStatusMsg(res.message || 'Verification OTP dispatched.');
+      } else {
+        setErrorMsg(res.error || 'Failed to dispatch verification code.');
+      }
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to send OTP.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // STEP 2: Verify OTP & Reveal Credentials
+  // -------------------------------------------------------------
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setStatusMsg('');
+
+    if (!otpCode || otpCode.trim().length < 6) {
+      setErrorMsg('Please enter the full 6-digit verification code.');
+      return;
+    }
+
+    try {
+      setOtpLoading(true);
+      const res = await api.studentOnboarding.verifyOtp({
+        roll_number: matchedStudent.roll_number,
+        otp: otpCode.trim()
+      });
+
+      if (res.success) {
+        setOnboardingToken(res.onboarding_token);
+        setRevealedCredentials(res.credentials);
+        setVerifiedStudent(res.student);
+        setCurrentStep('credentials');
+        setStatusMsg('Identity authenticated! Please record your official portal login credentials.');
+      } else {
+        setErrorMsg(res.error || 'Invalid or expired OTP code.');
+      }
+    } catch (err) {
+      setErrorMsg(err.message || 'OTP verification failed.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // Copy to clipboard helpers
+  // -------------------------------------------------------------
+  const handleCopyUser = () => {
+    if (!revealedCredentials?.username) return;
+    navigator.clipboard.writeText(revealedCredentials.username);
+    setCopiedUser(true);
+    setTimeout(() => setCopiedUser(false), 2500);
+  };
+
+  const handleCopyPass = () => {
+    if (!revealedCredentials?.initial_password) return;
+    navigator.clipboard.writeText(revealedCredentials.initial_password);
+    setCopiedPass(true);
+    setTimeout(() => setCopiedPass(false), 2500);
+  };
+
+  // -------------------------------------------------------------
+  // STEP 3 -> 4: Proceed to Mandatory Face Capture
+  // -------------------------------------------------------------
+  const handleProceedToCamera = () => {
+    setErrorMsg('');
+    setStatusMsg('');
+    setCurrentStep('camera');
+    startCamera();
+  };
+
+  // -------------------------------------------------------------
+  // Camera Management & Frame Capture
+  // -------------------------------------------------------------
   const startCamera = async () => {
     try {
       setCameraError('');
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
-      });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'user' }, width: { ideal: 640 }, height: { ideal: 480 } }
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        videoRef.current.play().catch(console.warn);
       }
       streamRef.current = stream;
       setCameraActive(true);
@@ -104,29 +271,18 @@ export default function StudentOnboarding({ onComplete }) {
     const newPhotos = [...photos.filter((p) => p.angle !== angleName), { angle: angleName, imageBase64: base64 }];
     setPhotos(newPhotos);
 
+    // Auto advance angle for smooth 1-2-3 capture
     if (activeAngleIndex < anglesToCapture.length - 1) {
       setActiveAngleIndex((prev) => prev + 1);
     }
   };
 
-  const handleProceedToCamera = () => {
-    setErrorMsg('');
-    if (!formData.email || !/^\S+@\S+\.\S+$/.test(formData.email.trim())) {
-      setErrorMsg('Please enter a valid student email address for real OTP password resets.');
-      return;
-    }
-    if (!formData.phone || formData.phone.trim().length < 8) {
-      setErrorMsg('Please enter a valid mobile phone number with country code (e.g. +91 9876543210) for Phone.email OTP authentication.');
-      return;
-    }
-    setCurrentStep('camera');
-    startCamera();
-  };
-
-  // Submit Onboarding
-  const handleSubmitOnboarding = async () => {
-    if (!selectedStudent) {
-      setErrorMsg('Please select a student identity.');
+  // -------------------------------------------------------------
+  // Submit Biometric Face Vectors to AI Microservice
+  // -------------------------------------------------------------
+  const handleSubmitBiometrics = async () => {
+    if (!verifiedStudent && !matchedStudent) {
+      setErrorMsg('Student profile context missing.');
       return;
     }
     if (photos.length === 0) {
@@ -135,67 +291,71 @@ export default function StudentOnboarding({ onComplete }) {
     }
 
     try {
-      setLoading(true);
+      setSubmitLoading(true);
       setErrorMsg('');
 
-      // Generate device fingerprint
       const deviceFingerprint = `DEV-${btoa(navigator.userAgent.slice(0, 32)).replace(/=/g, '').slice(0, 12)}`;
 
       const payload = {
-        roll_number: selectedStudent.roll_number,
-        course: formData.course,
-        admission_year: formData.admission_year,
-        semester: formData.semester,
-        email: formData.email.trim(),
-        phone: formData.phone.trim(),
+        onboarding_token: onboardingToken,
+        roll_number: verifiedStudent?.roll_number || matchedStudent?.roll_number,
+        course: verifiedStudent?.course || 'B.Tech Computer Science',
+        admission_year: verifiedStudent?.admission_year || new Date().getFullYear(),
+        semester: verifiedStudent?.semester || 1,
+        email: verifiedStudent?.email || '',
+        phone: verifiedStudent?.phone || '',
         device_id: deviceFingerprint,
-        device_model: formData.device_model,
+        device_model: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop / PC Workstation',
         photos: photos
       };
 
-      const result = await api.onboardStudent(payload);
+      const result = await api.studentOnboarding.submitFaceBiometrics(payload);
       stopCamera();
-      setRegisteredStudentResult(result.student);
+      setRegisteredResult(result.student);
       setCurrentStep('success');
-      if (onComplete) onComplete();
     } catch (err) {
-      setErrorMsg(err.message || 'Onboarding failed');
+      setErrorMsg(err.message || 'Facial vector processing failed.');
     } finally {
-      setLoading(false);
+      setSubmitLoading(false);
     }
   };
 
   return (
     <div style={{ maxWidth: '850px', margin: '0 auto', padding: '0 20px 40px' }}>
       <div className="glass-panel" style={{ padding: '32px' }}>
-        {/* Title */}
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <div style={{
-            width: '52px',
-            height: '52px',
-            borderRadius: '16px',
-            background: 'linear-gradient(135deg, #6366f1 0%, #10b981 100%)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: '12px',
-            boxShadow: '0 4px 20px rgba(99, 102, 241, 0.4)'
-          }}>
-            <UserCheck size={28} color="#ffffff" />
+        {/* Header Badge */}
+        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+          <div
+            style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '16px',
+              background: 'linear-gradient(135deg, #6366f1 0%, #10b981 100%)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '12px',
+              boxShadow: '0 6px 20px rgba(99, 102, 241, 0.35)'
+            }}
+          >
+            <Shield size={30} color="#ffffff" />
           </div>
-          <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#ffffff' }}>Student Onboarding & Face Registration</h2>
-          <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginTop: '4px' }}>
-            Phase 2: Bind pre-allotted student identity with 128D mathematical facial vector representations.
+          <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em' }}>
+            Secure Student Verification & Face Activation
+          </h2>
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px', maxWidth: '580px', margin: '4px auto 0' }}>
+            Institutional Privacy-First Onboarding: Authenticate your pre-allotted profile via OTP, secure your portal credentials, and bind your 128D mathematical facial vector identity.
           </p>
         </div>
 
         {/* Step Indicator */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '32px' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '28px', flexWrap: 'wrap' }}>
           {[
-            { id: 'identity', label: '1. Identity Selection' },
-            { id: 'academic', label: '2. Academic Details' },
-            { id: 'camera', label: '3. Face Capture' }
-          ].map((st, i) => (
+            { id: 'lookup', label: '1. Identity Lookup' },
+            { id: 'otp', label: '2. OTP Security' },
+            { id: 'credentials', label: '3. Login Credentials' },
+            { id: 'camera', label: '4. Face Biometrics' }
+          ].map((st) => (
             <div
               key={st.id}
               style={{
@@ -205,7 +365,8 @@ export default function StudentOnboarding({ onComplete }) {
                 fontWeight: '700',
                 background: currentStep === st.id ? 'var(--primary)' : 'rgba(255, 255, 255, 0.05)',
                 color: currentStep === st.id ? '#ffffff' : 'var(--text-dim)',
-                border: currentStep === st.id ? '1px solid #818cf8' : '1px solid transparent'
+                border: currentStep === st.id ? '1px solid #818cf8' : '1px solid transparent',
+                transition: 'all 0.2s ease'
               }}
             >
               {st.label}
@@ -213,297 +374,624 @@ export default function StudentOnboarding({ onComplete }) {
           ))}
         </div>
 
+        {/* Error Alert */}
         {errorMsg && (
-          <div style={{
-            padding: '12px 18px',
-            borderRadius: '10px',
-            marginBottom: '20px',
-            background: 'rgba(244, 63, 94, 0.2)',
-            border: '1px solid #f43f5e',
-            color: '#fb7185',
-            fontWeight: '600',
-            fontSize: '13px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px'
-          }}>
+          <div
+            style={{
+              padding: '12px 18px',
+              borderRadius: '10px',
+              marginBottom: '20px',
+              background: 'rgba(244, 63, 94, 0.2)',
+              border: '1px solid #f43f5e',
+              color: '#fb7185',
+              fontWeight: '600',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px'
+            }}
+          >
             <AlertCircle size={18} /> {errorMsg}
           </div>
         )}
 
-        {/* STEP 1: Identity Selection (Student CANNOT type name!) */}
-        {currentStep === 'identity' && (
-          <div>
-            <div style={{
-              background: 'rgba(99, 102, 241, 0.1)',
-              border: '1px solid rgba(99, 102, 241, 0.3)',
-              borderRadius: '12px',
-              padding: '14px 18px',
+        {/* Status / Success Toast */}
+        {statusMsg && (
+          <div
+            style={{
+              padding: '12px 18px',
+              borderRadius: '10px',
               marginBottom: '20px',
+              background: 'rgba(16, 185, 129, 0.15)',
+              border: '1px solid #10b981',
+              color: '#34d399',
+              fontWeight: '600',
               fontSize: '13px',
-              color: '#c7d2fe'
-            }}>
-              💡 <strong>System Constraint Enforced:</strong> You cannot manually type your name. Select your pre-allotted profile from the hostel administration list below.
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <label className="form-label">Search Pre-Allotted Students</label>
-              <input
-                className="form-input"
-                type="text"
-                placeholder="Type name or roll number to search..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-
-            <div style={{
-              maxHeight: '260px',
-              overflowY: 'auto',
-              border: '1px solid var(--border-card)',
-              borderRadius: '12px',
-              background: 'rgba(10, 15, 28, 0.6)'
-            }}>
-              {filteredList.length > 0 ? (
-                filteredList.map((st) => (
-                  <div
-                    key={st.id}
-                    onClick={() => setSelectedStudent(st)}
-                    style={{
-                      padding: '12px 18px',
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      background: selectedStudent?.id === st.id ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
-                      transition: 'background 0.15s ease'
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: '700', color: selectedStudent?.id === st.id ? '#818cf8' : '#ffffff' }}>
-                        {st.full_name}
-                      </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                        Roll No: {st.roll_number} | Room: {st.room_number} ({st.hostel_block})
-                      </div>
-                    </div>
-                    {selectedStudent?.id === st.id ? (
-                      <CheckCircle size={20} color="#10b981" />
-                    ) : (
-                      <span className="badge badge-indigo">Select</span>
-                    )}
-                  </div>
-                ))
-              ) : (
-                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-dim)', fontSize: '13px' }}>
-                  No unregistered students found. Please check Admin tab to upload or seed allotments.
-                </div>
-              )}
-            </div>
-
-            {selectedStudent && (
-              <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
-                <button onClick={() => setCurrentStep('academic')} className="btn-primary">
-                  Continue to Academic Details →
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* STEP 2: Academic Details */}
-        {currentStep === 'academic' && (
-          <div>
-            <div style={{
-              padding: '16px',
-              borderRadius: '12px',
-              background: 'rgba(16, 185, 129, 0.1)',
-              border: '1px solid rgba(16, 185, 129, 0.25)',
-              marginBottom: '20px',
               display: 'flex',
               alignItems: 'center',
-              gap: '12px'
-            }}>
-              <CheckCircle size={22} color="#10b981" />
+              gap: '10px'
+            }}
+          >
+            <CheckCircle size={18} /> {statusMsg}
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* STEP 1: IDENTITY LOOKUP (Zero Public Data Exposure)      */}
+        {/* ========================================================= */}
+        {currentStep === 'lookup' && (
+          <div>
+            <div
+              style={{
+                background: 'rgba(99, 102, 241, 0.08)',
+                border: '1px solid rgba(99, 102, 241, 0.25)',
+                borderRadius: '12px',
+                padding: '14px 18px',
+                marginBottom: '22px',
+                fontSize: '13px',
+                color: '#c7d2fe',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px'
+              }}
+            >
+              <Shield size={20} className="text-indigo-400" style={{ flexShrink: 0, marginTop: '2px' }} />
               <div>
-                <div style={{ fontWeight: '700', color: '#ffffff' }}>Selected Student: {selectedStudent.full_name}</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                  Roll Number: {selectedStudent.roll_number} | Room: {selectedStudent.room_number}
-                </div>
+                <strong>Data Privacy Guarantee:</strong> Public student roster lists have been disabled to protect your personal details (room number, course, and phone number). Enter your institutional Roll Number or registered Mobile Number below to find your profile privately.
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label className="form-label">Course / Degree Program</label>
-                <select
-                  className="form-input"
-                  value={formData.course}
-                  onChange={(e) => setFormData({ ...formData, course: e.target.value })}
-                >
-                  <option value="B.Tech Computer Science">B.Tech Computer Science & Engineering</option>
-                  <option value="B.Tech Information Technology">B.Tech Information Technology</option>
-                  <option value="B.Tech Electronics & Comm">B.Tech Electronics & Communication</option>
-                  <option value="B.Tech Mechanical Engineering">B.Tech Mechanical Engineering</option>
-                  <option value="B.Tech Civil Engineering">B.Tech Civil Engineering</option>
-                  <option value="M.Tech Computer Science">M.Tech Computer Science</option>
-                  <option value="MCA">Master of Computer Applications (MCA)</option>
-                </select>
+            <form onSubmit={handleLookupSubmit} style={{ marginBottom: '24px' }}>
+              <label className="form-label" style={{ fontWeight: '700', fontSize: '13px' }}>
+                Enter Your Roll Number or Registered Mobile Phone
+              </label>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Search
+                    size={18}
+                    style={{
+                      position: 'absolute',
+                      left: '14px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      color: 'var(--text-dim)'
+                    }}
+                  />
+                  <input
+                    className="form-input"
+                    type="text"
+                    required
+                    style={{ paddingLeft: '42px', fontSize: '14px' }}
+                    placeholder="e.g. 2024CS008 or +91 9876543210"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <button type="submit" className="btn-primary" disabled={lookupLoading} style={{ minWidth: '140px' }}>
+                  {lookupLoading ? <RefreshCw className="animate-spin" size={16} /> : <UserCheck size={16} />}
+                  {lookupLoading ? 'Searching...' : 'Find Profile'}
+                </button>
               </div>
+            </form>
 
-              <div>
-                <label className="form-label">Admission Year</label>
-                <input
-                  className="form-input"
-                  type="number"
-                  min="2018"
-                  max="2030"
-                  value={formData.admission_year}
-                  onChange={(e) => setFormData({ ...formData, admission_year: parseInt(e.target.value) || new Date().getFullYear() })}
-                />
-              </div>
-
-              <div>
-                <label className="form-label">Current Semester</label>
-                <select
-                  className="form-input"
-                  value={formData.semester}
-                  onChange={(e) => setFormData({ ...formData, semester: parseInt(e.target.value) || 1 })}
-                >
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
-                    <option key={s} value={s}>
-                      Semester {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Real OTP Contact Credentials */}
-              <div style={{ gridColumn: '1 / -1', marginTop: '8px' }}>
-                <div style={{
-                  padding: '12px 16px',
-                  borderRadius: '10px',
-                  background: 'rgba(99, 102, 241, 0.08)',
-                  border: '1px solid rgba(99, 102, 241, 0.25)',
-                  marginBottom: '16px',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '10px'
-                }}>
-                  <Shield size={20} color="#818cf8" style={{ marginTop: '2px', flexShrink: 0 }} />
-                  <div style={{ fontSize: '13px', color: '#c7d2fe', lineHeight: 1.5 }}>
-                    <strong>Real OTP Security Verification:</strong> Enter your active email address and mobile number. Real OTP codes and password reset links will be securely dispatched to these coordinates via Phone.email and Email verification.
+            {/* Matched Profile Card */}
+            {matchedStudent && (
+              <div
+                style={{
+                  background: 'rgba(15, 23, 42, 0.7)',
+                  border: '1px solid rgba(99, 102, 241, 0.35)',
+                  borderRadius: '14px',
+                  padding: '22px',
+                  boxShadow: '0 8px 30px rgba(0, 0, 0, 0.3)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
+                  <div
+                    style={{
+                      width: '42px',
+                      height: '42px',
+                      borderRadius: '12px',
+                      background: 'rgba(16, 185, 129, 0.2)',
+                      border: '1px solid #10b981',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <CheckCircle size={22} color="#10b981" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '18px', fontWeight: '800', color: '#ffffff' }}>
+                      {matchedStudent.full_name}
+                    </div>
+                    <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      Roll Number: <strong>{matchedStudent.roll_number}</strong> | Program: {matchedStudent.course || 'B.Tech CS'}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="form-label">
-                  <Mail size={14} style={{ display: 'inline', marginRight: '6px' }} />
-                  Student Email Address <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <input
-                  className="form-input"
-                  type="email"
-                  required
-                  placeholder="e.g. yourname@student.college.edu"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                />
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Used for real Email OTPs & 1-click Magic Links</span>
-              </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginBottom: '12px', fontWeight: '700', textTransform: 'uppercase' }}>
+                  Select OTP Verification Channel:
+                </div>
 
-              <div>
-                <label className="form-label">
-                  <Phone size={14} style={{ display: 'inline', marginRight: '6px' }} />
-                  Mobile Phone Number <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <input
-                  className="form-input"
-                  type="tel"
-                  required
-                  placeholder="e.g. +91 9876543210"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                />
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Used for Phone.email instant SMS/WhatsApp OTP</span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+                  {/* Phone OTP Option */}
+                  <div
+                    onClick={() => setOtpMethod('PHONE')}
+                    style={{
+                      padding: '14px',
+                      borderRadius: '10px',
+                      border: otpMethod === 'PHONE' ? '2px solid #6366f1' : '1px solid rgba(255, 255, 255, 0.1)',
+                      background: otpMethod === 'PHONE' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255, 255, 255, 0.02)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <Smartphone size={16} color={otpMethod === 'PHONE' ? '#818cf8' : '#94a3b8'} />
+                      <strong style={{ fontSize: '13px', color: '#ffffff' }}>SMS / Phone OTP</strong>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      {matchedStudent.has_phone ? matchedStudent.masked_phone : 'Phone not on file'}
+                    </div>
+                  </div>
+
+                  {/* Email OTP Option */}
+                  <div
+                    onClick={() => setOtpMethod('EMAIL')}
+                    style={{
+                      padding: '14px',
+                      borderRadius: '10px',
+                      border: otpMethod === 'EMAIL' ? '2px solid #6366f1' : '1px solid rgba(255, 255, 255, 0.1)',
+                      background: otpMethod === 'EMAIL' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255, 255, 255, 0.02)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <Mail size={16} color={otpMethod === 'EMAIL' ? '#818cf8' : '#94a3b8'} />
+                      <strong style={{ fontSize: '13px', color: '#ffffff' }}>Email OTP</strong>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      {matchedStudent.has_email ? matchedStudent.masked_email : 'Email not on file'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Manual contact entry fallback if none on file */}
+                {otpMethod === 'PHONE' && !matchedStudent.has_phone && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <label className="form-label" style={{ fontSize: '12px' }}>Enter Your Mobile Phone Number</label>
+                    <input
+                      className="form-input"
+                      type="tel"
+                      placeholder="e.g. +91 9876543210"
+                      value={manualPhoneInput}
+                      onChange={(e) => setManualPhoneInput(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                {otpMethod === 'EMAIL' && !matchedStudent.has_email && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <label className="form-label" style={{ fontSize: '12px' }}>Enter Your College Email Address</label>
+                    <input
+                      className="form-input"
+                      type="email"
+                      placeholder="e.g. student@college.edu"
+                      value={manualEmailInput}
+                      onChange={(e) => setManualEmailInput(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px' }}>
+                  <button onClick={handleSendOtp} className="btn-primary" disabled={otpLoading}>
+                    {otpLoading ? <RefreshCw className="animate-spin" size={16} /> : <ArrowRight size={16} />}
+                    {otpLoading ? 'Dispatching OTP...' : 'Send 6-Digit Verification Code →'}
+                  </button>
+                </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* STEP 2: ENTER OTP VERIFICATION CODE                      */}
+        {/* ========================================================= */}
+        {currentStep === 'otp' && (
+          <div style={{ maxWidth: '480px', margin: '0 auto', textAlign: 'center' }}>
+            <div
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '50%',
+                background: 'rgba(99, 102, 241, 0.15)',
+                border: '2px solid #818cf8',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '14px'
+              }}
+            >
+              <Key size={26} color="#818cf8" />
             </div>
 
-            {errorMsg && (
-              <div className="alert alert-danger d-flex align-items-center gap-2 mb-3">
-                <AlertCircle size={18} />
-                <span>{errorMsg}</span>
+            <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#ffffff', marginBottom: '6px' }}>
+              Enter 6-Digit Security Code
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '22px' }}>
+              A security verification code has been dispatched to{' '}
+              <strong style={{ color: '#ffffff', fontFamily: 'var(--font-mono)' }}>{maskedTarget}</strong>.
+            </p>
+
+            {debugOtp && (
+              <div
+                style={{
+                  background: 'rgba(234, 179, 8, 0.15)',
+                  border: '1px dashed #eab308',
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  color: '#facc15',
+                  marginBottom: '18px'
+                }}
+              >
+                🔐 <strong>Dev Mode OTP Code:</strong> <span style={{ fontFamily: 'var(--font-mono)', fontWeight: '800' }}>{debugOtp}</span>
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '24px' }}>
-              <button onClick={() => setCurrentStep('identity')} className="btn-secondary">
+            <form onSubmit={handleVerifyOtp}>
+              <div style={{ marginBottom: '22px' }}>
+                <input
+                  type="text"
+                  required
+                  maxLength={6}
+                  autoFocus
+                  autoComplete="one-time-code"
+                  placeholder="• • • • • •"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
+                  style={{
+                    width: '100%',
+                    maxWidth: '280px',
+                    margin: '0 auto',
+                    textAlign: 'center',
+                    fontSize: '28px',
+                    letterSpacing: '10px',
+                    fontWeight: '800',
+                    fontFamily: 'var(--font-mono)',
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    border: '2px solid #6366f1',
+                    background: 'rgba(10, 15, 28, 0.8)',
+                    color: '#ffffff'
+                  }}
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={otpLoading || otpCode.length < 6}
+                style={{ width: '100%', padding: '12px', fontSize: '14px' }}
+              >
+                {otpLoading ? <RefreshCw className="animate-spin" size={16} /> : <CheckCircle size={16} />}
+                {otpLoading ? 'Verifying Code...' : 'Verify & Reveal Credentials'}
+              </button>
+            </form>
+
+            <div style={{ marginTop: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentStep('lookup');
+                  setOtpCode('');
+                }}
+                className="btn-secondary"
+                style={{ fontSize: '12px' }}
+              >
                 ← Back
               </button>
+
               <button
-                onClick={handleProceedToCamera}
-                className="btn-primary"
+                type="button"
+                onClick={handleSendOtp}
+                disabled={resendCooldown > 0 || otpLoading}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: resendCooldown > 0 ? 'var(--text-dim)' : '#818cf8',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: resendCooldown > 0 ? 'not-allowed' : 'pointer'
+                }}
               >
-                Proceed to Facial Capture →
+                {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend Code'}
               </button>
             </div>
           </div>
         )}
 
-        {/* STEP 3: Multi-Angle Face Capture */}
+        {/* ========================================================= */}
+        {/* STEP 3: CREDENTIAL REVEAL POPUP / MODAL (User Requirement) */}
+        {/* ========================================================= */}
+        {currentStep === 'credentials' && revealedCredentials && (
+          <div style={{ textAlign: 'center' }}>
+            <div
+              style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '16px',
+                background: 'linear-gradient(135deg, #10b981 0%, #3b82f6 100%)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '14px',
+                boxShadow: '0 6px 20px rgba(16, 185, 129, 0.35)'
+              }}
+            >
+              <Key size={28} color="#ffffff" />
+            </div>
+
+            <h3 style={{ fontSize: '22px', fontWeight: '800', color: '#ffffff', marginBottom: '4px' }}>
+              Identity Verified & Portal Credentials Issued!
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '24px' }}>
+              Please take note of your official HostelGuard login credentials below. You will use these to sign in.
+            </p>
+
+            {/* Official Credentials Card */}
+            <div
+              style={{
+                maxWidth: '520px',
+                margin: '0 auto 24px',
+                padding: '24px',
+                borderRadius: '16px',
+                background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%)',
+                border: '1.5px solid rgba(129, 140, 248, 0.4)',
+                boxShadow: '0 12px 35px rgba(0, 0, 0, 0.45)',
+                textAlign: 'left'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '12px' }}>
+                <div>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>RESIDENT PROFILE</span>
+                  <div style={{ fontSize: '16px', fontWeight: '800', color: '#ffffff' }}>
+                    {verifiedStudent?.full_name}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700' }}>ALLOTTED ROOM</span>
+                  <div style={{ fontSize: '14px', fontWeight: '700', color: '#34d399', fontFamily: 'var(--font-mono)' }}>
+                    {verifiedStudent?.hostel_block} · {verifiedStudent?.room_number}
+                  </div>
+                </div>
+              </div>
+
+              {/* Username Field */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '700', color: '#cbd5e1', marginBottom: '6px', display: 'block' }}>
+                  Your Portal Username (Roll Number):
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    readOnly
+                    value={revealedCredentials.username}
+                    style={{
+                      flex: 1,
+                      padding: '10px 14px',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      background: 'rgba(0, 0, 0, 0.4)',
+                      color: '#ffffff',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '15px',
+                      fontWeight: '700'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCopyUser}
+                    className="btn-secondary"
+                    style={{ padding: '0 14px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+                  >
+                    {copiedUser ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
+                    {copiedUser ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Password Field */}
+              <div style={{ marginBottom: '18px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '700', color: '#cbd5e1', marginBottom: '6px', display: 'block' }}>
+                  Your Initial Password:
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      readOnly
+                      value={revealedCredentials.initial_password}
+                      style={{
+                        width: '100%',
+                        padding: '10px 42px 10px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        background: 'rgba(0, 0, 0, 0.4)',
+                        color: '#facc15',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '15px',
+                        fontWeight: '700'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--text-dim)',
+                        cursor: 'pointer',
+                        padding: '4px'
+                      }}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyPass}
+                    className="btn-secondary"
+                    style={{ padding: '0 14px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+                  >
+                    {copiedPass ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
+                    {copiedPass ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: 'rgba(59, 130, 246, 0.12)',
+                  border: '1px solid rgba(59, 130, 246, 0.25)',
+                  borderRadius: '10px',
+                  padding: '12px',
+                  fontSize: '12px',
+                  color: '#bfdbfe'
+                }}
+              >
+                💡 <strong>Important:</strong> You can change your password anytime using the <em>Forgot Password</em> feature or in <em>Account Settings</em>.
+              </div>
+            </div>
+
+            {/* Mandatory Biometric Face Notice */}
+            <div
+              style={{
+                maxWidth: '520px',
+                margin: '0 auto 24px',
+                padding: '14px 18px',
+                borderRadius: '12px',
+                background: 'rgba(234, 179, 8, 0.12)',
+                border: '1px solid rgba(234, 179, 8, 0.3)',
+                color: '#fef08a',
+                fontSize: '13px',
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}
+            >
+              <Camera size={24} color="#facc15" style={{ flexShrink: 0 }} />
+              <div>
+                <strong>Mandatory Biometric Face Activation:</strong> Although your login is verified, roll call attendance strictly requires your 128D mathematical facial vector vectors. Proceed to take 3 quick camera angles (~15 seconds).
+              </div>
+            </div>
+
+            <button onClick={handleProceedToCamera} className="btn-primary" style={{ padding: '12px 28px', fontSize: '15px' }}>
+              Proceed to Mandatory Face Registration →
+            </button>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* STEP 4: MANDATORY FACE BIOMETRIC REGISTRATION            */}
+        {/* ========================================================= */}
         {currentStep === 'camera' && (
           <div>
-            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-              <span className="badge badge-indigo">
-                Angle {activeAngleIndex + 1} of {anglesToCapture.length}: {anglesToCapture[activeAngleIndex].replace('_', ' ')}
-              </span>
-              <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '6px' }}>
-                Look directly into the camera. Ensure your face is centered inside the guide oval.
+            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#ffffff' }}>
+                Capture 3-Angle Facial Embeddings
+              </h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                Please align your face inside the guide and capture the 3 angles: Front, Left Tilt, and Right Tilt.
               </p>
             </div>
 
             {/* Camera Viewport */}
-            <div style={{
-              position: 'relative',
-              width: '100%',
-              maxWidth: '480px',
-              height: '340px',
-              margin: '0 auto 20px',
-              borderRadius: '16px',
-              overflow: 'hidden',
-              background: '#030712',
-              border: '2px solid rgba(99, 102, 241, 0.4)',
-              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.6)'
-            }}>
+            <div
+              style={{
+                width: '100%',
+                maxWidth: '540px',
+                margin: '0 auto 20px',
+                height: '380px',
+                background: '#000000',
+                borderRadius: '16px',
+                overflow: 'hidden',
+                position: 'relative',
+                boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)'
+              }}
+            >
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  transform: 'scaleX(-1)'
+                }}
               />
 
               {/* Face Guide Oval */}
-              <div className="face-oval-guide" />
-              <div className="scanline" />
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '15%',
+                  left: '25%',
+                  width: '50%',
+                  height: '70%',
+                  border: '2px dashed #10b981',
+                  borderRadius: '50%',
+                  pointerEvents: 'none',
+                  boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.35)'
+                }}
+              />
+
+              {/* Angle Label Overlay */}
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '16px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  background: 'rgba(0, 0, 0, 0.75)',
+                  backdropFilter: 'blur(8px)',
+                  padding: '6px 16px',
+                  borderRadius: '999px',
+                  color: '#ffffff',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  border: '1px solid rgba(255, 255, 255, 0.15)'
+                }}
+              >
+                Current Angle: <span style={{ color: '#818cf8' }}>{anglesToCapture[activeAngleIndex].replace('_', ' ')}</span>
+              </div>
 
               {!cameraActive && (
-                <div style={{
-                  position: 'absolute',
-                  inset: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: 'rgba(3, 7, 18, 0.9)',
-                  padding: '20px',
-                  textAlign: 'center'
-                }}>
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'rgba(3, 7, 18, 0.95)',
+                    padding: '20px',
+                    textAlign: 'center'
+                  }}
+                >
                   <Camera size={36} color="var(--text-dim)" style={{ marginBottom: '12px' }} />
                   <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                    {cameraError || 'Camera is not active.'}
+                    {cameraError || 'Camera stream is stopped.'}
                   </p>
                   <button onClick={startCamera} className="btn-emerald">
                     Activate Camera
@@ -547,16 +1035,16 @@ export default function StudentOnboarding({ onComplete }) {
               })}
             </div>
 
-            {/* Capture & Submit Actions */}
+            {/* Action Buttons */}
             <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap' }}>
-              <button onClick={captureFrame} className="btn-emerald" disabled={!cameraActive || loading}>
+              <button onClick={captureFrame} className="btn-emerald" disabled={!cameraActive || submitLoading}>
                 <Camera size={18} /> Capture {anglesToCapture[activeAngleIndex].replace('_', ' ')}
               </button>
 
               {photos.length > 0 && (
-                <button onClick={handleSubmitOnboarding} className="btn-primary" disabled={loading}>
-                  {loading ? <RefreshCw className="animate-spin" size={18} /> : <Sparkles size={18} />}
-                  {loading ? 'Generating Vectors...' : `Complete Onboarding (${photos.length} Captured)`}
+                <button onClick={handleSubmitBiometrics} className="btn-primary" disabled={submitLoading}>
+                  {submitLoading ? <RefreshCw className="animate-spin" size={18} /> : <Sparkles size={18} />}
+                  {submitLoading ? 'Extracting 128D Vectors...' : `Submit Biometrics (${photos.length} Captured)`}
                 </button>
               )}
             </div>
@@ -565,79 +1053,77 @@ export default function StudentOnboarding({ onComplete }) {
               <button
                 onClick={() => {
                   stopCamera();
-                  setCurrentStep('academic');
+                  setCurrentStep('credentials');
                 }}
                 className="btn-secondary"
                 style={{ fontSize: '12px' }}
               >
-                ← Back to Academic Details
+                ← Back to Credentials
               </button>
             </div>
           </div>
         )}
 
-        {/* STEP 4: Success Result Screen */}
-        {currentStep === 'success' && registeredStudentResult && (
+        {/* ========================================================= */}
+        {/* STEP 5: REGISTRATION SUCCESSFUL                          */}
+        {/* ========================================================= */}
+        {currentStep === 'success' && registeredResult && (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <div style={{
-              width: '68px',
-              height: '68px',
-              borderRadius: '50%',
-              background: 'rgba(16, 185, 129, 0.15)',
-              border: '2px solid #10b981',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '16px'
-            }}>
-              <CheckCircle size={38} color="#10b981" />
+            <div
+              style={{
+                width: '68px',
+                height: '68px',
+                borderRadius: '50%',
+                background: 'rgba(16, 185, 129, 0.15)',
+                border: '2px solid #10b981',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '16px'
+              }}
+            >
+              <CheckCircle size={40} color="#10b981" />
             </div>
 
-            <h3 style={{ fontSize: '22px', fontWeight: '800', color: '#ffffff', marginBottom: '8px' }}>
-              Registration & Facial Identity Created!
+            <h3 style={{ fontSize: '24px', fontWeight: '800', color: '#ffffff', marginBottom: '8px' }}>
+              Registration & Biometrics Activated!
             </h3>
             <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '24px' }}>
-              Student profile has been bound to hardware device and 128D mathematical facial vector identity.
+              Welcome, <strong>{registeredResult.fullName}</strong>. Your account is fully active and enrolled in the attendance system.
             </p>
 
-            <div className="glass-panel" style={{ maxWidth: '440px', margin: '0 auto 24px', padding: '20px', textAlign: 'left' }}>
+            <div className="glass-panel" style={{ maxWidth: '460px', margin: '0 auto 24px', padding: '20px', textAlign: 'left' }}>
               <div style={{ marginBottom: '10px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>UNIQUE STUDENT ID</span>
-                <div style={{ fontSize: '16px', fontWeight: '700', color: '#818cf8', fontFamily: 'var(--font-mono)' }}>
-                  {registeredStudentResult.id}
+                <span style={{ fontSize: '11px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>STUDENT ROLL NUMBER</span>
+                <div style={{ fontSize: '16px', fontWeight: '800', color: '#818cf8', fontFamily: 'var(--font-mono)' }}>
+                  {registeredResult.rollNumber}
                 </div>
               </div>
               <div style={{ marginBottom: '10px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>STUDENT NAME</span>
-                <div style={{ fontSize: '15px', fontWeight: '600', color: '#ffffff' }}>
-                  {registeredStudentResult.fullName} ({registeredStudentResult.rollNumber})
-                </div>
-              </div>
-              <div style={{ marginBottom: '10px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>ACADEMIC DETAILS</span>
-                <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                  {registeredStudentResult.course} | Adm Year: {registeredStudentResult.admissionYear} | Sem: {registeredStudentResult.semester}
+                <span style={{ fontSize: '11px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>ASSIGNED ROOM</span>
+                <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '600' }}>
+                  {registeredResult.hostelBlock} · Room {registeredResult.roomNumber}
                 </div>
               </div>
               <div>
-                <span style={{ fontSize: '11px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>STORED FACE VECTORS</span>
-                <div style={{ fontSize: '13px', color: '#34d399', fontWeight: '600' }}>
-                  {registeredStudentResult.storedVectorCount} mathematical embeddings securely registered
+                <span style={{ fontSize: '11px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>BIOMETRIC STATUS</span>
+                <div style={{ fontSize: '13px', color: '#34d399', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle size={15} /> 128-D Facial Biometric Vectors Active
                 </div>
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                setSelectedStudent(null);
-                setPhotos([]);
-                setCurrentStep('identity');
-                loadAllotments();
-              }}
-              className="btn-primary"
-            >
-              Onboard Another Student
-            </button>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+              <button
+                onClick={() => {
+                  if (onComplete) onComplete();
+                }}
+                className="btn-primary"
+                style={{ padding: '12px 28px', fontSize: '14px' }}
+              >
+                Sign In to Student Portal →
+              </button>
+            </div>
           </div>
         )}
       </div>
