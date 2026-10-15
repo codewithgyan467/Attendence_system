@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../utils/api';
 import { MapPin, Navigation, Save, CheckCircle2, AlertTriangle, RefreshCw, Compass } from 'lucide-react';
+import GeofenceMap from '../common/GeofenceMap';
 
 export default function GeofenceManager() {
   const [config, setConfig] = useState({
@@ -19,6 +20,15 @@ export default function GeofenceManager() {
   useEffect(() => {
     fetchConfig();
   }, []);
+
+  const handleMapLocationChange = ({ latitude, longitude }) => {
+    setConfig(prev => ({
+      ...prev,
+      latitude,
+      longitude
+    }));
+    setStatusMsg(`Center anchor updated to [${latitude}, ${longitude}] from map. Remember to save changes.`);
+  };
 
   const fetchConfig = async () => {
     setLoading(true);
@@ -158,6 +168,51 @@ export default function GeofenceManager() {
           <button type="button" className="btn-close" onClick={() => setErrorMsg(null)}></button>
         </div>
       )}
+
+      {/* Interactive Geofence Map Editor */}
+      <div className="card shadow-sm border-0 rounded-3 mb-4 overflow-hidden">
+        <div className="card-header bg-white border-bottom py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <div>
+            <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
+              <Compass size={18} className="text-primary" />
+              Interactive Geofence Editor
+            </h6>
+            <small className="text-muted">
+              Click/tap map to reposition center anchor &bull; Permitted Radius: <strong>{config.radius_meters}m</strong>
+            </small>
+          </div>
+          <button
+            type="button"
+            className="btn btn-outline-primary btn-sm d-flex align-items-center gap-2 shadow-sm"
+            onClick={handleDetectGPS}
+            disabled={detecting}
+          >
+            {detecting ? (
+              <>
+                <span className="spinner-border spinner-border-sm" role="status"></span>
+                Detecting Device Location...
+              </>
+            ) : (
+              <>
+                <Navigation size={15} />
+                Use Device Location
+              </>
+            )}
+          </button>
+        </div>
+        <div className="p-3 bg-light">
+          <GeofenceMap
+            centerLat={config.latitude}
+            centerLng={config.longitude}
+            radius={config.radius_meters}
+            locationName={config.facility_name}
+            interactive={true}
+            onLocationChange={handleMapLocationChange}
+            height="380px"
+            showLegend={true}
+          />
+        </div>
+      </div>
 
       <div className="row g-4">
         {/* Form Column */}

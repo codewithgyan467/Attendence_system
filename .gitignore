@@ -45,3 +45,6 @@ Thumbs.db
 # Large downloaded binary ONNX neural models (Auto-downloaded by download_models.py)
 backend/ai_service/models/*.onnx
 !backend/ai_service/models/README.md
+
+# External Reference Folder
+IDEA/

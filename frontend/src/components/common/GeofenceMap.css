@@ -1,0 +1,227 @@
+/* =========================================================
+   HostelGuard AI - Interactive Geofence Map & Radar Styling
+   ========================================================= */
+
+.geofence-map-wrapper {
+  position: relative;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.geofence-map-container {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+/* Floating Interactive Banner */
+.map-interactive-banner {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #ffffff;
+  padding: 7px 16px;
+  border-radius: 30px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  pointer-events: none;
+  z-index: 500;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* Glassmorphism Legend Overlay */
+.map-legend-overlay {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  pointer-events: none;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.legend-dot.center-dot {
+  background: #4f46e5;
+  border: 2px solid #a5b4fc;
+}
+
+.legend-dot.student-inside-dot {
+  background: #10b981;
+  border: 2px solid #a7f3d0;
+}
+
+.legend-dot.student-outside-dot {
+  background: #ef4444;
+  border: 2px solid #fecaca;
+}
+
+/* Custom Marker Pin: Institution Center */
+.custom-map-icon-wrap {
+  background: transparent !important;
+  border: none !important;
+}
+
+.institution-pin {
+  width: 36px;
+  height: 36px;
+  border-radius: 50% 50% 50% 0;
+  background: #4f46e5;
+  position: absolute;
+  transform: rotate(-45deg);
+  left: 50%;
+  top: 50%;
+  margin: -20px 0 0 -18px;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2.5px solid #ffffff;
+  transition: transform 0.2s ease;
+}
+
+.institution-pin .pin-icon {
+  transform: rotate(45deg);
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Custom Marker: Student Live Pulse Beacon */
+.student-marker-beacon {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.beacon-core {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  z-index: 2;
+}
+
+.student-marker-beacon.inside .beacon-core {
+  background: #10b981;
+}
+
+.student-marker-beacon.outside .beacon-core {
+  background: #ef4444;
+}
+
+.beacon-pulse {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  animation: hg-beacon-wave 2s infinite ease-out;
+  z-index: 1;
+}
+
+.student-marker-beacon.inside .beacon-pulse {
+  background: rgba(16, 185, 129, 0.45);
+}
+
+.student-marker-beacon.outside .beacon-pulse {
+  background: rgba(239, 68, 68, 0.45);
+}
+
+@keyframes hg-beacon-wave {
+  0% {
+    transform: scale(0.5);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+/* Distance Callout Banner over Map */
+.map-distance-banner {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.map-distance-badge {
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.map-distance-badge.inside {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.map-distance-badge.outside {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* Fix Leaflet pane z-indexes inside modern responsive cards */
+.geofence-map-wrapper .leaflet-pane {
+  z-index: 200 !important;
+}
+
+.geofence-map-wrapper .leaflet-top,
+.geofence-map-wrapper .leaflet-bottom {
+  z-index: 300 !important;
+}

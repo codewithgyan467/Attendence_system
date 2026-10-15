@@ -22,6 +22,7 @@ import {
   X,
   Check
 } from 'lucide-react';
+import GeofenceMap from '../common/GeofenceMap';
 
 export default function StudentPortal({ activeTab = 'student_attendance', onSelectTab }) {
   const { user } = useAuth();
@@ -39,6 +40,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [sessionToken, setSessionToken] = useState(null);
   const [verifiedDistance, setVerifiedDistance] = useState(null);
   const [checkinError, setCheckinError] = useState(null);
+  const [studentCoords, setStudentCoords] = useState(null);
+  const [showMapRadar, setShowMapRadar] = useState(true);
 
   // Live Check-in Camera
   const videoRef = useRef(null);
@@ -134,6 +137,14 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         maxWaitMs: 3500,
         targetAccuracy: 25
       });
+
+      // Save student live GPS coordinates for the radar map
+      setStudentCoords({
+        lat: pos.latitude,
+        lng: pos.longitude,
+        accuracy: pos.accuracy || 10
+      });
+
       const res = await api.attendance.verifyLocation({
         roll_number: dashboard?.student?.roll_number || user?.username,
         latitude: pos.latitude,
@@ -143,13 +154,15 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       });
 
       if (res.success) {
-        setSessionToken(res.sessionToken);
-        setVerifiedDistance(res.verifiedDistance);
+        setSessionToken(res.sessionToken || res.challengeToken);
+        setVerifiedDistance(res.verifiedDistance || res.distanceMeters);
         setCheckinStep('gps_ok');
         // Auto open camera with resilient fallback
-        setTimeout(() => startCamera(), 300);
+        setTimeout(() => startCamera(), 400);
       } else {
-        setCheckinError(res.error || 'Location rejected by geofence policy.');
+        const dist = res.distanceMeters ? ` (${Math.round(res.distanceMeters)}m away)` : '';
+        setVerifiedDistance(res.distanceMeters || null);
+        setCheckinError(res.message || res.error || `Location rejected by hostel geofence policy${dist}.`);
         setCheckinStep('failed');
       }
     } catch (err) {
@@ -465,16 +478,45 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   </div>
                 ) : (
                   <>
+                    {/* Geofence Boundary & Live Radar Map */}
+                    <div className="mb-4 text-start">
+                      <div className="d-flex justify-content-between align-items-center mb-2 px-1">
+                        <span className="fw-semibold small text-muted d-flex align-items-center gap-1">
+                          <MapPin size={15} className="text-primary" /> Geofence Boundary & Live Radar
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-link btn-sm p-0 text-decoration-none text-primary fw-medium"
+                          onClick={() => setShowMapRadar(!showMapRadar)}
+                        >
+                          {showMapRadar ? 'Hide Map' : 'Show Map'}
+                        </button>
+                      </div>
+                      {showMapRadar && (
+                        <GeofenceMap
+                          centerLat={dashboard?.geofence?.latitude || 28.5355}
+                          centerLng={dashboard?.geofence?.longitude || 77.3910}
+                          radius={dashboard?.geofence?.radius_meters || 20}
+                          locationName={dashboard?.geofence?.hostel_name || 'Hostel Campus Boundary'}
+                          studentLat={studentCoords?.lat || null}
+                          studentLng={studentCoords?.lng || null}
+                          gpsAccuracy={studentCoords?.accuracy || null}
+                          height="290px"
+                          showLegend={true}
+                          showDistanceBanner={true}
+                        />
+                      )}
+                    </div>
+
                     {/* Check-In Progress State */}
                     {checkinStep === 'idle' && (
-                      <div className="py-3">
-                        <MapPin size={48} className="text-primary mb-3" />
+                      <div className="py-2">
                         <h5 className="fw-bold mb-1">Step 1: Verify Hostel Geofence Location</h5>
-                        <p className="text-muted small mx-auto mb-4" style={{ maxWidth: '440px' }}>
-                          In compliance with hostel policy, attendance requires verifying your device's physical presence within the campus boundary (15-20 meters).
+                        <p className="text-muted small mx-auto mb-3" style={{ maxWidth: '440px' }}>
+                          Attendance policy requires verifying your device's physical presence within the hostel boundary ({dashboard?.geofence?.radius_meters || 20}m).
                         </p>
                         <button
-                          className="btn btn-primary px-4 py-2 fw-semibold d-inline-flex align-items-center gap-2"
+                          className="btn btn-primary px-4 py-2 fw-semibold d-inline-flex align-items-center gap-2 shadow-sm"
                           onClick={handleVerifyLocation}
                         >
                           <Navigation size={18} /> Verify Current Location & Unlock Camera
@@ -640,6 +682,16 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                         ) : (
                           /* CASE C: Standard Location / Accuracy Issue */
                           <div className="d-flex flex-column align-items-center gap-2">
+                            {verifiedDistance !== null && (
+                              <div className="card bg-danger-subtle border-danger border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
+                                <div className="fw-bold text-danger small mb-1 d-flex align-items-center gap-1">
+                                  🔒 Camera Locked: Location Unverified
+                                </div>
+                                <div className="small text-danger">
+                                  You are <strong>{Math.round(verifiedDistance)}m away</strong> from the hostel, which exceeds the permitted radius of <strong>{dashboard?.geofence?.radius_meters || 20}m</strong>. You must be physically within the geofence perimeter shown on the radar above to unlock the camera.
+                                </div>
+                              </div>
+                            )}
                             <button
                               className="btn btn-primary btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
                               onClick={handleVerifyLocation}
