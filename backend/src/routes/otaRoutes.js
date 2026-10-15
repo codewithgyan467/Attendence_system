@@ -72,6 +72,25 @@ router.get('/bundle.zip', (req, res) => {
 });
 
 /**
+ * GET /api/v1/ota/download-apk
+ * Direct 1-click APK download endpoint for students.
+ * Streams local APK if available in data/ota/HostelGuard.apk,
+ * or immediately redirects to the raw GitHub release binary asset.
+ */
+const APK_PATH = path.join(OTA_DIR, 'HostelGuard.apk');
+const GITHUB_DIRECT_APK_URL = 'https://github.com/codewithgyan467/Attendence_system/releases/latest/download/app-release.apk';
+
+router.get('/download-apk', (req, res) => {
+  if (fs.existsSync(APK_PATH)) {
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader('Content-Disposition', 'attachment; filename="HostelGuard.apk"');
+    return fs.createReadStream(APK_PATH).pipe(res);
+  }
+  // Seamlessly redirect to the direct binary download (starts file download immediately)
+  res.redirect(GITHUB_DIRECT_APK_URL);
+});
+
+/**
  * POST /api/v1/ota/publish
  * Admin-only endpoint to register a new OTA version
  */
