@@ -24,8 +24,29 @@ export default function AppDownloadModal({ isOpen, onClose }) {
   const directApkUrl = 'https://github.com/codewithgyan467/Attendence_system/releases/latest/download/app-release.apk';
   const releasesPageUrl = 'https://github.com/codewithgyan467/Attendence_system/releases/latest';
 
-  // Current web app URL for iOS Safari scanning
-  const webAppUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+  // Official production URL for iOS Safari scanning & PWA
+  const PRODUCTION_WEB_URL = 'https://hostelguard-frontend.onrender.com';
+
+  const getWebAppUrl = () => {
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      const origin = window.location.origin;
+      const isLocalOrCapacitor =
+        origin.includes('localhost') ||
+        origin.includes('127.0.0.1') ||
+        origin.includes('10.0.2.2') ||
+        origin.startsWith('capacitor:') ||
+        origin.startsWith('file:');
+
+      // Use current window origin only if running on a real public web deployment
+      if (!isLocalOrCapacitor && origin.startsWith('http')) {
+        return origin;
+      }
+    }
+    // Always fallback to live production URL
+    return import.meta.env.VITE_FRONTEND_URL || PRODUCTION_WEB_URL;
+  };
+
+  const webAppUrl = getWebAppUrl();
 
   useEffect(() => {
     if (isOpen && canvasRef.current) {
@@ -280,7 +301,7 @@ export default function AppDownloadModal({ isOpen, onClose }) {
                   {copied ? (
                     <>
                       <Check size={12} className="text-success" />
-                      <span className="text-success fw-semibold">App URL Copied!</span>
+                      <span className="text-success fw-semibold">Link Copied: {webAppUrl}</span>
                     </>
                   ) : (
                     <>
@@ -288,6 +309,11 @@ export default function AppDownloadModal({ isOpen, onClose }) {
                     </>
                   )}
                 </button>
+                <div className="text-center mt-1">
+                  <span className="text-muted font-monospace" style={{ fontSize: '9px' }}>
+                    {webAppUrl}
+                  </span>
+                </div>
               </div>
             </div>
           )}

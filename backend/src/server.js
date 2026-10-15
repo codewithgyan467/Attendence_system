@@ -29,7 +29,8 @@ const defaultOrigins = [
   'https://localhost',
   'http://localhost',
   'capacitor://localhost',
-  'http://10.0.2.2:5000'
+  'http://10.0.2.2:5000',
+  'https://hostelguard-frontend.onrender.com'
 ];
 
 const configuredOrigins = process.env.ALLOWED_ORIGINS
