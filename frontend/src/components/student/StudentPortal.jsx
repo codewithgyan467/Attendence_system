@@ -20,9 +20,12 @@ import {
   Navigation,
   Sparkles,
   X,
-  Check
+  Check,
+  Zap,
+  Volume2
 } from 'lucide-react';
 import GeofenceMap from '../common/GeofenceMap';
+import { playBiometricChime, detectFaceAngle } from '../../utils/faceAngleGuide';
 
 export default function StudentPortal({ activeTab = 'student_attendance', onSelectTab }) {
   const { user } = useAuth();
@@ -56,6 +59,13 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [enrollError, setEnrollError] = useState(null);
   const enrollVideoRef = useRef(null);
   const enrollStreamRef = useRef(null);
+
+  // Hands-Free Auto-Capture & Head Pose Tracking
+  const [autoCaptureEnabled, setAutoCaptureEnabled] = useState(true);
+  const [poseStatus, setPoseStatus] = useState({ detected: false, angle: 'NONE', progress: 0, label: '' });
+  const [flashActive, setFlashActive] = useState(false);
+  const isAutoSnappingRef = useRef(false);
+  const autoHoldProgressRef = useRef(0);
 
   // Forms
   const [correctionForm, setCorrectionForm] = useState({ date: new Date().toISOString().split('T')[0], reason: '' });
@@ -256,15 +266,107 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     ctx.drawImage(enrollVideoRef.current, 0, 0, canvas.width, canvas.height);
     const base64 = canvas.toDataURL('image/jpeg', 0.9);
 
+    // Trigger visual shutter flash
+    setFlashActive(true);
+    setTimeout(() => setFlashActive(false), 180);
+
+    let nextAngle = null;
+    if (angle === 'FRONT') nextAngle = 'LEFT';
+    else if (angle === 'LEFT') nextAngle = 'RIGHT';
+
     setEnrollPhotos((prev) => {
       const filtered = prev.filter((p) => p.angle !== angle);
-      return [...filtered, { angle, imageBase64: base64 }];
+      const updated = [...filtered, { angle, imageBase64: base64 }];
+
+      // Play audio feedback chime
+      if (updated.length >= 3) {
+        playBiometricChime('completed');
+      } else {
+        playBiometricChime('captured');
+      }
+
+      return updated;
     });
 
     // Advance angle automatically for convenient 1-2-3 flow
-    if (angle === 'FRONT') setEnrollActiveAngle('LEFT');
-    else if (angle === 'LEFT') setEnrollActiveAngle('RIGHT');
+    if (nextAngle) {
+      setEnrollActiveAngle(nextAngle);
+    }
   };
+
+  // Real-time Hands-Free Head Pose Auto-Tracking Loop
+  useEffect(() => {
+    let animId;
+    let lastCheck = 0;
+
+    const runPoseTracking = async (time) => {
+      if (!showEnrollModal || !autoCaptureEnabled || enrollSubmitting) {
+        return;
+      }
+
+      // If all 3 angles are already captured, stop auto-snapping
+      if (enrollPhotos.length >= 3) {
+        setPoseStatus({
+          detected: true,
+          angle: 'DONE',
+          progress: 100,
+          label: '✓ All 3 Angles Captured! Click Save to Complete'
+        });
+        return;
+      }
+
+      // Sample every 80ms (~12.5 FPS) for optimal responsiveness without CPU overhead
+      if (time - lastCheck > 80) {
+        lastCheck = time;
+        if (enrollVideoRef.current && !isAutoSnappingRef.current) {
+          const pose = await detectFaceAngle(enrollVideoRef.current, enrollActiveAngle);
+
+          if (pose.detected && pose.angle === enrollActiveAngle) {
+            // Angle matches required pose! Increment stability hold progress
+            autoHoldProgressRef.current = Math.min(100, autoHoldProgressRef.current + 25);
+            setPoseStatus({
+              detected: true,
+              angle: pose.angle,
+              progress: autoHoldProgressRef.current,
+              label: `Hold steady... (${autoHoldProgressRef.current}%)`
+            });
+
+            if (autoHoldProgressRef.current >= 100) {
+              isAutoSnappingRef.current = true;
+              handleCaptureEnrollPhoto(enrollActiveAngle);
+              autoHoldProgressRef.current = 0;
+
+              // Brief cooldown so user can hear the chime and turn to the next angle comfortably
+              setTimeout(() => {
+                isAutoSnappingRef.current = false;
+              }, 750);
+            }
+          } else {
+            // Decay progress if moved or changed angle
+            autoHoldProgressRef.current = Math.max(0, autoHoldProgressRef.current - 15);
+            setPoseStatus({
+              detected: pose.detected,
+              angle: pose.angle,
+              progress: autoHoldProgressRef.current,
+              label: pose.detected ? pose.label : 'Position face inside oval'
+            });
+          }
+        }
+      }
+
+      animId = requestAnimationFrame(runPoseTracking);
+    };
+
+    if (showEnrollModal && autoCaptureEnabled) {
+      autoHoldProgressRef.current = 0;
+      isAutoSnappingRef.current = false;
+      animId = requestAnimationFrame(runPoseTracking);
+    }
+
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+    };
+  }, [showEnrollModal, autoCaptureEnabled, enrollActiveAngle, enrollSubmitting, enrollPhotos.length]);
 
   const handleSubmitFaceEnrollment = async () => {
     if (enrollPhotos.length === 0) {
@@ -1083,19 +1185,25 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                       );
                     })}
                   </div>
-                  <p className="text-muted small mb-3">
+                  <p className="text-muted small mb-2">
                     {enrollActiveAngle === 'FRONT'
                       ? 'Look directly at the camera with a neutral expression.'
                       : enrollActiveAngle === 'LEFT'
                       ? 'Turn your head slightly to the left (~15°).'
                       : 'Turn your head slightly to the right (~15°).'}
                   </p>
+                  {autoCaptureEnabled && (
+                    <div className="d-inline-flex align-items-center gap-1 px-2 py-1 rounded bg-success-subtle text-success small fw-medium mb-3">
+                      <Zap size={13} />
+                      <span>Hands-Free Auto-Capture ON: Just hold the requested angle steady!</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Viewport */}
                 <div
-                  className="position-relative d-inline-block rounded-4 overflow-hidden shadow-sm mb-3"
-                  style={{ width: '100%', maxWidth: '400px', height: '270px', backgroundColor: '#000' }}
+                  className="position-relative d-inline-block rounded-4 overflow-hidden shadow mb-3"
+                  style={{ width: '100%', maxWidth: '400px', height: '280px', backgroundColor: '#000' }}
                 >
                   <video
                     ref={attachEnrollVideoRef}
@@ -1112,7 +1220,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     }}
                     onLoadedMetadata={(e) => e.target.play().catch(console.warn)}
                   />
-                  {/* Face Guide Oval */}
+
+                  {/* Face Guide Oval with Real-Time Pose Glow */}
                   <div
                     style={{
                       position: 'absolute',
@@ -1120,15 +1229,86 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                       left: '25%',
                       width: '50%',
                       height: '76%',
-                      border: '2px dashed #10b981',
+                      border:
+                        poseStatus.progress > 0
+                          ? '3px solid #10b981'
+                          : poseStatus.detected && poseStatus.angle === enrollActiveAngle
+                          ? '2px solid #10b981'
+                          : '2px dashed rgba(16, 185, 129, 0.65)',
                       borderRadius: '50%',
                       pointerEvents: 'none',
-                      boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.35)'
+                      boxShadow:
+                        poseStatus.progress > 0
+                          ? '0 0 22px rgba(16, 185, 129, 0.85), 0 0 0 9999px rgba(0, 0, 0, 0.42)'
+                          : '0 0 0 9999px rgba(0, 0, 0, 0.35)',
+                      transition: 'all 0.15s ease'
                     }}
-                  ></div>
+                  />
+
+                  {/* Shutter Flash Animation */}
+                  {flashActive && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        backgroundColor: '#ffffff',
+                        opacity: 0.85,
+                        zIndex: 20,
+                        pointerEvents: 'none'
+                      }}
+                    />
+                  )}
+
+                  {/* Hands-Free Live Guidance Badge */}
+                  <div
+                    className="position-absolute start-50 translate-middle-x px-3 py-1 rounded-pill small fw-semibold text-white shadow-sm d-flex align-items-center gap-2"
+                    style={{
+                      bottom: '12px',
+                      backgroundColor: poseStatus.progress > 0 ? 'rgba(16, 185, 129, 0.95)' : 'rgba(15, 23, 42, 0.82)',
+                      backdropFilter: 'blur(8px)',
+                      border: poseStatus.progress > 0 ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.15)',
+                      fontSize: '11px',
+                      zIndex: 15,
+                      transition: 'all 0.18s ease',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {autoCaptureEnabled && (
+                      <Zap
+                        size={12}
+                        className={poseStatus.progress > 0 ? 'text-warning' : 'text-success'}
+                      />
+                    )}
+                    <span>
+                      {poseStatus.label || (autoCaptureEnabled ? 'Align your face in oval' : 'Ready to capture')}
+                    </span>
+                    {autoCaptureEnabled && poseStatus.progress > 0 && (
+                      <span className="badge bg-white text-success fw-bold px-1.5 py-0" style={{ fontSize: '10px' }}>
+                        {poseStatus.progress}%
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Stability Hold Progress Bar */}
+                  {autoCaptureEnabled && poseStatus.progress > 0 && (
+                    <div
+                      className="position-absolute bottom-0 start-0 w-100"
+                      style={{ height: '4px', backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 16 }}
+                    >
+                      <div
+                        style={{
+                          height: '100%',
+                          width: `${poseStatus.progress}%`,
+                          backgroundColor: '#10b981',
+                          boxShadow: '0 0 8px #10b981',
+                          transition: 'width 0.08s linear'
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
 
-                <div className="d-flex justify-content-center gap-2 mb-3">
+                <div className="d-flex justify-content-center align-items-center gap-2 mb-3 flex-wrap">
                   <button
                     type="button"
                     className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1 shadow-sm"
@@ -1143,12 +1323,34 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   >
                     <RefreshCw size={13} /> Restart Camera
                   </button>
+
+                  <button
+                    type="button"
+                    className={`btn btn-sm d-inline-flex align-items-center gap-1 shadow-sm ${
+                      autoCaptureEnabled ? 'btn-success text-white' : 'btn-outline-secondary'
+                    }`}
+                    onClick={() => setAutoCaptureEnabled(!autoCaptureEnabled)}
+                    title={autoCaptureEnabled ? 'Hands-Free Auto Snap is ON' : 'Turn Auto-Snap ON'}
+                  >
+                    <Zap size={13} />
+                    {autoCaptureEnabled ? 'Auto-Snap: ON' : 'Auto-Snap: OFF'}
+                  </button>
+
                   <button
                     type="button"
                     className="btn btn-primary btn-sm px-3 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
                     onClick={() => handleCaptureEnrollPhoto(enrollActiveAngle)}
                   >
                     <Camera size={14} /> Snap {enrollActiveAngle} Photo
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm p-1 px-2"
+                    onClick={() => playBiometricChime('captured')}
+                    title="Test Audio Chime"
+                  >
+                    <Volume2 size={13} />
                   </button>
                 </div>
 

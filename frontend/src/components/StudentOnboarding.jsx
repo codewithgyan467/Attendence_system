@@ -20,8 +20,11 @@ import {
   ArrowLeft,
   Lock,
   Search,
-  Home
+  Home,
+  Zap,
+  Volume2
 } from 'lucide-react';
+import { playBiometricChime, detectFaceAngle } from '../utils/faceAngleGuide';
 
 export default function StudentOnboarding({ onComplete }) {
   // Step flow: lookup -> otp -> credentials -> camera -> success
@@ -59,6 +62,13 @@ export default function StudentOnboarding({ onComplete }) {
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [submitLoading, setSubmitLoading] = useState(false);
+
+  // Hands-Free Auto-Capture & Head Pose Tracking
+  const [autoCaptureEnabled, setAutoCaptureEnabled] = useState(true);
+  const [poseStatus, setPoseStatus] = useState({ detected: false, angle: 'NONE', progress: 0, label: '' });
+  const [flashActive, setFlashActive] = useState(false);
+  const isAutoSnappingRef = useRef(false);
+  const autoHoldProgressRef = useRef(0);
 
   // Global UI feedback
   const [errorMsg, setErrorMsg] = useState('');
@@ -258,7 +268,7 @@ export default function StudentOnboarding({ onComplete }) {
     setCameraActive(false);
   };
 
-  const captureFrame = () => {
+  const captureFrame = (targetIdx = activeAngleIndex) => {
     if (!videoRef.current) return;
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth || 640;
@@ -267,15 +277,97 @@ export default function StudentOnboarding({ onComplete }) {
     ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
     const base64 = canvas.toDataURL('image/jpeg', 0.9);
 
-    const angleName = anglesToCapture[activeAngleIndex];
+    // Shutter flash
+    setFlashActive(true);
+    setTimeout(() => setFlashActive(false), 180);
+
+    const angleName = anglesToCapture[targetIdx];
     const newPhotos = [...photos.filter((p) => p.angle !== angleName), { angle: angleName, imageBase64: base64 }];
     setPhotos(newPhotos);
 
+    // Play chime sound
+    if (newPhotos.length >= 3) {
+      playBiometricChime('completed');
+    } else {
+      playBiometricChime('captured');
+    }
+
     // Auto advance angle for smooth 1-2-3 capture
-    if (activeAngleIndex < anglesToCapture.length - 1) {
+    if (targetIdx < anglesToCapture.length - 1) {
       setActiveAngleIndex((prev) => prev + 1);
     }
   };
+
+  // Real-time Hands-Free Head Pose Auto-Tracking Loop for Student Onboarding
+  useEffect(() => {
+    let animId;
+    let lastCheck = 0;
+
+    const runPoseTracking = async (time) => {
+      if (currentStep !== 'camera' || !cameraActive || !autoCaptureEnabled || submitLoading) {
+        return;
+      }
+
+      if (photos.length >= 3) {
+        setPoseStatus({
+          detected: true,
+          angle: 'DONE',
+          progress: 100,
+          label: '✓ All 3 Angles Captured! Click Submit to Finish'
+        });
+        return;
+      }
+
+      if (time - lastCheck > 80) {
+        lastCheck = time;
+        if (videoRef.current && !isAutoSnappingRef.current) {
+          const currentAngle = anglesToCapture[activeAngleIndex] || 'FRONT';
+          const targetNorm = currentAngle.includes('LEFT') ? 'LEFT' : currentAngle.includes('RIGHT') ? 'RIGHT' : 'FRONT';
+          const pose = await detectFaceAngle(videoRef.current, targetNorm);
+
+          if (pose.detected && pose.angle === targetNorm) {
+            autoHoldProgressRef.current = Math.min(100, autoHoldProgressRef.current + 25);
+            setPoseStatus({
+              detected: true,
+              angle: pose.angle,
+              progress: autoHoldProgressRef.current,
+              label: `Hold steady... (${autoHoldProgressRef.current}%)`
+            });
+
+            if (autoHoldProgressRef.current >= 100) {
+              isAutoSnappingRef.current = true;
+              captureFrame(activeAngleIndex);
+              autoHoldProgressRef.current = 0;
+
+              setTimeout(() => {
+                isAutoSnappingRef.current = false;
+              }, 750);
+            }
+          } else {
+            autoHoldProgressRef.current = Math.max(0, autoHoldProgressRef.current - 15);
+            setPoseStatus({
+              detected: pose.detected,
+              angle: pose.angle,
+              progress: autoHoldProgressRef.current,
+              label: pose.detected ? pose.label : 'Position face inside oval'
+            });
+          }
+        }
+      }
+
+      animId = requestAnimationFrame(runPoseTracking);
+    };
+
+    if (currentStep === 'camera' && cameraActive && autoCaptureEnabled) {
+      autoHoldProgressRef.current = 0;
+      isAutoSnappingRef.current = false;
+      animId = requestAnimationFrame(runPoseTracking);
+    }
+
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+    };
+  }, [currentStep, cameraActive, autoCaptureEnabled, activeAngleIndex, submitLoading, photos.length]);
 
   // -------------------------------------------------------------
   // Submit Biometric Face Vectors to AI Microservice
@@ -908,9 +1000,32 @@ export default function StudentOnboarding({ onComplete }) {
               <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#ffffff' }}>
                 Capture 3-Angle Facial Embeddings
               </h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                Please align your face inside the guide and capture the 3 angles: Front, Left Tilt, and Right Tilt.
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                {anglesToCapture[activeAngleIndex] === 'FRONT'
+                  ? 'Look straight at the camera with a neutral expression.'
+                  : anglesToCapture[activeAngleIndex].includes('LEFT')
+                  ? 'Turn your head slightly to your left (~15°).'
+                  : 'Turn your head slightly to your right (~15°).'}
               </p>
+              {autoCaptureEnabled && (
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '4px 12px',
+                    borderRadius: '999px',
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    border: '1px solid rgba(16, 185, 129, 0.35)',
+                    color: '#34d399',
+                    fontSize: '12px',
+                    fontWeight: '600'
+                  }}
+                >
+                  <Zap size={13} />
+                  <span>Hands-Free Auto-Capture ON: Just hold the requested angle steady!</span>
+                </div>
+              )}
             </div>
 
             {/* Camera Viewport */}
@@ -940,40 +1055,113 @@ export default function StudentOnboarding({ onComplete }) {
                 }}
               />
 
-              {/* Face Guide Oval */}
+              {/* Dynamic Face Guide Oval with Pose Glow */}
               <div
                 style={{
                   position: 'absolute',
-                  top: '15%',
+                  top: '14%',
                   left: '25%',
                   width: '50%',
-                  height: '70%',
-                  border: '2px dashed #10b981',
+                  height: '72%',
+                  border:
+                    poseStatus.progress > 0
+                      ? '3px solid #10b981'
+                      : poseStatus.detected
+                      ? '2px solid #10b981'
+                      : '2px dashed rgba(16, 185, 129, 0.65)',
                   borderRadius: '50%',
                   pointerEvents: 'none',
-                  boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.35)'
+                  boxShadow:
+                    poseStatus.progress > 0
+                      ? '0 0 24px rgba(16, 185, 129, 0.85), 0 0 0 9999px rgba(0, 0, 0, 0.45)'
+                      : '0 0 0 9999px rgba(0, 0, 0, 0.35)',
+                  transition: 'all 0.15s ease'
                 }}
               />
 
-              {/* Angle Label Overlay */}
+              {/* Shutter Flash Animation */}
+              {flashActive && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    backgroundColor: '#ffffff',
+                    opacity: 0.85,
+                    zIndex: 20,
+                    pointerEvents: 'none'
+                  }}
+                />
+              )}
+
+              {/* Hands-Free Live Guidance Badge */}
               <div
                 style={{
                   position: 'absolute',
                   bottom: '16px',
                   left: '50%',
                   transform: 'translateX(-50%)',
-                  background: 'rgba(0, 0, 0, 0.75)',
+                  background: poseStatus.progress > 0 ? 'rgba(16, 185, 129, 0.95)' : 'rgba(15, 23, 42, 0.85)',
                   backdropFilter: 'blur(8px)',
                   padding: '6px 16px',
                   borderRadius: '999px',
                   color: '#ffffff',
                   fontSize: '12px',
                   fontWeight: '700',
-                  border: '1px solid rgba(255, 255, 255, 0.15)'
+                  border: poseStatus.progress > 0 ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  whiteSpace: 'nowrap',
+                  zIndex: 15,
+                  boxShadow: '0 4px 15px rgba(0,0,0,0.3)'
                 }}
               >
-                Current Angle: <span style={{ color: '#818cf8' }}>{anglesToCapture[activeAngleIndex].replace('_', ' ')}</span>
+                {autoCaptureEnabled && (
+                  <Zap size={13} color={poseStatus.progress > 0 ? '#facc15' : '#10b981'} />
+                )}
+                <span>
+                  {poseStatus.label || (autoCaptureEnabled ? 'Align your face in oval' : 'Ready to capture')}
+                </span>
+                {autoCaptureEnabled && poseStatus.progress > 0 && (
+                  <span
+                    style={{
+                      background: '#ffffff',
+                      color: '#065f46',
+                      borderRadius: '6px',
+                      padding: '1px 6px',
+                      fontSize: '11px',
+                      fontWeight: '800'
+                    }}
+                  >
+                    {poseStatus.progress}%
+                  </span>
+                )}
               </div>
+
+              {/* Stability Hold Progress Bar */}
+              {autoCaptureEnabled && poseStatus.progress > 0 && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '5px',
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    zIndex: 16
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${poseStatus.progress}%`,
+                      backgroundColor: '#10b981',
+                      boxShadow: '0 0 10px #10b981',
+                      transition: 'width 0.08s linear'
+                    }}
+                  />
+                </div>
+              )}
 
               {!cameraActive && (
                 <div
@@ -1036,9 +1224,29 @@ export default function StudentOnboarding({ onComplete }) {
             </div>
 
             {/* Action Buttons */}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap' }}>
-              <button onClick={captureFrame} className="btn-emerald" disabled={!cameraActive || submitLoading}>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setAutoCaptureEnabled(!autoCaptureEnabled)}
+                className={autoCaptureEnabled ? 'btn-emerald' : 'btn-secondary'}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                title={autoCaptureEnabled ? 'Hands-Free Auto Snap is ON' : 'Turn Auto-Snap ON'}
+              >
+                <Zap size={16} /> {autoCaptureEnabled ? 'Auto-Snap: ON' : 'Auto-Snap: OFF'}
+              </button>
+
+              <button onClick={() => captureFrame(activeAngleIndex)} className="btn-emerald" disabled={!cameraActive || submitLoading}>
                 <Camera size={18} /> Capture {anglesToCapture[activeAngleIndex].replace('_', ' ')}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => playBiometricChime('captured')}
+                className="btn-secondary"
+                style={{ padding: '10px 14px' }}
+                title="Test Audio Chime"
+              >
+                <Volume2 size={16} />
               </button>
 
               {photos.length > 0 && (
