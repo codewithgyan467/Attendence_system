@@ -7,13 +7,30 @@ const { generateToken, requireAuth, requireRole, recordAuditEvent } = require('.
 const aiServiceClient = require('../services/aiServiceClient');
 
 // 1. Public Searchable Allotment List (Enforces: Student cannot type name manually!)
+// Returns allotments that are either unregistered (is_registered = 0) OR pre-created but pending face enrollment
 router.get('/allotment-list', async (req, res) => {
   try {
     const list = await allQuery(`
-      SELECT id, roll_number, full_name, room_number, hostel_block, email, phone, course, admission_year, semester
-      FROM hostel_allotments
-      WHERE is_registered = 0
-      ORDER BY full_name ASC
+      SELECT 
+        a.id, 
+        a.roll_number, 
+        a.full_name, 
+        a.room_number, 
+        a.hostel_block, 
+        COALESCE(s.email, a.email) as email, 
+        COALESCE(s.phone, a.phone) as phone, 
+        COALESCE(s.course, a.course) as course, 
+        COALESCE(s.admission_year, a.admission_year) as admission_year, 
+        COALESCE(s.semester, a.semester) as semester
+      FROM hostel_allotments a
+      LEFT JOIN students s ON s.roll_number = a.roll_number
+      WHERE a.is_registered = 0
+         OR (
+           SELECT COUNT(*) 
+           FROM student_face_embeddings fe 
+           WHERE fe.student_id = s.id
+         ) = 0
+      ORDER BY a.full_name ASC
     `);
     res.json({ success: true, allotments: list });
   } catch (err) {
