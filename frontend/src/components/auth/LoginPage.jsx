@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, Server, Check, CheckCircle2 } from 'lucide-react';
+import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, Server, Check, CheckCircle2, Download } from 'lucide-react';
 import { getApiBaseUrl, authStorage } from '../../utils/api';
 import ForgotPasswordModal from './ForgotPasswordModal';
 import GoogleSignInButton from './GoogleSignInButton';
@@ -204,6 +204,24 @@ export default function LoginPage({ onNavigateOnboarding }) {
             >
               <UserCheck size={14} /> Student Registration & Biometrics
             </button>
+          </div>
+
+          {/* Android Mobile App Direct Download Link */}
+          <div className="text-center mt-3 pt-3 border-top">
+            <p className="text-muted small mb-2">Mark attendance from your Android phone:</p>
+            <a
+              href="https://github.com/codewithgyan467/Attendence_system/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-outline-success btn-sm w-100 py-2 d-inline-flex align-items-center justify-content-center gap-2 fw-semibold shadow-sm text-decoration-none rounded-3"
+              style={{ borderColor: '#10b981', color: '#047857', backgroundColor: '#ecfdf5' }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#10b981" aria-hidden="true">
+                <path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.551 0 .9993.4482.9993.9993.0001.5511-.4483.9997-.9993.9997m-11.046 0c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993 0 .5511-.4482.9997-.9993.9997m11.4045-6.02l1.9973-3.4592a.416.416 0 00-.1521-.5676.416.416 0 00-.5676.1521l-2.0223 3.503C15.5902 8.4116 13.8533 8.0822 12 8.0822s-3.5902.3294-5.1368.8676L4.841 5.4468a.416.416 0 00-.5677-.1521.4157.4157 0 00-.152.5676l1.9972 3.4592C2.6889 11.1867.3432 14.6589 0 18.761h24c-.3432-4.1021-2.6889-7.5743-6.1185-9.4396" />
+              </svg>
+              <span>Download Android App (.APK)</span>
+              <Download size={15} />
+            </a>
           </div>
 
           {/* Server Connection Config (Especially helpful for Native Mobile & Emulator) */}
