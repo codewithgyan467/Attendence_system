@@ -25,20 +25,12 @@ export default function Navbar({ onToggleSidebar }) {
           <Menu size={20} />
         </button>
         <div className="d-flex align-items-center gap-2">
-          <div style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '8px',
-            backgroundColor: 'var(--hg-primary)',
-            color: '#ffffff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: '800',
-            fontSize: '16px'
-          }}>
-            H
-          </div>
+          <img
+            src="/icon-192.png"
+            alt="HostelGuard Mascot"
+            className="rounded-2 shadow-sm"
+            style={{ width: '32px', height: '32px', objectFit: 'cover' }}
+          />
           <span className="fw-bold d-none d-sm-inline" style={{ fontSize: '16px', color: 'var(--hg-text-main)' }}>
             HostelGuard <span className="text-primary">Enterprise</span>
           </span>

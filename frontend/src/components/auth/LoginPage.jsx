@@ -84,9 +84,12 @@ export default function LoginPage({ onNavigateOnboarding }) {
       <div className="card shadow-lg border-0 rounded-4" style={{ maxWidth: '420px', width: '100%', overflow: 'hidden' }}>
         {/* Card Header */}
         <div className="px-3 py-2.5 text-center text-white" style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}>
-          <div className="d-inline-flex p-2 rounded-circle bg-primary bg-opacity-25 mb-1.5">
-            <Shield size={26} className="text-primary" />
-          </div>
+          <img
+            src="/icon-192.png"
+            alt="HostelGuard Security Mascot"
+            className="rounded-circle shadow mb-1.5 border border-2 border-primary border-opacity-50"
+            style={{ width: '46px', height: '46px', objectFit: 'cover' }}
+          />
           <h5 className="fw-bold mb-0 text-white" style={{ fontSize: '16px' }}>HostelGuard Portal</h5>
           <p className="text-muted small mb-0" style={{ fontSize: '11px' }}>
             Biometric &amp; Geofenced Attendance Management

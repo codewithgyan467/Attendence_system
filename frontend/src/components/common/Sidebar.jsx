@@ -57,8 +57,9 @@ export default function Sidebar({ activeTab, onSelectTab, showMobile, onCloseMob
       {/* Brand Header */}
       <div className="p-3 border-bottom border-dark d-flex align-items-center justify-content-between" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
         <div className="d-flex align-items-center gap-2">
-          <span className="badge bg-primary px-2 py-1" style={{ fontSize: '11px' }}>FOSS v2.0</span>
-          <span className="text-white fw-bold" style={{ fontSize: '14px' }}>HostelGuard</span>
+          <img src="/icon-192.png" alt="HostelGuard" className="rounded-circle shadow-sm" style={{ width: '28px', height: '28px', objectFit: 'cover' }} />
+          <span className="text-white fw-bold" style={{ fontSize: '14.5px' }}>HostelGuard</span>
+          <span className="badge bg-primary px-1.5 py-0.5" style={{ fontSize: '10px' }}>v2.0</span>
         </div>
         <button className="btn btn-sm text-light d-lg-none" onClick={onCloseMobile}>
           <X size={18} />

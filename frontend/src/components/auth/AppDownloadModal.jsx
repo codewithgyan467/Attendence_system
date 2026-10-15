@@ -87,12 +87,12 @@ export default function AppDownloadModal({ isOpen, onClose }) {
           style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}
         >
           <div className="d-flex align-items-center gap-2">
-            <div
-              className="d-flex align-items-center justify-content-center rounded-circle flex-shrink-0"
-              style={{ width: '26px', height: '26px', backgroundColor: 'rgba(255, 255, 255, 0.12)' }}
-            >
-              <Smartphone size={15} className="text-white" />
-            </div>
+            <img
+              src="/icon-192.png"
+              alt="HostelGuard Officer Mascot"
+              className="rounded-circle border border-white border-opacity-25 shadow-sm flex-shrink-0"
+              style={{ width: '28px', height: '28px', objectFit: 'cover' }}
+            />
             <div>
               <h6 className="fw-bold mb-0 text-white" style={{ fontSize: '13px' }}>HostelGuard Mobile App</h6>
               <small className="text-secondary" style={{ fontSize: '10px' }}>
