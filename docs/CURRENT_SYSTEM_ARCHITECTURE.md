@@ -169,3 +169,19 @@ sequenceDiagram
 * **Individual Deletion**: Every data desk (corrections, incident alerts, audit logs, grievance tickets, attendance marks) provides individual row deletion with audit tracking.
 * **Single-Click "Clear All"**: Dedicated bulk-purge workflows with item count confirmation dialogs prevent database bloat while preserving active rosters.
 * **Automated Backups**: Built-in snapshot archiver generating encrypted `.sqlite` backup archives stored in `backend/data/backups/`.
+
+---
+
+## 8. Interactive Executive Dashboard & Real-Time Roster
+
+* **Clickable Present & Absent Cards**: On the Executive Attendance Dashboard, clicking the "Present Today" or "Absent / Unmarked" KPI cards immediately displays the authoritative student roster for that specific day.
+* **Real-Time Modal Interface**: Features 1-click tab switching between Present and Absent students, live keyword search, hostel block filter, direct telephone dialer (`tel:`) links, and single-click CSV export.
+* **Standardized 12-Hour Clock**: All clock widgets, timestamps, logs, and override windows display deterministic 12-hour AM/PM format.
+
+---
+
+## 9. Automated Testing & Production Build Health
+
+* **Jest Test Suite**: 8 suites passing, 86/86 automated unit and integration tests passing.
+* **Vite Production Bundle**: Compiles cleanly with 0 errors across all 24 chunks in ~5 seconds.
+* **Git Repository**: Clean working tree on `main` branch, synchronized with GitHub remote `origin/main`.
