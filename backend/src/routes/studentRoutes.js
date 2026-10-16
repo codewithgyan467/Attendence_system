@@ -42,14 +42,14 @@ router.post('/onboarding/lookup', authLimiter, async (req, res) => {
         s.id as student_id
       FROM hostel_allotments a
       LEFT JOIN students s ON s.roll_number = a.roll_number
-      WHERE LOWER(a.roll_number) = LOWER(?)
-         OR LOWER(a.full_name) = LOWER(?)
+      WHERE LOWER(TRIM(a.roll_number)) = LOWER(TRIM(?))
+         OR LOWER(TRIM(a.full_name)) = LOWER(TRIM(?))
          OR (LENGTH(?) >= 7 AND (
               REPLACE(REPLACE(REPLACE(a.phone, ' ', ''), '-', ''), '+', '') LIKE '%' || ?
               OR REPLACE(REPLACE(REPLACE(s.phone, ' ', ''), '-', ''), '+', '') LIKE '%' || ?
             ))
-         OR (a.email IS NOT NULL AND a.email != '' AND LOWER(a.email) = LOWER(?))
-         OR (s.email IS NOT NULL AND s.email != '' AND LOWER(s.email) = LOWER(?))
+         OR (a.email IS NOT NULL AND a.email != '' AND LOWER(TRIM(a.email)) = LOWER(TRIM(?)))
+         OR (s.email IS NOT NULL AND s.email != '' AND LOWER(TRIM(s.email)) = LOWER(TRIM(?)))
       LIMIT 1
     `, [
       clean,
@@ -60,6 +60,42 @@ router.post('/onboarding/lookup', authLimiter, async (req, res) => {
       clean,
       clean
     ]);
+
+    if (!record) {
+      // Fallback: search in students table directly
+      const studentRec = await getQuery(`
+        SELECT 
+          s.allotment_id,
+          s.roll_number,
+          s.full_name,
+          0 as is_registered,
+          s.email,
+          s.phone,
+          s.course,
+          s.id as student_id
+        FROM students s
+        WHERE LOWER(TRIM(s.roll_number)) = LOWER(TRIM(?))
+           OR LOWER(TRIM(s.full_name)) = LOWER(TRIM(?))
+           OR (LENGTH(?) >= 7 AND REPLACE(REPLACE(REPLACE(s.phone, ' ', ''), '-', ''), '+', '') LIKE '%' || ?)
+           OR (s.email IS NOT NULL AND s.email != '' AND LOWER(TRIM(s.email)) = LOWER(TRIM(?)))
+        LIMIT 1
+      `, [clean, clean, cleanDigits, cleanDigits.slice(-10), clean]);
+
+      if (studentRec) {
+        // Ensure allotment exists for this student
+        const existingAllot = await getQuery(`SELECT id FROM hostel_allotments WHERE LOWER(TRIM(roll_number)) = LOWER(TRIM(?))`, [studentRec.roll_number]);
+        let allotId = existingAllot?.id;
+        if (!allotId) {
+          allotId = uuidv4();
+          await runQuery(`
+            INSERT INTO hostel_allotments (id, roll_number, full_name, room_number, hostel_block, email, phone, course, is_registered)
+            VALUES (?, ?, ?, 'A-101', 'Block A', ?, ?, ?, 0)
+          `, [allotId, studentRec.roll_number, studentRec.full_name, studentRec.email, studentRec.phone, studentRec.course]);
+        }
+        studentRec.allotment_id = allotId;
+        record = studentRec;
+      }
+    }
 
     if (!record) {
       return res.status(404).json({
@@ -346,9 +382,19 @@ router.post('/onboard', async (req, res) => {
     }
 
     // Verify allotment
-    const allotment = await getQuery(`SELECT * FROM hostel_allotments WHERE roll_number = ?`, [targetRoll]);
+    let allotment = await getQuery(`SELECT * FROM hostel_allotments WHERE LOWER(TRIM(roll_number)) = LOWER(TRIM(?))`, [targetRoll]);
     if (!allotment) {
-      return res.status(404).json({ success: false, error: 'Selected roll number is not on the hostel allotment roster.' });
+      const st = await getQuery(`SELECT * FROM students WHERE LOWER(TRIM(roll_number)) = LOWER(TRIM(?))`, [targetRoll]);
+      if (st) {
+        const newAllotId = uuidv4();
+        await runQuery(`
+          INSERT INTO hostel_allotments (id, roll_number, full_name, room_number, hostel_block, email, phone, course, is_registered)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+        `, [newAllotId, st.roll_number, st.full_name, st.room_number || 'A-101', st.hostel_block || 'Block A', st.email, st.phone, st.course]);
+        allotment = await getQuery(`SELECT * FROM hostel_allotments WHERE id = ?`, [newAllotId]);
+      } else {
+        return res.status(404).json({ success: false, error: 'Selected roll number is not on the hostel allotment roster.' });
+      }
     }
 
     const existingStudent = await getQuery(`SELECT * FROM students WHERE roll_number = ?`, [targetRoll]);
@@ -381,7 +427,7 @@ router.post('/onboard', async (req, res) => {
     }
 
     // Generate credentials & IDs
-    const studentId = `HSTL-${targetAdmYear}-${targetRoll.replace(/[^a-zA-Z0-9]/g, '')}`;
+    const studentId = existingStudent ? existingStudent.id : `HSTL-${targetAdmYear}-${targetRoll.replace(/[^a-zA-Z0-9]/g, '')}`;
     const devId = device_id || `DEV-${uuidv4().substring(0, 8)}`;
 
     const salt = await bcrypt.genSalt(10);

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, Server, Check, CheckCircle2, Download, QrCode, Smartphone } from 'lucide-react';
-import { getApiBaseUrl, authStorage } from '../../utils/api';
+import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, CheckCircle2, Download, QrCode, Smartphone } from 'lucide-react';
 import ForgotPasswordModal from './ForgotPasswordModal';
 import GoogleSignInButton from './GoogleSignInButton';
 import AppDownloadModal from './AppDownloadModal';
@@ -16,9 +15,6 @@ export default function LoginPage({ onNavigateOnboarding }) {
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [magicLinkToken, setMagicLinkToken] = useState(null);
-  const [showServerConfig, setShowServerConfig] = useState(false);
-  const [customServerUrl, setCustomServerUrl] = useState(authStorage.getBackendUrl());
-  const [serverSavedMsg, setServerSavedMsg] = useState(false);
 
   // Check URL query parameters (e.g. ?mode=reset or ?token=... or ?roll=2023CS01)
   useEffect(() => {
@@ -69,15 +65,6 @@ export default function LoginPage({ onNavigateOnboarding }) {
     }
   };
 
-  const handleSaveServer = (e) => {
-    e.preventDefault();
-    authStorage.setBackendUrl(customServerUrl);
-    setServerSavedMsg(true);
-    setTimeout(() => {
-      setServerSavedMsg(false);
-      setShowServerConfig(false);
-    }, 1200);
-  };
 
   return (
     <div className="container d-flex justify-content-center my-auto py-2">
@@ -214,8 +201,8 @@ export default function LoginPage({ onNavigateOnboarding }) {
             </button>
           </div>
 
-          {/* Student Onboarding & Server Configuration Row */}
-          <div className="d-flex align-items-center justify-content-between mt-2 pt-2 border-top">
+          {/* Student Onboarding Link */}
+          <div className="text-center mt-2 pt-2 border-top">
             <button
               type="button"
               className="btn btn-link btn-sm text-decoration-none text-primary p-0 d-inline-flex align-items-center gap-1"
@@ -224,40 +211,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
             >
               <UserCheck size={13} /> New Student Enrollment
             </button>
-
-            <button
-              type="button"
-              className="btn btn-link btn-sm text-decoration-none text-muted p-0 d-inline-flex align-items-center gap-1"
-              style={{ fontSize: '11px' }}
-              onClick={() => setShowServerConfig(!showServerConfig)}
-            >
-              <Server size={11} /> Config
-            </button>
           </div>
-
-          {showServerConfig && (
-            <div className="card mt-2 p-2.5 text-start bg-light border-0 shadow-sm rounded-3">
-              <div className="d-flex align-items-center justify-content-between mb-1.5">
-                <span className="small fw-bold text-dark" style={{ fontSize: '11.5px' }}>Backend API Endpoint</span>
-                {serverSavedMsg && <span className="badge bg-success small"><Check size={10} /> Saved</span>}
-              </div>
-              <div className="input-group input-group-sm mb-1.5">
-                <input
-                  type="text"
-                  className="form-control"
-                  placeholder="http://10.0.2.2:5000/api/v1"
-                  value={customServerUrl}
-                  onChange={(e) => setCustomServerUrl(e.target.value)}
-                />
-                <button className="btn btn-primary" type="button" onClick={handleSaveServer}>
-                  Save
-                </button>
-              </div>
-              <div className="small text-muted" style={{ fontSize: '10px', lineHeight: 1.3 }}>
-                • <strong>Android:</strong> <code>http://10.0.2.2:5000/api/v1</code> &bull; <strong>Web:</strong> <code>/api/v1</code>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 

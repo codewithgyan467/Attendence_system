@@ -152,6 +152,33 @@ router.get('/dashboard-stats', requireRole('ADMIN'), async (req, res) => {
 // 2. Student Management CRUD (Search, Filter, Pagination)
 router.get('/students', async (req, res) => {
   try {
+    // Auto-sync any allotments that lack student records so they appear on the roster with 'Pending Biometric Enrollment'
+    await runQuery(`
+      INSERT OR IGNORE INTO students (
+        id, user_id, allotment_id, roll_number, full_name, email, phone,
+        course, admission_year, semester, room_number, hostel_block,
+        device_id, device_model, is_active
+      )
+      SELECT 
+        'HSTL-' || COALESCE(admission_year, 2026) || '-' || REPLACE(roll_number, ' ', ''),
+        NULL,
+        id,
+        roll_number,
+        full_name,
+        email,
+        phone,
+        COALESCE(course, 'B.Tech Computer Science'),
+        COALESCE(admission_year, 2026),
+        COALESCE(semester, 1),
+        COALESCE(room_number, 'A-101'),
+        COALESCE(hostel_block, 'Block A'),
+        'DEV-' || LOWER(roll_number),
+        'Pending Self-Enrollment & Face Activation',
+        1
+      FROM hostel_allotments a
+      WHERE NOT EXISTS (SELECT 1 FROM students s WHERE s.roll_number = a.roll_number)
+    `);
+
     const { search = '', block = '', course = '', page = 1, limit = 25 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -613,6 +640,20 @@ router.post('/allotment/upload-commit', async (req, res) => {
               `DEV-${item.roll_number.toLowerCase()}`,
               'Pending Biometric Enrollment'
             ]);
+          } else {
+            await runQuery(`
+              INSERT INTO students (
+                id, user_id, allotment_id, roll_number, full_name, email, phone,
+                course, admission_year, semester, room_number, hostel_block,
+                device_id, device_model, is_active
+              ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            `, [
+              studentId, allotmentId, item.roll_number, item.full_name,
+              studentEmail, studentPhone, course, admYear, sem,
+              item.room_number || 'A-101', item.hostel_block || 'Block A',
+              `DEV-${item.roll_number.toLowerCase()}`,
+              'Pending Self-Enrollment & Face Activation'
+            ]);
           }
 
           count++;
@@ -754,6 +795,21 @@ router.post('/students/manual-add', async (req, res) => {
           room_number.trim(), hostel_block.trim(),
           `DEV-${cleanRoll.toLowerCase()}`,
           'Pending Biometric Enrollment'
+        ]);
+      } else {
+        // Pre-create student profile without login account (user_id = null)
+        await runQuery(`
+          INSERT INTO students (
+            id, user_id, allotment_id, roll_number, full_name, email, phone,
+            course, admission_year, semester, room_number, hostel_block,
+            device_id, device_model, is_active
+          ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        `, [
+          studentId, allotmentId, cleanRoll, cleanName, cleanEmail, cleanPhone,
+          course.trim(), parseInt(admission_year), parseInt(semester),
+          room_number.trim(), hostel_block.trim(),
+          `DEV-${cleanRoll.toLowerCase()}`,
+          'Pending Self-Enrollment & Face Activation'
         ]);
       }
     });

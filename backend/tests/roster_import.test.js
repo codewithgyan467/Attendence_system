@@ -211,4 +211,105 @@ describe('Roster Upload & Pre-Registration Verification', () => {
     expect(audit).toBeDefined();
     expect(audit.username).toBe('admin');
   });
+
+  test('Enroll student WITHOUT pre-created login, verify roster visibility, and complete self-onboarding lifecycle', async () => {
+    const testRoll = 'TEST_NOLOGIN_01';
+    const testPhone = '9395746230';
+    const testEmail = 'shashanka.test@example.com';
+
+    // Cleanup any leftovers
+    await runQuery(`DELETE FROM students WHERE roll_number = ?`, [testRoll]);
+    await runQuery(`DELETE FROM hostel_allotments WHERE roll_number = ?`, [testRoll]);
+    await runQuery(`DELETE FROM users WHERE username = ?`, [testRoll]);
+
+    // 1. Admin adds student with create_login = false
+    const addRes = await request(app)
+      .post('/api/v1/admin/students/manual-add')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        roll_number: testRoll,
+        full_name: 'Shashanka Test',
+        room_number: 'A-101',
+        hostel_block: 'Block A',
+        email: testEmail,
+        phone: testPhone,
+        course: 'B.Tech Computer Science',
+        admission_year: 2026,
+        semester: 1,
+        create_login: false
+      });
+
+    expect(addRes.status).toBe(200);
+    expect(addRes.body.success).toBe(true);
+    expect(addRes.body.student.credentials).toBeNull();
+
+    // 2. Student is visible in GET /api/v1/admin/students
+    const listRes = await request(app)
+      .get(`/api/v1/admin/students?search=${testRoll}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.students.length).toBeGreaterThanOrEqual(1);
+    const listedStudent = listRes.body.students.find(s => s.roll_number === testRoll);
+    expect(listedStudent).toBeDefined();
+    expect(listedStudent.user_id).toBeNull();
+
+    // 3. Student performs privacy-preserving lookup by phone number
+    const lookupRes = await request(app)
+      .post('/api/v1/students/onboarding/lookup')
+      .send({ query: testPhone });
+
+    expect(lookupRes.status).toBe(200);
+    expect(lookupRes.body.success).toBe(true);
+    expect(lookupRes.body.student.roll_number).toBe(testRoll);
+    expect(lookupRes.body.student.has_phone).toBe(true);
+
+    // 4. Student requests OTP
+    const otpRes = await request(app)
+      .post('/api/v1/students/onboarding/send-otp')
+      .send({ roll_number: testRoll, method: 'PHONE' });
+
+    expect(otpRes.status).toBe(200);
+    expect(otpRes.body.success).toBe(true);
+    expect(otpRes.body.debugOtp).toBeDefined();
+    const sentOtp = otpRes.body.debugOtp;
+
+    // 5. Student verifies OTP
+    const verifyRes = await request(app)
+      .post('/api/v1/students/onboarding/verify-otp')
+      .send({ roll_number: testRoll, otp: sentOtp });
+
+    expect(verifyRes.status).toBe(200);
+    expect(verifyRes.body.success).toBe(true);
+    expect(verifyRes.body.onboarding_token).toBeDefined();
+    expect(verifyRes.body.credentials.username).toBe(testRoll);
+    const onboardingToken = verifyRes.body.onboarding_token;
+
+    // 6. Student submits face biometrics and completes onboarding
+    const onboardRes = await request(app)
+      .post('/api/v1/students/onboard')
+      .send({
+        onboarding_token: onboardingToken,
+        roll_number: testRoll,
+        photos: [{ angle: 'FRONT', imageBase64: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==' }]
+      });
+
+    expect(onboardRes.status).toBe(200);
+    expect(onboardRes.body.success).toBe(true);
+    expect(onboardRes.body.student.rollNumber).toBe(testRoll);
+
+    // 7. Verify login user was created and can sign in
+    const studentLogin = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: testRoll, password: 'Student@12345' });
+
+    expect(studentLogin.status).toBe(200);
+    expect(studentLogin.body.success).toBe(true);
+    expect(studentLogin.body.user.role).toBe('STUDENT');
+
+    // Clean up test data
+    await runQuery(`DELETE FROM students WHERE roll_number = ?`, [testRoll]);
+    await runQuery(`DELETE FROM hostel_allotments WHERE roll_number = ?`, [testRoll]);
+    await runQuery(`DELETE FROM users WHERE username = ?`, [testRoll]);
+  });
 });

@@ -217,7 +217,19 @@ export const api = {
     getCorrections: () => request('/students/corrections'),
     submitFeedback: (data) => request('/students/feedback', { method: 'POST', body: JSON.stringify(data) }),
     getFeedback: () => request('/students/feedback'),
-    registerFace: (data) => request('/students/register-face', { method: 'POST', body: JSON.stringify(data) })
+    registerFace: (data) => request('/students/register-face', { method: 'POST', body: JSON.stringify(data) }),
+    lookup: (query) => request('/students/onboarding/lookup', { method: 'POST', body: JSON.stringify({ query }) }),
+    sendOtp: (data) => request('/students/onboarding/send-otp', { method: 'POST', body: JSON.stringify(data) }),
+    verifyOtp: (data) => request('/students/onboarding/verify-otp', { method: 'POST', body: JSON.stringify(data) }),
+    submitFaceBiometrics: (payload) => request('/students/onboard', { method: 'POST', body: JSON.stringify(payload) })
+  },
+
+  // Student Self-Onboarding & Biometric Verification
+  studentOnboarding: {
+    lookup: (query) => request('/students/onboarding/lookup', { method: 'POST', body: JSON.stringify({ query }) }),
+    sendOtp: (data) => request('/students/onboarding/send-otp', { method: 'POST', body: JSON.stringify(data) }),
+    verifyOtp: (data) => request('/students/onboarding/verify-otp', { method: 'POST', body: JSON.stringify(data) }),
+    submitFaceBiometrics: (payload) => request('/students/onboard', { method: 'POST', body: JSON.stringify(payload) })
   },
 
   // Daily Attendance APIs
@@ -236,6 +248,9 @@ export const api = {
   },
   verifyOnboardingOtp(data) {
     return request('/students/onboarding/verify-otp', { method: 'POST', body: JSON.stringify(data) });
+  },
+  submitFaceBiometrics(payload) {
+    return request('/students/onboard', { method: 'POST', body: JSON.stringify(payload) });
   },
 
   // Backward-compatibility aliases for legacy / simulator components

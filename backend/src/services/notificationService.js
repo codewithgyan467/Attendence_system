@@ -280,10 +280,11 @@ async function sendSmsOtp({ phone, otpCode, studentName = 'Student', rollNumber 
   if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) {
     try {
       const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      const normalizedPhone = phone.trim().startsWith('+') ? phone.trim() : (phone.trim().length === 10 ? `+91${phone.trim()}` : `+${phone.trim()}`);
       await twilio.messages.create({
         body: smsBody,
         from: process.env.TWILIO_PHONE_NUMBER,
-        to: phone
+        to: normalizedPhone
       });
       console.log(`[Twilio SMS] Delivered SMS OTP to ${masked}`);
       return { success: true, delivered: true, maskedDestination: masked };
