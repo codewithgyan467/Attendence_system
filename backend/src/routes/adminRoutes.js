@@ -13,6 +13,7 @@ const { requireAuth, requireRole, recordAuditEvent, revokeAllUserSessions } = re
 const { clearForgeFlag } = require('../services/fraudService');
 const backupService = require('../services/backupService');
 const aiServiceClient = require('../services/aiServiceClient');
+const { getAttendanceWindowStatus, formatTime12h } = require('../services/scheduleService');
 
 // Security Hardened Multer Configuration: 10MB limit and strict file format filter
 const uploadDir = path.join(__dirname, '../../uploads');
@@ -1066,6 +1067,41 @@ router.post('/attendance/override', async (req, res) => {
   }
 });
 
+// DELETE single attendance record
+router.delete('/attendance/:id', async (req, res) => {
+  try {
+    const record = await getQuery('SELECT * FROM attendance_records WHERE id = ?', [req.params.id]);
+    if (!record) {
+      return res.status(404).json({ success: false, error: 'Attendance record not found.' });
+    }
+    await runQuery('DELETE FROM attendance_records WHERE id = ?', [req.params.id]);
+    await recordAuditEvent(req.user.id, req.user.username, 'DELETE_ATTENDANCE_RECORD', 'ATTENDANCE', record.id, `Deleted attendance for ${record.roll_number} on ${record.date}`, req);
+    res.json({ success: true, message: `Attendance record for ${record.roll_number} (${record.date}) deleted successfully.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE all / date-filtered attendance records
+router.delete('/attendance', async (req, res) => {
+  try {
+    const { date } = req.query;
+    let sql = 'DELETE FROM attendance_records';
+    const params = [];
+    let logDetail = 'Cleared all historical attendance records across all dates';
+    if (date && date !== 'all') {
+      sql += ' WHERE date = ?';
+      params.push(date);
+      logDetail = `Cleared all attendance records for date ${date}`;
+    }
+    const result = await runQuery(sql, params);
+    await recordAuditEvent(req.user.id, req.user.username, 'PURGE_ATTENDANCE_RECORDS', 'ATTENDANCE', date || 'ALL', logDetail, req);
+    res.json({ success: true, message: `Successfully cleared attendance records. (${result.changes || 0} records deleted)` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 6. Attendance Correction Requests Management
 router.get('/corrections', async (req, res) => {
   try {
@@ -1138,6 +1174,41 @@ router.post('/corrections/:id/review', async (req, res) => {
     await recordAuditEvent(req.user.id, req.user.username, 'REVIEW_CORRECTION', 'CORRECTION', correction.id, `${decision} correction for ${correction.roll_number} on ${correction.date}`, req);
 
     res.json({ success: true, message: `Correction request marked as ${decision}.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE single correction request
+router.delete('/corrections/:id', async (req, res) => {
+  try {
+    const correction = await getQuery('SELECT * FROM attendance_corrections WHERE id = ?', [req.params.id]);
+    if (!correction) {
+      return res.status(404).json({ success: false, error: 'Correction request not found.' });
+    }
+    await runQuery('DELETE FROM attendance_corrections WHERE id = ?', [req.params.id]);
+    await recordAuditEvent(req.user.id, req.user.username, 'DELETE_CORRECTION', 'CORRECTION', correction.id, `Deleted correction request #${correction.id} for ${correction.roll_number}`, req);
+    res.json({ success: true, message: `Correction request #${correction.id} deleted successfully.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE all / status-filtered correction requests
+router.delete('/corrections', async (req, res) => {
+  try {
+    const { status } = req.query;
+    let sql = 'DELETE FROM attendance_corrections';
+    const params = [];
+    let logDetail = 'Cleared all attendance correction requests';
+    if (status) {
+      sql += ' WHERE status = ?';
+      params.push(status);
+      logDetail = `Cleared all ${status} attendance correction requests`;
+    }
+    const result = await runQuery(sql, params);
+    await recordAuditEvent(req.user.id, req.user.username, 'PURGE_CORRECTIONS', 'CORRECTION', status || 'ALL', logDetail, req);
+    res.json({ success: true, message: `Successfully cleared attendance correction requests. (${result.changes || 0} removed)` });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -1247,6 +1318,31 @@ router.post('/security/reset-all-strikes', async (req, res) => {
   }
 });
 
+// DELETE single security incident alert
+router.delete('/security/alerts/:id', async (req, res) => {
+  try {
+    const alert = await getQuery('SELECT * FROM security_audit_logs WHERE id = ?', [req.params.id]);
+    if (!alert) {
+      return res.status(404).json({ success: false, error: 'Security alert not found.' });
+    }
+    await runQuery('DELETE FROM security_audit_logs WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Security incident alert deleted.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE all security alerts
+router.delete('/security/alerts', async (req, res) => {
+  try {
+    const result = await runQuery('DELETE FROM security_audit_logs');
+    await recordAuditEvent(req.user.id, req.user.username, 'PURGE_SECURITY_LOGS', 'SECURITY', 'ALL', 'Purged all security incident and spoofing logs', req);
+    res.json({ success: true, message: `All security incident alerts cleared successfully. (${result.changes || 0} removed)` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 8. Audit Logs Viewer
 router.get('/audit-logs', async (req, res) => {
   try {
@@ -1274,6 +1370,32 @@ router.get('/audit-logs', async (req, res) => {
 
     const logs = await allQuery(sql, params);
     res.json({ success: true, logs });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE single audit log entry
+router.delete('/audit-logs/:id', async (req, res) => {
+  try {
+    const log = await getQuery('SELECT * FROM admin_audit_events WHERE id = ?', [req.params.id]);
+    if (!log) {
+      return res.status(404).json({ success: false, error: 'Audit log entry not found.' });
+    }
+    await runQuery('DELETE FROM admin_audit_events WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Audit log entry deleted.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE all audit logs
+router.delete('/audit-logs', async (req, res) => {
+  try {
+    const result = await runQuery('DELETE FROM admin_audit_events');
+    // Record fresh entry so there is an immutable marker that audit trail was cleared
+    await recordAuditEvent(req.user.id, req.user.username, 'PURGE_AUDIT_LOGS', 'SYSTEM', 'ALL', 'Administrator cleared historical audit log trail.', req);
+    res.json({ success: true, message: `All historical administrative audit logs cleared successfully. (${result.changes || 0} removed)` });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -1331,6 +1453,237 @@ router.post('/feedback/:id/resolve', async (req, res) => {
 
     res.json({ success: true, message: 'Ticket updated successfully.' });
   } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE single feedback ticket
+router.delete('/feedback/:id', async (req, res) => {
+  try {
+    const ticket = await getQuery('SELECT * FROM feedback_tickets WHERE id = ?', [req.params.id]);
+    if (!ticket) {
+      return res.status(404).json({ success: false, error: 'Feedback ticket not found.' });
+    }
+    await runQuery('DELETE FROM feedback_tickets WHERE id = ?', [req.params.id]);
+    await recordAuditEvent(req.user.id, req.user.username, 'DELETE_FEEDBACK', 'FEEDBACK', ticket.id, `Deleted feedback ticket #${ticket.id}`, req);
+    res.json({ success: true, message: 'Feedback ticket deleted successfully.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE all / filtered feedback tickets
+router.delete('/feedback', async (req, res) => {
+  try {
+    const { status } = req.query;
+    let sql = 'DELETE FROM feedback_tickets';
+    const params = [];
+    let logDetail = 'Cleared all student support tickets';
+    if (status) {
+      sql += ' WHERE status = ?';
+      params.push(status);
+      logDetail = `Cleared all ${status} student support tickets`;
+    }
+    const result = await runQuery(sql, params);
+    await recordAuditEvent(req.user.id, req.user.username, 'PURGE_FEEDBACK', 'FEEDBACK', status || 'ALL', logDetail, req);
+    res.json({ success: true, message: `All feedback tickets cleared successfully. (${result.changes || 0} removed)` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 10B. Attendance Schedule & Real-World Time Window Management
+router.get('/attendance-schedule', async (req, res) => {
+  try {
+    const config = (await getQuery(`SELECT * FROM attendance_schedule_configs WHERE id = 'default_schedule' LIMIT 1`)) || {
+      default_start_time: '19:00',
+      default_end_time: '19:30',
+      is_enabled: 1,
+      timezone: 'Asia/Kolkata'
+    };
+    const liveStatus = await getAttendanceWindowStatus();
+    const overrides = await allQuery(`
+      SELECT * FROM attendance_schedule_overrides
+      ORDER BY override_date DESC
+    `);
+
+    res.json({
+      success: true,
+      config,
+      liveStatus,
+      overrides: overrides.map(o => ({
+        ...o,
+        startTime12: o.start_time ? formatTime12h(o.start_time) : null,
+        endTime12: o.end_time ? formatTime12h(o.end_time) : null
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/attendance-schedule', async (req, res) => {
+  try {
+    const { default_start_time, default_end_time, is_enabled, timezone } = req.body;
+
+    const startTime = default_start_time || '19:00';
+    const endTime = default_end_time || '19:30';
+    const enabled = is_enabled !== undefined ? (is_enabled ? 1 : 0) : 1;
+    const tz = timezone || 'Asia/Kolkata';
+
+    await runQuery(`
+      INSERT INTO attendance_schedule_configs (id, default_start_time, default_end_time, is_enabled, timezone, updated_at, updated_by)
+      VALUES ('default_schedule', ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        default_start_time = excluded.default_start_time,
+        default_end_time = excluded.default_end_time,
+        is_enabled = excluded.is_enabled,
+        timezone = excluded.timezone,
+        updated_at = CURRENT_TIMESTAMP,
+        updated_by = excluded.updated_by
+    `, [startTime, endTime, enabled, tz, req.user.username]);
+
+    await recordAuditEvent(req.user.id, req.user.username, 'UPDATE_SCHEDULE_CONFIG', 'SCHEDULE', 'default_schedule', `Updated default schedule: ${startTime} - ${endTime} (${tz}), enabled=${enabled}`, req);
+
+    const liveStatus = await getAttendanceWindowStatus();
+    res.json({
+      success: true,
+      message: `Default attendance window successfully updated to ${formatTime12h(startTime)} – ${formatTime12h(endTime)}.`,
+      liveStatus
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/attendance-schedule/overrides', async (req, res) => {
+  try {
+    const { override_date, title, start_time, end_time, is_holiday, notes } = req.body;
+
+    if (!override_date || !title) {
+      return res.status(400).json({ success: false, error: 'Override date (YYYY-MM-DD) and event title are required.' });
+    }
+
+    const isHoliday = is_holiday ? 1 : 0;
+    const startTime = isHoliday ? null : (start_time || '19:00');
+    const endTime = isHoliday ? null : (end_time || '19:30');
+
+    const existing = await getQuery(`SELECT id FROM attendance_schedule_overrides WHERE override_date = ?`, [override_date]);
+    if (existing) {
+      await runQuery(`
+        UPDATE attendance_schedule_overrides
+        SET title = ?, start_time = ?, end_time = ?, is_holiday = ?, notes = ?, created_by = ?
+        WHERE id = ?
+      `, [title, startTime, endTime, isHoliday, notes || '', req.user.username, existing.id]);
+    } else {
+      await runQuery(`
+        INSERT INTO attendance_schedule_overrides (id, override_date, title, start_time, end_time, is_holiday, notes, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [uuidv4(), override_date, title, startTime, endTime, isHoliday, notes || '', req.user.username]);
+    }
+
+    await recordAuditEvent(req.user.id, req.user.username, 'SET_SCHEDULE_OVERRIDE', 'SCHEDULE', override_date, `${isHoliday ? 'Holiday' : `Extension (${startTime}-${endTime})`}: ${title}`, req);
+
+    res.json({
+      success: true,
+      message: `Schedule override for ${override_date} (${title}) saved successfully.`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/attendance-schedule/overrides/:id', async (req, res) => {
+  try {
+    const override = await getQuery(`SELECT * FROM attendance_schedule_overrides WHERE id = ?`, [req.params.id]);
+    if (!override) {
+      return res.status(404).json({ success: false, error: 'Schedule override not found.' });
+    }
+    await runQuery(`DELETE FROM attendance_schedule_overrides WHERE id = ?`, [req.params.id]);
+    await recordAuditEvent(req.user.id, req.user.username, 'DELETE_SCHEDULE_OVERRIDE', 'SCHEDULE', override.override_date, `Removed override for ${override.override_date} (${override.title})`, req);
+
+    res.json({ success: true, message: `Schedule override for ${override.override_date} deleted.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/attendance-schedule/upload-holidays', upload.single('file'), async (req, res) => {
+  try {
+    let rows = [];
+
+    if (req.file) {
+      const ext = path.extname(req.file.originalname).toLowerCase();
+      if (ext === '.csv') {
+        const fileContent = fs.readFileSync(req.file.path, 'utf8');
+        const lines = fileContent.split(/\r?\n/).filter(l => l.trim().length > 0);
+        if (lines.length > 1) {
+          const header = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[\s_-]+/g, ''));
+          for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
+            const rowObj = {};
+            header.forEach((h, idx) => {
+              rowObj[h] = cols[idx] || '';
+            });
+            rows.push(rowObj);
+          }
+        }
+      } else if (['.xlsx', '.xls'].includes(ext)) {
+        const workbook = XLSX.readFile(req.file.path);
+        const firstSheetName = workbook.SheetNames[0];
+        rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName]);
+      } else {
+        const raw = fs.readFileSync(req.file.path, 'utf8');
+        rows = JSON.parse(raw);
+      }
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+    } else if (req.body.holidays) {
+      rows = typeof req.body.holidays === 'string' ? JSON.parse(req.body.holidays) : req.body.holidays;
+    }
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ success: false, error: 'No holiday/event records found in upload.' });
+    }
+
+    let insertedCount = 0;
+    for (const r of rows) {
+      const dateRaw = r.date || r.override_date || r.Date || r['Holiday Date'] || r['Event Date'] || '';
+      const dateStr = String(dateRaw).trim().slice(0, 10);
+      const title = String(r.title || r.Title || r.name || r['Holiday Name'] || r['Event Name'] || r.Reason || 'Campus Holiday').trim();
+      const startTime = r.start_time || r.startTime || r['Start Time'] || null;
+      const endTime = r.end_time || r.endTime || r['End Time'] || null;
+      const isHoliday = (r.is_holiday !== undefined && r.is_holiday !== null) ? (String(r.is_holiday).toLowerCase() === 'true' || String(r.is_holiday) === '1' ? 1 : 0) : (startTime ? 0 : 1);
+      const notes = r.notes || r.Notes || r.description || '';
+
+      if (dateStr && dateStr.match(/^\d{4}-\d{2}-\d{2}$/) && title) {
+        const existing = await getQuery(`SELECT id FROM attendance_schedule_overrides WHERE override_date = ?`, [dateStr]);
+        if (existing) {
+          await runQuery(`
+            UPDATE attendance_schedule_overrides
+            SET title = ?, start_time = ?, end_time = ?, is_holiday = ?, notes = ?, created_by = ?
+            WHERE id = ?
+          `, [title, startTime, endTime, isHoliday, notes, req.user.username, existing.id]);
+        } else {
+          await runQuery(`
+            INSERT INTO attendance_schedule_overrides (id, override_date, title, start_time, end_time, is_holiday, notes, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `, [uuidv4(), dateStr, title, startTime, endTime, isHoliday, notes, req.user.username]);
+        }
+        insertedCount++;
+      }
+    }
+
+    await recordAuditEvent(req.user.id, req.user.username, 'BULK_IMPORT_HOLIDAYS', 'SCHEDULE', 'MULTIPLE', `Imported ${insertedCount} holiday/event schedule overrides`, req);
+
+    res.json({
+      success: true,
+      count: insertedCount,
+      message: `Successfully processed and imported ${insertedCount} holiday & event schedule overrides.`
+    });
+  } catch (err) {
+    if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+    }
     res.status(500).json({ success: false, error: err.message });
   }
 });

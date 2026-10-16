@@ -7,7 +7,8 @@ import {
   AlertTriangle,
   RefreshCw,
   MessageSquare,
-  Send
+  Send,
+  Trash2
 } from 'lucide-react';
 
 export default function FeedbackTicketDesk() {
@@ -16,6 +17,9 @@ export default function FeedbackTicketDesk() {
   const [selectedStatus, setSelectedStatus] = useState('OPEN');
   const [errorMsg, setErrorMsg] = useState(null);
   const [statusMsg, setStatusMsg] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
@@ -75,6 +79,40 @@ export default function FeedbackTicketDesk() {
     }
   };
 
+  const handleDeleteSingleTicket = async (id, subject) => {
+    if (!window.confirm(`Delete support ticket "${subject || id}"? This cannot be undone.`)) {
+      return;
+    }
+    setDeletingId(id);
+    setErrorMsg(null);
+    setStatusMsg(null);
+    try {
+      const res = await api.admin.deleteFeedbackTicket(id);
+      setStatusMsg(res.message || 'Support ticket deleted.');
+      setTickets((prev) => prev.filter((t) => t.id !== id));
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to delete support ticket');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClearAllTickets = async () => {
+    setClearingAll(true);
+    setErrorMsg(null);
+    setStatusMsg(null);
+    try {
+      const res = await api.admin.clearAllFeedbackTickets(selectedStatus || undefined);
+      setStatusMsg(res.message || 'All selected feedback tickets cleared.');
+      setShowClearModal(false);
+      fetchFeedback();
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to clear feedback tickets');
+    } finally {
+      setClearingAll(false);
+    }
+  };
+
   return (
     <div className="container-fluid px-0">
       {/* Page Title */}
@@ -88,13 +126,22 @@ export default function FeedbackTicketDesk() {
             Address student queries regarding hostel facilities, Wi-Fi connectivity, app troubleshooting, and room amenities.
           </p>
         </div>
-        <button
-          className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
-          onClick={fetchFeedback}
-          disabled={loading}
-        >
-          <RefreshCw size={14} /> Refresh
-        </button>
+        <div className="d-flex gap-2">
+          <button
+            className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
+            onClick={fetchFeedback}
+            disabled={loading}
+          >
+            <RefreshCw size={14} /> Refresh
+          </button>
+          <button
+            className="btn btn-outline-danger btn-sm d-flex align-items-center gap-1"
+            onClick={() => setShowClearModal(true)}
+            disabled={loading || tickets.length === 0}
+          >
+            <Trash2 size={14} /> Clear All Tickets
+          </button>
+        </div>
       </div>
 
       {statusMsg && (
@@ -200,13 +247,23 @@ export default function FeedbackTicketDesk() {
                         </small>
                       </td>
                       <td className="text-end pe-3">
-                        <button
-                          className="btn btn-sm btn-outline-primary py-0 px-2"
-                          style={{ fontSize: '12px' }}
-                          onClick={() => openModal(t)}
-                        >
-                          Respond
-                        </button>
+                        <div className="d-flex justify-content-end align-items-center gap-1">
+                          <button
+                            className="btn btn-sm btn-outline-primary py-0 px-2"
+                            style={{ fontSize: '12px' }}
+                            onClick={() => openModal(t)}
+                          >
+                            Respond
+                          </button>
+                          <button
+                            className="btn btn-sm btn-outline-danger p-1"
+                            title="Delete this ticket"
+                            disabled={deletingId === t.id}
+                            onClick={() => handleDeleteSingleTicket(t.id, t.subject)}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -286,6 +343,50 @@ export default function FeedbackTicketDesk() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Feedback Tickets Confirmation Modal */}
+      {showClearModal && (
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content rounded-3 border-0 shadow">
+              <div className="modal-header border-bottom bg-danger-subtle text-danger">
+                <h6 className="modal-title fw-bold d-flex align-items-center gap-2">
+                  <Trash2 size={18} />
+                  Confirm Clear Support Tickets
+                </h6>
+                <button type="button" className="btn-close" onClick={() => setShowClearModal(false)}></button>
+              </div>
+              <div className="modal-body p-4">
+                <p className="mb-2">
+                  Are you sure you want to delete {selectedStatus ? <strong>all {selectedStatus}</strong> : 'all'} support and grievance tickets?
+                </p>
+                <div className="text-muted small">
+                  This will permanently delete {tickets.length} ticket(s) from the database to purge stale records. This action cannot be undone.
+                </div>
+              </div>
+              <div className="modal-footer border-top bg-light py-2">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => setShowClearModal(false)}
+                  disabled={clearingAll}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger d-flex align-items-center gap-1"
+                  onClick={handleClearAllTickets}
+                  disabled={clearingAll}
+                >
+                  <Trash2 size={14} />
+                  {clearingAll ? 'Clearing Tickets...' : 'Yes, Delete All Tickets'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

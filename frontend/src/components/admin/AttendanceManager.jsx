@@ -11,7 +11,8 @@ import {
   AlertTriangle,
   RefreshCw,
   Clock,
-  UserCheck
+  UserCheck,
+  Trash2
 } from 'lucide-react';
 
 export default function AttendanceManager() {
@@ -19,6 +20,10 @@ export default function AttendanceManager() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
   const [statusMsg, setStatusMsg] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [clearScope, setClearScope] = useState('date'); // 'date' | 'all'
+  const [clearingRecords, setClearingRecords] = useState(false);
 
   // Filters
   const todayStr = new Date().toISOString().split('T')[0];
@@ -110,6 +115,41 @@ export default function AttendanceManager() {
     }
   };
 
+  const handleDeleteSingleRecord = async (id, rollNo) => {
+    if (!window.confirm(`Delete attendance record for ${rollNo || 'student'} on ${selectedDate}? This cannot be undone.`)) {
+      return;
+    }
+    setDeletingId(id);
+    setErrorMsg(null);
+    setStatusMsg(null);
+    try {
+      const res = await api.admin.deleteAttendanceRecord(id);
+      setStatusMsg(res.message || 'Attendance record deleted.');
+      setRecords((prev) => prev.filter((r) => (r.attendance_id || r.id) !== id));
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to delete attendance record');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClearAttendance = async () => {
+    setClearingRecords(true);
+    setErrorMsg(null);
+    setStatusMsg(null);
+    try {
+      const dateParam = clearScope === 'date' ? selectedDate : undefined;
+      const res = await api.admin.clearAttendanceRecords(dateParam);
+      setStatusMsg(res.message || 'Attendance records cleared.');
+      setShowClearModal(false);
+      fetchAttendance();
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to clear attendance records');
+    } finally {
+      setClearingRecords(false);
+    }
+  };
+
   const handleExportCSV = () => {
     if (!records || records.length === 0) {
       alert('No attendance records available to export.');
@@ -180,6 +220,16 @@ export default function AttendanceManager() {
             disabled={records.length === 0}
           >
             <Download size={14} /> Export CSV
+          </button>
+          <button
+            className="btn btn-outline-danger btn-sm d-flex align-items-center gap-1"
+            onClick={() => {
+              setClearScope('date');
+              setShowClearModal(true);
+            }}
+            disabled={loading || records.length === 0}
+          >
+            <Trash2 size={14} /> Clear Records
           </button>
         </div>
       </div>
@@ -347,14 +397,26 @@ export default function AttendanceManager() {
                       </td>
                       <td>{getStatusBadge(r.status)}</td>
                       <td className="text-end pe-3">
-                        <button
-                          className="btn btn-outline-secondary btn-sm py-0 px-2"
-                          style={{ fontSize: '12px' }}
-                          onClick={() => openOverride(r)}
-                          title="Apply Administrative Override"
-                        >
-                          <Edit3 size={12} className="me-1 inline" /> Override
-                        </button>
+                        <div className="d-flex justify-content-end align-items-center gap-1">
+                          <button
+                            className="btn btn-outline-secondary btn-sm py-0 px-2"
+                            style={{ fontSize: '12px' }}
+                            onClick={() => openOverride(r)}
+                            title="Apply Administrative Override"
+                          >
+                            <Edit3 size={12} className="me-1 inline" /> Override
+                          </button>
+                          {(r.attendance_id || r.id) && (
+                            <button
+                              className="btn btn-sm btn-outline-danger p-1"
+                              title="Delete this attendance record"
+                              disabled={deletingId === (r.attendance_id || r.id)}
+                              onClick={() => handleDeleteSingleRecord(r.attendance_id || r.id, r.roll_no || r.roll_number)}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -436,6 +498,78 @@ export default function AttendanceManager() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear Attendance Records Confirmation Modal */}
+      {showClearModal && (
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content rounded-3 border-0 shadow">
+              <div className="modal-header border-bottom bg-danger-subtle text-danger">
+                <h6 className="modal-title fw-bold d-flex align-items-center gap-2">
+                  <Trash2 size={18} />
+                  Purge Attendance Records
+                </h6>
+                <button type="button" className="btn-close" onClick={() => setShowClearModal(false)}></button>
+              </div>
+              <div className="modal-body p-4">
+                <div className="mb-3">
+                  <label className="form-label fw-semibold small">Purge Scope</label>
+                  <div className="form-check mb-2">
+                    <input
+                      className="form-check-input"
+                      type="radio"
+                      name="clearScopeRadio"
+                      id="scopeDate"
+                      checked={clearScope === 'date'}
+                      onChange={() => setClearScope('date')}
+                    />
+                    <label className="form-check-label small" htmlFor="scopeDate">
+                      Clear records for selected date only (<strong>{selectedDate}</strong> - {records.length} records)
+                    </label>
+                  </div>
+                  <div className="form-check">
+                    <input
+                      className="form-check-input"
+                      type="radio"
+                      name="clearScopeRadio"
+                      id="scopeAll"
+                      checked={clearScope === 'all'}
+                      onChange={() => setClearScope('all')}
+                    />
+                    <label className="form-check-label small text-danger fw-semibold" htmlFor="scopeAll">
+                      Purge ALL historical attendance records across all dates
+                    </label>
+                  </div>
+                </div>
+
+                <div className="alert alert-warning py-2 px-3 small mb-0">
+                  <AlertTriangle size={14} className="inline me-1" />
+                  This operation deletes historical attendance marks permanently to clean up stale test or garbage data. This action cannot be reversed.
+                </div>
+              </div>
+              <div className="modal-footer border-top bg-light py-2">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => setShowClearModal(false)}
+                  disabled={clearingRecords}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger d-flex align-items-center gap-1"
+                  onClick={handleClearAttendance}
+                  disabled={clearingRecords}
+                >
+                  <Trash2 size={14} />
+                  {clearingRecords ? 'Purging Records...' : clearScope === 'date' ? `Delete ${selectedDate} Records` : 'Purge All Attendance Records'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

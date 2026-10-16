@@ -8,15 +8,21 @@ import {
   ShieldCheck,
   User,
   Clock,
-  Code
+  Code,
+  Trash2,
+  CheckCircle2
 } from 'lucide-react';
 
 export default function AuditLogViewer() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [statusMsg, setStatusMsg] = useState(null);
   const [search, setSearch] = useState('');
   const [actionFilter, setActionFilter] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
 
   useEffect(() => {
     fetchLogs();
@@ -41,6 +47,40 @@ export default function AuditLogViewer() {
   const handleSearch = (e) => {
     e.preventDefault();
     fetchLogs();
+  };
+
+  const handleDeleteSingleLog = async (id) => {
+    if (!window.confirm('Delete this audit trail entry? This cannot be undone.')) {
+      return;
+    }
+    setDeletingId(id);
+    setErrorMsg(null);
+    setStatusMsg(null);
+    try {
+      const res = await api.admin.deleteAuditLog(id);
+      setStatusMsg(res.message || 'Audit log entry deleted.');
+      setLogs((prev) => prev.filter((l) => l.id !== id));
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to delete audit log entry');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClearAllLogs = async () => {
+    setClearingAll(true);
+    setErrorMsg(null);
+    setStatusMsg(null);
+    try {
+      const res = await api.admin.clearAllAuditLogs();
+      setStatusMsg(res.message || 'All historical audit logs cleared.');
+      setShowClearModal(false);
+      fetchLogs();
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to clear audit logs');
+    } finally {
+      setClearingAll(false);
+    }
   };
 
   const getActionBadge = (action) => {
@@ -69,14 +109,33 @@ export default function AuditLogViewer() {
             Cryptographically tracked audit logs for administrative interventions, roster commits, policy changes, and overrides.
           </p>
         </div>
-        <button
-          className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
-          onClick={fetchLogs}
-          disabled={loading}
-        >
-          <RefreshCw size={14} /> Refresh
-        </button>
+        <div className="d-flex gap-2">
+          <button
+            className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
+            onClick={fetchLogs}
+            disabled={loading}
+          >
+            <RefreshCw size={14} /> Refresh
+          </button>
+          <button
+            className="btn btn-outline-danger btn-sm d-flex align-items-center gap-1"
+            onClick={() => setShowClearModal(true)}
+            disabled={loading || logs.length === 0}
+          >
+            <Trash2 size={14} /> Clear All Logs
+          </button>
+        </div>
       </div>
+
+      {statusMsg && (
+        <div className="alert alert-success d-flex align-items-center justify-content-between py-2 px-3 mb-3">
+          <div className="d-flex align-items-center gap-2">
+            <CheckCircle2 size={16} />
+            <span className="small fw-semibold">{statusMsg}</span>
+          </div>
+          <button type="button" className="btn-close btn-close-sm" onClick={() => setStatusMsg(null)} />
+        </div>
+      )}
 
       {errorMsg && (
         <div className="alert alert-danger alert-dismissible fade show mb-4" role="alert">
@@ -166,6 +225,7 @@ export default function AuditLogViewer() {
                     <th>Target / Roll No</th>
                     <th>Details / Justification</th>
                     <th className="pe-3">IP Address</th>
+                    <th className="text-end pe-3">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -197,6 +257,16 @@ export default function AuditLogViewer() {
                       <td className="pe-3 small text-muted">
                         <code>{log.ip_address || '127.0.0.1'}</code>
                       </td>
+                      <td className="text-end pe-3">
+                        <button
+                          className="btn btn-outline-danger btn-sm p-1"
+                          title="Delete this audit record"
+                          disabled={deletingId === log.id}
+                          onClick={() => handleDeleteSingleLog(log.id)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -205,6 +275,50 @@ export default function AuditLogViewer() {
           )}
         </div>
       </div>
+
+      {/* Clear All Audit Logs Confirmation Modal */}
+      {showClearModal && (
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content rounded-3 border-0 shadow">
+              <div className="modal-header border-bottom bg-danger-subtle text-danger">
+                <h6 className="modal-title fw-bold d-flex align-items-center gap-2">
+                  <Trash2 size={18} />
+                  Purge Historical Audit Trail
+                </h6>
+                <button type="button" className="btn-close" onClick={() => setShowClearModal(false)}></button>
+              </div>
+              <div className="modal-body p-4">
+                <p className="mb-2">
+                  Are you sure you want to delete all historical administrative audit logs?
+                </p>
+                <div className="text-muted small">
+                  This will purge {logs.length} logged administrative events from the database. A single fresh marker log will be written recording this purge operation.
+                </div>
+              </div>
+              <div className="modal-footer border-top bg-light py-2">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => setShowClearModal(false)}
+                  disabled={clearingAll}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger d-flex align-items-center gap-1"
+                  onClick={handleClearAllLogs}
+                  disabled={clearingAll}
+                >
+                  <Trash2 size={14} />
+                  {clearingAll ? 'Clearing Logs...' : 'Yes, Delete All Logs'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

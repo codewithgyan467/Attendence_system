@@ -16,6 +16,7 @@ const SecurityIncidentDesk = lazy(() => import('./components/admin/SecurityIncid
 const CorrectionRequestDesk = lazy(() => import('./components/admin/CorrectionRequestDesk'));
 const FeedbackTicketDesk = lazy(() => import('./components/admin/FeedbackTicketDesk'));
 const AuditLogViewer = lazy(() => import('./components/admin/AuditLogViewer'));
+const AttendanceScheduleManager = lazy(() => import('./components/admin/AttendanceScheduleManager'));
 const WardenDashboard = lazy(() => import('./components/warden/WardenDashboard'));
 const StudentPortal = lazy(() => import('./components/student/StudentPortal'));
 
@@ -125,6 +126,7 @@ function AppContent() {
                 {activeTab === 'admin_students' && <StudentRosterManager />}
                 {activeTab === 'admin_geofence' && <GeofenceManager />}
                 {activeTab === 'admin_attendance' && <AttendanceManager />}
+                {activeTab === 'admin_schedule' && <AttendanceScheduleManager />}
                 {activeTab === 'admin_security' && <SecurityIncidentDesk />}
                 {activeTab === 'admin_corrections' && <CorrectionRequestDesk />}
                 {activeTab === 'admin_feedback' && <FeedbackTicketDesk />}

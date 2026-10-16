@@ -10,7 +10,8 @@ import {
   UserX,
   Compass,
   Clock,
-  Unlock
+  Unlock,
+  Trash2
 } from 'lucide-react';
 
 export default function SecurityIncidentDesk() {
@@ -18,6 +19,9 @@ export default function SecurityIncidentDesk() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
   const [statusMsg, setStatusMsg] = useState(null);
+  const [deletingLogId, setDeletingLogId] = useState(null);
+  const [showClearLogsModal, setShowClearLogsModal] = useState(false);
+  const [clearingLogs, setClearingLogs] = useState(false);
 
   // Reset Strike Modal state
   const [showResetModal, setShowResetModal] = useState(false);
@@ -130,6 +134,44 @@ export default function SecurityIncidentDesk() {
       setErrorMsg(err.message || 'Failed to clear all strikes');
     } finally {
       setSubmittingResetAll(false);
+    }
+  };
+
+  const handleDeleteSingleLog = async (id) => {
+    if (!window.confirm('Delete this security incident alert log? This cannot be undone.')) {
+      return;
+    }
+    setDeletingLogId(id);
+    setErrorMsg(null);
+    setStatusMsg(null);
+    try {
+      const res = await api.admin.deleteSecurityAlert(id);
+      setStatusMsg(res.message || 'Security alert deleted.');
+      setAlerts((prev) => ({
+        ...prev,
+        recent_logs: (prev.recent_logs || []).filter((l) => l.id !== id),
+        recentAuditLogs: (prev.recentAuditLogs || []).filter((l) => l.id !== id)
+      }));
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to delete security alert');
+    } finally {
+      setDeletingLogId(null);
+    }
+  };
+
+  const handleClearAllLogs = async () => {
+    setClearingLogs(true);
+    setErrorMsg(null);
+    setStatusMsg(null);
+    try {
+      const res = await api.admin.clearAllSecurityAlerts();
+      setStatusMsg(res.message || 'All security incident alerts cleared.');
+      setShowClearLogsModal(false);
+      fetchAlerts();
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to clear security alerts');
+    } finally {
+      setClearingLogs(false);
     }
   };
 
@@ -327,11 +369,20 @@ export default function SecurityIncidentDesk() {
         {/* Security Audit Log Stream */}
         <div className="col-lg-5">
           <div className="card shadow-sm border-0 rounded-3 h-100">
-            <div className="card-header bg-white border-bottom py-3">
+            <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
               <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
                 <Clock size={16} className="text-muted" />
                 Recent Forge / Out-of-Range Incidents
               </h6>
+              {recentLogs.length > 0 && (
+                <button
+                  className="btn btn-outline-danger btn-sm py-0 px-2 d-flex align-items-center gap-1"
+                  style={{ fontSize: '11px' }}
+                  onClick={() => setShowClearLogsModal(true)}
+                >
+                  <Trash2 size={12} /> Clear All
+                </button>
+              )}
             </div>
             <div className="card-body p-0">
               {recentLogs.length === 0 ? (
@@ -340,15 +391,27 @@ export default function SecurityIncidentDesk() {
                 </div>
               ) : (
                 <div className="list-group list-group-flush small" style={{ maxHeight: '420px', overflowY: 'auto' }}>
-                  {recentLogs.slice(0, 20).map((log, idx) => (
+                  {recentLogs.slice(0, 30).map((log, idx) => (
                     <div key={log.id || idx} className="list-group-item p-3">
                       <div className="d-flex justify-content-between align-items-center mb-1">
                         <span className="badge bg-danger-subtle text-danger">
                           {log.event_type || log.incident_type || 'FORGE_LOCATION_DETECTED'}
                         </span>
-                        <span className="text-muted" style={{ fontSize: '11px' }}>
-                          {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'Recent'}
-                        </span>
+                        <div className="d-flex align-items-center gap-2">
+                          <span className="text-muted" style={{ fontSize: '11px' }}>
+                            {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'Recent'}
+                          </span>
+                          {log.id && (
+                            <button
+                              className="btn btn-sm btn-outline-danger p-0 px-1 border-0"
+                              title="Delete this incident log"
+                              disabled={deletingLogId === log.id}
+                              onClick={() => handleDeleteSingleLog(log.id)}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div className="fw-medium text-dark">{log.student_name || `Student ID: ${log.student_id}`}</div>
                       <div className="text-muted mt-1" style={{ fontSize: '12px' }}>
@@ -422,6 +485,50 @@ export default function SecurityIncidentDesk() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear Incident Logs Confirmation Modal */}
+      {showClearLogsModal && (
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content rounded-3 border-0 shadow">
+              <div className="modal-header border-bottom bg-danger-subtle text-danger">
+                <h6 className="modal-title fw-bold d-flex align-items-center gap-2">
+                  <Trash2 size={18} />
+                  Clear All Security & Forge Incident Logs
+                </h6>
+                <button type="button" className="btn-close" onClick={() => setShowClearLogsModal(false)}></button>
+              </div>
+              <div className="modal-body p-4">
+                <p className="mb-2">
+                  Are you sure you want to delete all historical security incident and forge alert logs?
+                </p>
+                <div className="text-muted small">
+                  This will purge {recentLogs.length} logged incidents from the security database. Student account strike counts will remain unaffected. This action cannot be undone.
+                </div>
+              </div>
+              <div className="modal-footer border-top bg-light py-2">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => setShowClearLogsModal(false)}
+                  disabled={clearingLogs}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger d-flex align-items-center gap-1"
+                  onClick={handleClearAllLogs}
+                  disabled={clearingLogs}
+                >
+                  <Trash2 size={14} />
+                  {clearingLogs ? 'Purging Logs...' : 'Yes, Delete All Alerts'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -177,17 +177,46 @@ export const api = {
       return request(`/admin/reports${q ? '?' + q : ''}`);
     },
     overrideAttendance: (data) => request('/admin/attendance/override', { method: 'POST', body: JSON.stringify(data) }),
+    deleteAttendanceRecord: (id) => request(`/admin/attendance/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    clearAttendanceRecords: (date) => request(`/admin/attendance${date ? '?date=' + encodeURIComponent(date) : ''}`, { method: 'DELETE' }),
     getCorrections: (status) => request(`/admin/corrections${status ? '?status=' + status : ''}`),
     reviewCorrection: (id, data) => request(`/admin/corrections/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify(data) }),
+    deleteCorrection: (id) => request(`/admin/corrections/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    clearAllCorrections: (status) => request(`/admin/corrections${status ? '?status=' + encodeURIComponent(status) : ''}`, { method: 'DELETE' }),
     getSecurityAlerts: () => request('/admin/security/alerts'),
+    deleteSecurityAlert: (id) => request(`/admin/security/alerts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    clearAllSecurityAlerts: () => request('/admin/security/alerts', { method: 'DELETE' }),
     resetStrike: (data) => request('/admin/security/reset-strike', { method: 'POST', body: JSON.stringify(data) }),
     resetAllStrikes: (data = {}) => request('/admin/security/reset-all-strikes', { method: 'POST', body: JSON.stringify(data) }),
     getAuditLogs: (params = {}) => {
       const q = new URLSearchParams(params).toString();
       return request(`/admin/audit-logs${q ? '?' + q : ''}`);
     },
+    deleteAuditLog: (id) => request(`/admin/audit-logs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    clearAllAuditLogs: () => request('/admin/audit-logs', { method: 'DELETE' }),
     getFeedback: (status) => request(`/admin/feedback${status ? '?status=' + status : ''}`),
     resolveFeedback: (id, data) => request(`/admin/feedback/${encodeURIComponent(id)}/resolve`, { method: 'POST', body: JSON.stringify(data) }),
+    deleteFeedbackTicket: (id) => request(`/admin/feedback/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    clearAllFeedbackTickets: (status) => request(`/admin/feedback${status ? '?status=' + encodeURIComponent(status) : ''}`, { method: 'DELETE' }),
+    getAttendanceSchedule: () => request('/admin/attendance-schedule'),
+    updateAttendanceSchedule: (data) => request('/admin/attendance-schedule', { method: 'POST', body: JSON.stringify(data) }),
+    saveScheduleOverride: (data) => request('/admin/attendance-schedule/overrides', { method: 'POST', body: JSON.stringify(data) }),
+    deleteScheduleOverride: (id) => request(`/admin/attendance-schedule/overrides/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    uploadHolidayList: (formDataOrJson) => {
+      const token = authStorage.getToken();
+      if (formDataOrJson instanceof FormData) {
+        return fetch(`${getApiBaseUrl()}/admin/attendance-schedule/upload-holidays`, {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formDataOrJson
+        }).then(async (r) => {
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || 'Holiday upload failed');
+          return d;
+        });
+      }
+      return request('/admin/attendance-schedule/upload-holidays', { method: 'POST', body: JSON.stringify(formDataOrJson) });
+    },
     createBackup: () => request('/admin/backup/create', { method: 'POST' }),
     listBackups: () => request('/admin/backup/list'),
     restoreBackup: (data) => request('/admin/backup/restore', { method: 'POST', body: JSON.stringify(data) }),
@@ -236,7 +265,8 @@ export const api = {
   attendance: {
     verifyLocation: (data) => request('/attendance/verify-location', { method: 'POST', body: JSON.stringify(data) }),
     verifyFace: (data) => request('/attendance/verify-face', { method: 'POST', body: JSON.stringify(data) }),
-    getStatus: (identifier) => request(`/attendance/status/${encodeURIComponent(identifier)}`)
+    getStatus: (identifier) => request(`/attendance/status/${encodeURIComponent(identifier)}`),
+    getSchedule: () => request('/attendance/schedule')
   },
 
   // Onboarding Privacy-Preserving OTP Helpers

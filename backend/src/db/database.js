@@ -413,6 +413,34 @@ const initDatabase = async () => {
     )
   `);
 
+  // 16. Attendance Schedule Configuration & Real-World Time Windows
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS attendance_schedule_configs (
+      id TEXT PRIMARY KEY,
+      default_start_time TEXT NOT NULL DEFAULT '19:00',
+      default_end_time TEXT NOT NULL DEFAULT '19:30',
+      is_enabled INTEGER DEFAULT 1,
+      timezone TEXT DEFAULT 'Asia/Kolkata',
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_by TEXT
+    )
+  `);
+
+  // 17. Attendance Schedule Overrides (Feasts, festivals, cultural events, holiday lists)
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS attendance_schedule_overrides (
+      id TEXT PRIMARY KEY,
+      override_date TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      start_time TEXT,
+      end_time TEXT,
+      is_holiday INTEGER DEFAULT 0,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_by TEXT
+    )
+  `);
+
   // Automatic Non-Destructive Column Migrations (upgrades existing SQLite db schema)
   const ensureColumns = async (tableName, requiredCols) => {
     try {
@@ -491,6 +519,7 @@ const initDatabase = async () => {
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_registered_devices ON student_registered_devices(student_id, is_active);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_schedule_overrides_date ON attendance_schedule_overrides(override_date);`);
 
   // Verify SQLite database integrity on startup
   if (!useTurso) {
@@ -576,7 +605,17 @@ const seedInitialData = async () => {
     `, [uuidv4()]);
   }
 
-  // E. Optional Demo Student Seeding (Enabled by default in dev/test so demo accounts work out-of-the-box)
+  // E. Seed Default Attendance Schedule (7:00 PM - 7:30 PM / 19:00 - 19:30)
+  const existingSchedule = await getQuery(`SELECT id FROM attendance_schedule_configs WHERE id = 'default_schedule'`);
+  if (!existingSchedule) {
+    await runQuery(`
+      INSERT INTO attendance_schedule_configs (id, default_start_time, default_end_time, is_enabled, timezone, updated_by)
+      VALUES ('default_schedule', '19:00', '19:30', 1, 'Asia/Kolkata', 'System Bootstrap')
+    `);
+    console.log('✅ Default Attendance Schedule seeded (19:00 - 19:30 / 7:00 PM - 7:30 PM IST)');
+  }
+
+  // F. Optional Demo Student Seeding (Enabled by default in dev/test so demo accounts work out-of-the-box)
   if (process.env.SEED_DEMO_DATA !== 'false') {
     const allotCount = await getQuery(`SELECT COUNT(*) as count FROM hostel_allotments`);
     if (allotCount.count === 0) {

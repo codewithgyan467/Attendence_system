@@ -33,6 +33,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [history, setHistory] = useState([]);
   const [corrections, setCorrections] = useState([]);
   const [tickets, setTickets] = useState([]);
+  const [scheduleStatus, setScheduleStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [gpsLiveAccuracy, setGpsLiveAccuracy] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -117,17 +118,19 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     setLoading(true);
     setErrorMsg(null);
     try {
-      const [dashRes, histRes, corrRes, tickRes] = await Promise.allSettled([
+      const [dashRes, histRes, corrRes, tickRes, schedRes] = await Promise.allSettled([
         api.student.getDashboard(),
         api.student.getHistory(),
         api.student.getCorrections(),
-        api.student.getFeedback()
+        api.student.getFeedback(),
+        api.attendance.getSchedule()
       ]);
 
       if (dashRes.status === 'fulfilled' && dashRes.value.success) setDashboard(dashRes.value);
       if (histRes.status === 'fulfilled' && histRes.value.success) setHistory(histRes.value.records || []);
       if (corrRes.status === 'fulfilled' && corrRes.value.success) setCorrections(corrRes.value.corrections || corrRes.value.requests || []);
       if (tickRes.status === 'fulfilled' && tickRes.value.success) setTickets(tickRes.value.tickets || tickRes.value.feedback || []);
+      if (schedRes.status === 'fulfilled' && schedRes.value.success) setScheduleStatus(schedRes.value.schedule || null);
     } catch (err) {
       setErrorMsg(err.message || 'Failed to load student data');
     } finally {
@@ -137,6 +140,11 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
   // Check-In Step 1: GPS Verification
   const handleVerifyLocation = async () => {
+    if (scheduleStatus?.enforced && !scheduleStatus.isOpen) {
+      setCheckinError(scheduleStatus.message || 'Attendance window is currently closed.');
+      setCheckinStep('failed');
+      return;
+    }
     setCheckinStep('verifying_gps');
     setCheckinError(null);
     setGpsLiveAccuracy(null);
@@ -610,19 +618,95 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                       )}
                     </div>
 
+                    {/* Real-World Attendance Window Status Banner */}
+                    <div className="mb-4 text-start">
+                      {scheduleStatus?.isHoliday ? (
+                        <div className="alert alert-info border-info-subtle d-flex align-items-center gap-3 p-3 rounded-3 shadow-sm mb-0">
+                          <Sparkles size={24} className="text-info flex-shrink-0" />
+                          <div>
+                            <div className="fw-bold text-dark">Today is a Campus Holiday: {scheduleStatus.title || 'Exempt'}</div>
+                            <div className="small text-muted">{scheduleStatus.notes || 'Attendance check-in is suspended/exempt for today. Enjoy your day!'}</div>
+                          </div>
+                        </div>
+                      ) : scheduleStatus?.enforced ? (
+                        scheduleStatus.isOpen ? (
+                          <div className="p-3 rounded-3 border border-success-subtle bg-success-subtle shadow-sm">
+                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                              <div className="d-flex align-items-center gap-2">
+                                <span className="spinner-grow spinner-grow-sm text-success" style={{ width: '9px', height: '9px' }} />
+                                <span className="fw-bold text-success">
+                                  Attendance Window is OPEN NOW ({scheduleStatus.startTime12} – {scheduleStatus.endTime12})
+                                </span>
+                              </div>
+                              <span className="badge bg-success text-white px-2.5 py-1">
+                                {scheduleStatus.remainingMinutes} min remaining
+                              </span>
+                            </div>
+                            <div className="small text-dark text-opacity-75 mt-1">
+                              {scheduleStatus.notes || `Please submit your GPS and facial identity verification before ${scheduleStatus.endTime12}.`}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded-3 border border-warning-subtle bg-warning-subtle shadow-sm">
+                            <div className="d-flex align-items-center gap-2 mb-1">
+                              <Clock size={16} className="text-warning flex-shrink-0" />
+                              <span className="fw-bold text-dark">
+                                Attendance Window is Currently Closed
+                              </span>
+                              <span className="badge bg-warning text-dark ms-auto">
+                                {scheduleStatus.startsInMinutes ? `Opens in ${scheduleStatus.startsInMinutes} min` : 'Window Closed'}
+                              </span>
+                            </div>
+                            <div className="small text-muted">
+                              {scheduleStatus.message || `Scheduled attendance hours: ${scheduleStatus.startTime12 || '7:00 PM'} to ${scheduleStatus.endTime12 || '7:30 PM'}.`}
+                            </div>
+                          </div>
+                        )
+                      ) : (
+                        <div className="p-2.5 rounded-3 bg-light border text-muted small d-flex align-items-center gap-2">
+                          <Clock size={14} className="text-primary" />
+                          <span>Attendance Time Window: 24/7 Open (Admin enforcement off)</span>
+                        </div>
+                      )}
+                    </div>
+
                     {/* Check-In Progress State */}
                     {checkinStep === 'idle' && (
                       <div className="py-2">
-                        <h5 className="fw-bold mb-1">Step 1: Verify Hostel Geofence Location</h5>
-                        <p className="text-muted small mx-auto mb-3" style={{ maxWidth: '440px' }}>
-                          Attendance policy requires verifying your device's physical presence within the hostel boundary ({dashboard?.geofence?.radius_meters || 20}m).
-                        </p>
-                        <button
-                          className="btn btn-primary px-4 py-2 fw-semibold d-inline-flex align-items-center gap-2 shadow-sm"
-                          onClick={handleVerifyLocation}
-                        >
-                          <Navigation size={18} /> Verify Current Location & Unlock Camera
-                        </button>
+                        {scheduleStatus?.isHoliday ? (
+                          <div className="py-3 text-center">
+                            <Sparkles size={44} className="text-info mb-2" />
+                            <h5 className="fw-bold text-dark">Attendance Exempt for Today</h5>
+                            <p className="text-muted small mb-0">No roll call required due to the scheduled campus event/holiday.</p>
+                          </div>
+                        ) : scheduleStatus?.enforced && !scheduleStatus?.isOpen ? (
+                          <div>
+                            <h5 className="fw-bold mb-1 text-muted">Step 1: Verify Hostel Geofence Location</h5>
+                            <p className="text-muted small mx-auto mb-3" style={{ maxWidth: '440px' }}>
+                              Attendance check-ins can only be submitted during the authorized evening window ({scheduleStatus.startTime12 || '7:00 PM'} – {scheduleStatus.endTime12 || '7:30 PM'}).
+                            </p>
+                            <button
+                              className="btn btn-secondary px-4 py-2 fw-semibold d-inline-flex align-items-center gap-2 shadow-sm"
+                              disabled
+                              title="Attendance window is currently closed"
+                            >
+                              <Clock size={18} /> Attendance Opens at {scheduleStatus.startTime12 || '7:00 PM'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div>
+                            <h5 className="fw-bold mb-1">Step 1: Verify Hostel Geofence Location</h5>
+                            <p className="text-muted small mx-auto mb-3" style={{ maxWidth: '440px' }}>
+                              Attendance policy requires verifying your device's physical presence within the hostel boundary ({dashboard?.geofence?.radius_meters || 20}m).
+                            </p>
+                            <button
+                              className="btn btn-primary px-4 py-2 fw-semibold d-inline-flex align-items-center gap-2 shadow-sm"
+                              onClick={handleVerifyLocation}
+                            >
+                              <Navigation size={18} /> Verify Current Location & Unlock Camera
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 

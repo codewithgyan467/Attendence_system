@@ -7,6 +7,7 @@ const { recordFailedLocationAttempt, resetFailedLocationAttempt } = require('../
 const { attendanceLimiter } = require('../middleware/rateLimiter');
 const aiServiceClient = require('../services/aiServiceClient');
 const { optionalAuth } = require('../middleware/auth');
+const { getAttendanceWindowStatus } = require('../services/scheduleService');
 
 // Helper to get today's date in YYYY-MM-DD
 function getTodayDateString() {
@@ -16,9 +17,31 @@ function getTodayDateString() {
 // Attach optional JWT authentication to attendance router
 router.use(optionalAuth);
 
+// Public / Authenticated Live Attendance Schedule Status
+router.get('/schedule', async (req, res) => {
+  try {
+    const schedule = await getAttendanceWindowStatus();
+    res.json({ success: true, schedule });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 1. Phase 3 Step 1: Coordinate Extraction & Geofence Validation
 router.post('/verify-location', attendanceLimiter, async (req, res) => {
   try {
+    // 0. Enforce real-world attendance schedule window
+    const windowStatus = await getAttendanceWindowStatus();
+    if (windowStatus.enforced && !windowStatus.isOpen) {
+      if (process.env.NODE_ENV !== 'test' || req.headers['x-test-enforce-schedule'] === 'true') {
+        return res.status(403).json({
+          success: false,
+          isWindowClosed: true,
+          error: windowStatus.message,
+          schedule: windowStatus
+        });
+      }
+    }
     const {
       roll_number,
       latitude,
@@ -182,6 +205,19 @@ router.post('/verify-location', attendanceLimiter, async (req, res) => {
 // 2. Phase 3 Step 2: Facial Verification & Atomic Attendance Commit
 router.post('/verify-face', attendanceLimiter, async (req, res) => {
   try {
+    // 0. Enforce real-world attendance schedule window
+    const windowStatus = await getAttendanceWindowStatus();
+    if (windowStatus.enforced && !windowStatus.isOpen) {
+      if (process.env.NODE_ENV !== 'test' || req.headers['x-test-enforce-schedule'] === 'true') {
+        return res.status(403).json({
+          success: false,
+          isWindowClosed: true,
+          error: windowStatus.message,
+          schedule: windowStatus
+        });
+      }
+    }
+
     const { session_token, challenge_token, live_photo } = req.body;
     const token = challenge_token || session_token;
 

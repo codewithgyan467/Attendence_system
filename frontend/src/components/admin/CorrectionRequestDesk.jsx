@@ -8,7 +8,8 @@ import {
   AlertTriangle,
   RefreshCw,
   Search,
-  MessageSquare
+  MessageSquare,
+  Trash2
 } from 'lucide-react';
 
 export default function CorrectionRequestDesk() {
@@ -17,6 +18,9 @@ export default function CorrectionRequestDesk() {
   const [selectedStatus, setSelectedStatus] = useState('PENDING');
   const [errorMsg, setErrorMsg] = useState(null);
   const [statusMsg, setStatusMsg] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
 
   // Review Modal state
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -77,6 +81,40 @@ export default function CorrectionRequestDesk() {
     }
   };
 
+  const handleDeleteSingle = async (id, rollNo) => {
+    if (!window.confirm(`Delete correction request for student ${rollNo || id}? This cannot be undone.`)) {
+      return;
+    }
+    setDeletingId(id);
+    setErrorMsg(null);
+    setStatusMsg(null);
+    try {
+      const res = await api.admin.deleteCorrection(id);
+      setStatusMsg(res.message || 'Correction request deleted successfully.');
+      setCorrections((prev) => prev.filter((c) => c.id !== id));
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to delete correction request');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClearAll = async () => {
+    setClearingAll(true);
+    setErrorMsg(null);
+    setStatusMsg(null);
+    try {
+      const res = await api.admin.clearAllCorrections(selectedStatus || undefined);
+      setStatusMsg(res.message || 'All selected correction requests cleared.');
+      setShowClearModal(false);
+      fetchCorrections();
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to clear correction requests');
+    } finally {
+      setClearingAll(false);
+    }
+  };
+
   const getStatusBadge = (status) => {
     switch (status) {
       case 'PENDING':
@@ -110,6 +148,13 @@ export default function CorrectionRequestDesk() {
             disabled={loading}
           >
             <RefreshCw size={14} /> Refresh
+          </button>
+          <button
+            className="btn btn-outline-danger btn-sm d-flex align-items-center gap-1"
+            onClick={() => setShowClearModal(true)}
+            disabled={loading || corrections.length === 0}
+          >
+            <Trash2 size={14} /> Clear All Requests
           </button>
         </div>
       </div>
@@ -224,23 +269,34 @@ export default function CorrectionRequestDesk() {
                         </small>
                       </td>
                       <td className="text-end pe-3">
-                        {req.status === 'PENDING' ? (
+                        <div className="d-flex justify-content-end align-items-center gap-1">
+                          {req.status === 'PENDING' ? (
+                            <button
+                              className="btn btn-sm btn-primary py-0 px-2"
+                              style={{ fontSize: '12px' }}
+                              onClick={() => openReviewModal(req)}
+                            >
+                              Review
+                            </button>
+                          ) : (
+                            <button
+                              className="btn btn-sm btn-outline-secondary py-0 px-2"
+                              style={{ fontSize: '12px' }}
+                              onClick={() => openReviewModal(req)}
+                            >
+                              Re-evaluate
+                            </button>
+                          )}
                           <button
-                            className="btn btn-sm btn-primary py-0 px-2"
-                            style={{ fontSize: '12px' }}
-                            onClick={() => openReviewModal(req)}
+                            className="btn btn-sm btn-outline-danger p-1"
+                            title="Delete request"
+                            style={{ lineHeight: 1 }}
+                            disabled={deletingId === req.id}
+                            onClick={() => handleDeleteSingle(req.id, req.roll_no || req.roll_number)}
                           >
-                            Review
+                            <Trash2 size={13} />
                           </button>
-                        ) : (
-                          <button
-                            className="btn btn-sm btn-outline-secondary py-0 px-2"
-                            style={{ fontSize: '12px' }}
-                            onClick={() => openReviewModal(req)}
-                          >
-                            Re-evaluate
-                          </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -323,6 +379,50 @@ export default function CorrectionRequestDesk() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Confirmation Modal */}
+      {showClearModal && (
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content rounded-3 border-0 shadow">
+              <div className="modal-header border-bottom bg-danger-subtle text-danger">
+                <h6 className="modal-title fw-bold d-flex align-items-center gap-2">
+                  <Trash2 size={18} />
+                  Confirm Clear Correction Requests
+                </h6>
+                <button type="button" className="btn-close" onClick={() => setShowClearModal(false)}></button>
+              </div>
+              <div className="modal-body p-4">
+                <p className="mb-2">
+                  Are you sure you want to delete {selectedStatus ? <strong>all {selectedStatus}</strong> : 'all'} attendance correction requests?
+                </p>
+                <div className="text-muted small">
+                  This will permanently delete {corrections.length} record(s) from the database to purge stale garbage data. This action cannot be undone.
+                </div>
+              </div>
+              <div className="modal-footer border-top bg-light py-2">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => setShowClearModal(false)}
+                  disabled={clearingAll}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger d-flex align-items-center gap-1"
+                  onClick={handleClearAll}
+                  disabled={clearingAll}
+                >
+                  <Trash2 size={14} />
+                  {clearingAll ? 'Clearing Records...' : 'Yes, Delete All'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
