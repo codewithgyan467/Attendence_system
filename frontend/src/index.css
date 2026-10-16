@@ -199,6 +199,16 @@ body {
   border-color: #cbd5e1;
 }
 
+.hg-kpi-clickable:hover {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.12), 0 4px 6px -2px rgba(0, 0, 0, 0.06) !important;
+  border-color: #94a3b8 !important;
+}
+
+.hg-kpi-clickable:active {
+  transform: translateY(-1px) !important;
+}
+
 .hg-kpi-value {
   font-size: 28px;
   font-weight: 800;

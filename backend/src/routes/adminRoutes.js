@@ -118,6 +118,58 @@ router.get('/dashboard-stats', requireRole('ADMIN'), async (req, res) => {
       LIMIT 8
     `);
 
+    // Detailed list of Present residents today
+    const rawPresent = await allQuery(`
+      SELECT
+        a.id AS attendance_id,
+        a.student_id,
+        a.roll_number,
+        a.full_name,
+        a.date,
+        a.time_marked,
+        a.status,
+        a.verified_distance,
+        a.is_override,
+        a.override_reason,
+        COALESCE(s.room_number, 'N/A') AS room_number,
+        COALESCE(s.hostel_block, 'Block A') AS hostel_block,
+        s.course,
+        s.phone,
+        s.email
+      FROM attendance_records a
+      LEFT JOIN students s ON a.student_id = s.id
+      WHERE a.date = ? AND a.status IN ('PRESENT', 'LATE', 'EXCUSED')
+      ORDER BY a.time_marked DESC
+    `, [today]);
+
+    const todayPresent = rawPresent.map(p => ({
+      ...p,
+      time_marked_12: p.time_marked ? formatTime12h(p.time_marked) : 'N/A'
+    }));
+
+    // Detailed list of Absent / Unmarked residents today
+    const todayAbsent = await allQuery(`
+      SELECT
+        s.id AS student_id,
+        s.roll_number,
+        s.full_name,
+        COALESCE(s.room_number, 'N/A') AS room_number,
+        COALESCE(s.hostel_block, 'Block A') AS hostel_block,
+        s.course,
+        s.phone,
+        s.email,
+        'ABSENT' AS status
+      FROM students s
+      WHERE s.is_active = 1
+        AND NOT EXISTS (
+          SELECT 1 FROM attendance_records a
+          WHERE a.student_id = s.id
+            AND a.date = ?
+            AND a.status IN ('PRESENT', 'LATE', 'EXCUSED')
+        )
+      ORDER BY s.hostel_block ASC, s.room_number ASC, s.full_name ASC
+    `, [today]);
+
     res.json({
       success: true,
       summary: {
@@ -141,11 +193,84 @@ router.get('/dashboard-stats', requireRole('ADMIN'), async (req, res) => {
         },
         blockDistribution: blockStats
       },
+      todayPresent,
+      todayAbsent,
       recentActivity,
       recentAuditEvents
     });
   } catch (err) {
     console.error('Dashboard Stats Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 1b. Real-Time Daily Attendance Roster (Present & Absent lists for selected day)
+router.get('/today-roster', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const targetDate = req.query.date || new Date().toISOString().split('T')[0];
+
+    const rawPresent = await allQuery(`
+      SELECT
+        a.id AS attendance_id,
+        a.student_id,
+        a.roll_number,
+        a.full_name,
+        a.date,
+        a.time_marked,
+        a.status,
+        a.verified_distance,
+        a.is_override,
+        a.override_reason,
+        COALESCE(s.room_number, 'N/A') AS room_number,
+        COALESCE(s.hostel_block, 'Block A') AS hostel_block,
+        s.course,
+        s.phone,
+        s.email
+      FROM attendance_records a
+      LEFT JOIN students s ON a.student_id = s.id
+      WHERE a.date = ? AND a.status IN ('PRESENT', 'LATE', 'EXCUSED')
+      ORDER BY a.time_marked DESC
+    `, [targetDate]);
+
+    const present = rawPresent.map(p => ({
+      ...p,
+      time_marked_12: p.time_marked ? formatTime12h(p.time_marked) : 'N/A'
+    }));
+
+    const absent = await allQuery(`
+      SELECT
+        s.id AS student_id,
+        s.roll_number,
+        s.full_name,
+        COALESCE(s.room_number, 'N/A') AS room_number,
+        COALESCE(s.hostel_block, 'Block A') AS hostel_block,
+        s.course,
+        s.phone,
+        s.email,
+        'ABSENT' AS status
+      FROM students s
+      WHERE s.is_active = 1
+        AND NOT EXISTS (
+          SELECT 1 FROM attendance_records a
+          WHERE a.student_id = s.id
+            AND a.date = ?
+            AND a.status IN ('PRESENT', 'LATE', 'EXCUSED')
+        )
+      ORDER BY s.hostel_block ASC, s.room_number ASC, s.full_name ASC
+    `, [targetDate]);
+
+    res.json({
+      success: true,
+      date: targetDate,
+      summary: {
+        presentCount: present.length,
+        absentCount: absent.length,
+        total: present.length + absent.length
+      },
+      present,
+      absent
+    });
+  } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });

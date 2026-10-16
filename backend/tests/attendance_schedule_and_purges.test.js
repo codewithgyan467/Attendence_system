@@ -281,4 +281,29 @@ describe('Individual and Bulk Deletion Operations', () => {
     expect(clearDate.status).toBe(200);
     expect(clearDate.body.success).toBe(true);
   });
+
+  test('GET /admin/dashboard-stats and /admin/today-roster return todayPresent and todayAbsent lists', async () => {
+    // 1. Check dashboard-stats
+    const dashRes = await request(app)
+      .get('/api/v1/admin/dashboard-stats')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(dashRes.status).toBe(200);
+    expect(dashRes.body.success).toBe(true);
+    expect(Array.isArray(dashRes.body.todayPresent)).toBe(true);
+    expect(Array.isArray(dashRes.body.todayAbsent)).toBe(true);
+
+    // 2. Check today-roster endpoint
+    const rosterRes = await request(app)
+      .get('/api/v1/admin/today-roster')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(rosterRes.status).toBe(200);
+    expect(rosterRes.body.success).toBe(true);
+    expect(Array.isArray(rosterRes.body.present)).toBe(true);
+    expect(Array.isArray(rosterRes.body.absent)).toBe(true);
+    expect(rosterRes.body.summary).toBeDefined();
+    expect(typeof rosterRes.body.summary.presentCount).toBe('number');
+    expect(typeof rosterRes.body.summary.absentCount).toBe('number');
+  });
 });

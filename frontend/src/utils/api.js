@@ -141,6 +141,7 @@ export const api = {
   // Admin APIs
   admin: {
     getDashboardStats: () => request('/admin/dashboard-stats'),
+    getTodayRoster: (date) => request(`/admin/today-roster${date ? '?date=' + encodeURIComponent(date) : ''}`),
     getCredentialsDirectory: () => request('/admin/credentials-directory'),
     resetStudentPassword: (id, data) => request(`/admin/students/${encodeURIComponent(id)}/reset-password`, { method: 'POST', body: JSON.stringify(data || {}) }),
     getStudents: (params = {}) => {
