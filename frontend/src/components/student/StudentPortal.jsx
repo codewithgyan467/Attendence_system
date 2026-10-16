@@ -28,6 +28,28 @@ import {
 import GeofenceMap from '../common/GeofenceMap';
 import { playBiometricChime, detectFaceAngle } from '../../utils/faceAngleGuide';
 
+const formatDisplayTime12h = (timeVal) => {
+  if (!timeVal) return '';
+  if (typeof timeVal === 'string' && timeVal.includes('T')) {
+    const d = new Date(timeVal);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+    }
+  }
+  const parts = String(timeVal).split(':');
+  if (parts.length >= 2) {
+    let h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    if (!isNaN(h) && !isNaN(m)) {
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      const mm = m < 10 ? `0${m}` : `${m}`;
+      return `${h}:${mm} ${ampm}`;
+    }
+  }
+  return timeVal;
+};
+
 export default function StudentPortal({ activeTab = 'student_attendance', onSelectTab }) {
   const { user } = useAuth();
   const [dashboard, setDashboard] = useState(null);
@@ -950,7 +972,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           </div>
                           <div className="d-flex justify-content-between py-1.5 border-bottom">
                             <span className="text-muted small">Time Recorded</span>
-                            <span className="fw-semibold text-dark small">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            <span className="fw-semibold text-dark small">{new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}</span>
                           </div>
                           <div className="d-flex justify-content-between py-1.5 border-bottom">
                             <span className="text-muted small">Location</span>
@@ -1085,7 +1107,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                         <td className="ps-3 fw-medium text-dark">{h.date}</td>
                         <td>
                           {h.time_marked ? (
-                            <span className="small text-dark"><Clock size={12} className="me-1 inline text-muted" />{h.time_marked}</span>
+                            <span className="small text-dark"><Clock size={12} className="me-1 inline text-muted" />{formatDisplayTime12h(h.time_marked)}</span>
                           ) : (
                             <span className="small text-muted">&mdash;</span>
                           )}

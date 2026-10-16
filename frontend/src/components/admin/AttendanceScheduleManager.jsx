@@ -20,6 +20,34 @@ import {
   Check
 } from 'lucide-react';
 
+// Format Date object to 12-hour clock format (e.g. "7:15:30 PM")
+const formatClock12h = (date) => {
+  if (!date) return '';
+  let hours = date.getHours();
+  const minutes = date.getMinutes();
+  const seconds = date.getSeconds();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const mm = minutes < 10 ? `0${minutes}` : `${minutes}`;
+  const ss = seconds < 10 ? `0${seconds}` : `${seconds}`;
+  return `${hours}:${mm}:${ss} ${ampm}`;
+};
+
+// Format "HH:mm" time string to 12-hour format (e.g. "19:00" -> "7:00 PM")
+const formatTime12h = (timeStr) => {
+  if (!timeStr) return '';
+  const parts = String(timeStr).split(':');
+  let h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1] || '0', 10);
+  if (isNaN(h)) return timeStr;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12;
+  h = h ? h : 12;
+  const mm = m < 10 ? `0${m}` : `${m}`;
+  return `${h}:${mm} ${ampm}`;
+};
+
 export default function AttendanceScheduleManager() {
   const [loading, setLoading] = useState(true);
   const [scheduleData, setScheduleData] = useState(null);
@@ -299,11 +327,12 @@ export default function AttendanceScheduleManager() {
 
             <div className="col-lg-4 text-lg-end">
               <div className="p-3 rounded-3" style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                <div className="text-muted small text-uppercase fw-semibold" style={{ fontSize: '11px' }}>
-                  System Time ({live?.timezone || 'Asia/Kolkata'})
+                <div className="text-muted small text-uppercase fw-semibold d-flex align-items-center justify-content-lg-end gap-1" style={{ fontSize: '11px' }}>
+                  <Clock size={12} className="text-primary" />
+                  Live System Clock
                 </div>
                 <div className="h4 fw-bold font-monospace text-white mb-0 mt-1">
-                  {currentLocalTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                  {formatClock12h(currentLocalTime)}
                 </div>
                 <div className="small text-light text-opacity-75 mt-1">
                   {currentLocalTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
@@ -347,9 +376,12 @@ export default function AttendanceScheduleManager() {
 
                 <hr className="my-3 text-muted" />
 
-                <div className="row g-3 mb-3">
+                <div className="row g-3 mb-4">
                   <div className="col-6">
-                    <label className="form-label fw-semibold small">Start Time (Evening)</label>
+                    <label className="form-label fw-semibold small d-flex justify-content-between align-items-center">
+                      <span>Start Time</span>
+                      <span className="badge bg-primary-subtle text-primary">{formatTime12h(defaultStartTime)}</span>
+                    </label>
                     <input
                       type="time"
                       className="form-control"
@@ -358,12 +390,15 @@ export default function AttendanceScheduleManager() {
                       required
                     />
                     <div className="text-muted small mt-1" style={{ fontSize: '11px' }}>
-                      Default: 19:00 (7:00 PM)
+                      Default: 7:00 PM
                     </div>
                   </div>
 
                   <div className="col-6">
-                    <label className="form-label fw-semibold small">End Time (Evening)</label>
+                    <label className="form-label fw-semibold small d-flex justify-content-between align-items-center">
+                      <span>End Time</span>
+                      <span className="badge bg-primary-subtle text-primary">{formatTime12h(defaultEndTime)}</span>
+                    </label>
                     <input
                       type="time"
                       className="form-control"
@@ -372,23 +407,9 @@ export default function AttendanceScheduleManager() {
                       required
                     />
                     <div className="text-muted small mt-1" style={{ fontSize: '11px' }}>
-                      Default: 19:30 (7:30 PM)
+                      Default: 7:30 PM
                     </div>
                   </div>
-                </div>
-
-                <div className="mb-3">
-                  <label className="form-label fw-semibold small">Hostel Timezone</label>
-                  <select
-                    className="form-select form-select-sm"
-                    value={timezone}
-                    onChange={(e) => setTimezone(e.target.value)}
-                  >
-                    <option value="Asia/Kolkata">Asia/Kolkata (IST - UTC+5:30)</option>
-                    <option value="UTC">UTC (Universal Coordinated Time)</option>
-                    <option value="Asia/Dubai">Asia/Dubai (GST - UTC+4:00)</option>
-                    <option value="Asia/Singapore">Asia/Singapore (SGT - UTC+8:00)</option>
-                  </select>
                 </div>
 
                 <div className="p-3 rounded-2 bg-light border mb-4" style={{ fontSize: '12px' }}>
@@ -472,7 +493,7 @@ export default function AttendanceScheduleManager() {
                               </span>
                             ) : (
                               <span className="badge bg-success-subtle text-success border border-success-subtle font-monospace">
-                                {ov.startTime12 || ov.start_time} – {ov.endTime12 || ov.end_time}
+                                {(ov.startTime12 || formatTime12h(ov.start_time))} – {(ov.endTime12 || formatTime12h(ov.end_time))}
                               </span>
                             )}
                           </td>
@@ -558,7 +579,10 @@ export default function AttendanceScheduleManager() {
                   {!isHoliday && (
                     <div className="row g-2 mb-3 p-3 bg-light rounded border">
                       <div className="col-6">
-                        <label className="form-label fw-semibold small">Extended Start Time</label>
+                        <label className="form-label fw-semibold small d-flex justify-content-between align-items-center">
+                          <span>Extended Start Time</span>
+                          <span className="badge bg-primary-subtle text-primary">{formatTime12h(overrideStartTime)}</span>
+                        </label>
                         <input
                           type="time"
                           className="form-control"
@@ -568,7 +592,10 @@ export default function AttendanceScheduleManager() {
                         />
                       </div>
                       <div className="col-6">
-                        <label className="form-label fw-semibold small">Extended End Time</label>
+                        <label className="form-label fw-semibold small d-flex justify-content-between align-items-center">
+                          <span>Extended End Time</span>
+                          <span className="badge bg-primary-subtle text-primary">{formatTime12h(overrideEndTime)}</span>
+                        </label>
                         <input
                           type="time"
                           className="form-control"
@@ -578,7 +605,7 @@ export default function AttendanceScheduleManager() {
                         />
                       </div>
                       <div className="text-muted small mt-1" style={{ fontSize: '11px' }}>
-                        Attendance will only be accepted during these delayed hours on this specific date.
+                        Attendance will only be accepted during these delayed hours ({formatTime12h(overrideStartTime)} to {formatTime12h(overrideEndTime)}) on this specific date.
                       </div>
                     </div>
                   )}

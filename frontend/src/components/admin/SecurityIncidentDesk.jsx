@@ -399,7 +399,7 @@ export default function SecurityIncidentDesk() {
                         </span>
                         <div className="d-flex align-items-center gap-2">
                           <span className="text-muted" style={{ fontSize: '11px' }}>
-                            {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'Recent'}
+                            {log.timestamp ? new Date(log.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : 'Recent'}
                           </span>
                           {log.id && (
                             <button

@@ -153,7 +153,7 @@ export default function AdminDiagnostics() {
             <div className="d-flex align-items-center gap-2">
               <span className="badge bg-white text-dark border px-3 py-2 fw-medium shadow-sm">
                 <Clock size={13} className="text-muted me-1 inline" />
-                Checked: {healthData?.timestamp ? new Date(healthData.timestamp).toLocaleTimeString() : 'Just now'}
+                Checked: {healthData?.timestamp ? new Date(healthData.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : 'Just now'}
               </span>
             </div>
           </div>

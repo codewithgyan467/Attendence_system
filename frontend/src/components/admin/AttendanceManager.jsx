@@ -15,6 +15,29 @@ import {
   Trash2
 } from 'lucide-react';
 
+// Format time to 12-hour format with AM/PM
+const formatDisplayTime12h = (timeVal) => {
+  if (!timeVal) return '—';
+  if (typeof timeVal === 'string' && timeVal.includes('T')) {
+    const d = new Date(timeVal);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+    }
+  }
+  const parts = String(timeVal).split(':');
+  if (parts.length >= 2) {
+    let h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    if (!isNaN(h) && !isNaN(m)) {
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      const mm = m < 10 ? `0${m}` : `${m}`;
+      return `${h}:${mm} ${ampm}`;
+    }
+  }
+  return timeVal;
+};
+
 export default function AttendanceManager() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -375,7 +398,7 @@ export default function AttendanceManager() {
                         {(r.check_in_time || r.time_marked) ? (
                           <span className="small text-dark d-flex align-items-center gap-1">
                             <Clock size={12} className="text-muted" />
-                            {r.check_in_time ? (r.check_in_time.includes('T') ? new Date(r.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : r.check_in_time) : r.time_marked}
+                            {formatDisplayTime12h(r.check_in_time || r.time_marked)}
                           </span>
                         ) : (
                           <span className="small text-muted">&mdash;</span>
