@@ -433,10 +433,10 @@ export default function StudentOnboarding({ onComplete }) {
             <Shield size={30} color="#ffffff" />
           </div>
           <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em' }}>
-            Secure Student Verification & Face Activation
+            Student Identity Verification &amp; Account Setup
           </h2>
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px', maxWidth: '580px', margin: '4px auto 0' }}>
-            Institutional Privacy-First Onboarding: Authenticate your pre-allotted profile via OTP, secure your portal credentials, and bind your 128D mathematical facial vector identity.
+            Institutional Onboarding: Authenticate your pre-allotted student profile via OTP, secure your portal credentials, and complete your facial identity enrollment.
           </p>
         </div>
 
@@ -981,12 +981,12 @@ export default function StudentOnboarding({ onComplete }) {
             >
               <Camera size={24} color="#facc15" style={{ flexShrink: 0 }} />
               <div>
-                <strong>Mandatory Biometric Face Activation:</strong> Although your login is verified, roll call attendance strictly requires your 128D mathematical facial vector vectors. Proceed to take 3 quick camera angles (~15 seconds).
+                <strong>Identity Verification Required:</strong> Roll call attendance requires facial identity verification. Please complete 3 quick camera angles (~15 seconds).
               </div>
             </div>
 
             <button onClick={handleProceedToCamera} className="btn-primary" style={{ padding: '12px 28px', fontSize: '15px' }}>
-              Proceed to Mandatory Face Registration →
+              Proceed to Face Enrollment →
             </button>
           </div>
         )}
@@ -998,7 +998,7 @@ export default function StudentOnboarding({ onComplete }) {
           <div>
             <div style={{ textAlign: 'center', marginBottom: '20px' }}>
               <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#ffffff' }}>
-                Capture 3-Angle Facial Embeddings
+                Capture Facial Angles for Verification
               </h3>
               <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>
                 {anglesToCapture[activeAngleIndex] === 'FRONT'
@@ -1252,7 +1252,7 @@ export default function StudentOnboarding({ onComplete }) {
               {photos.length > 0 && (
                 <button onClick={handleSubmitBiometrics} className="btn-primary" disabled={submitLoading}>
                   {submitLoading ? <RefreshCw className="animate-spin" size={18} /> : <Sparkles size={18} />}
-                  {submitLoading ? 'Extracting 128D Vectors...' : `Submit Biometrics (${photos.length} Captured)`}
+                  {submitLoading ? 'Processing Face Verification...' : `Submit Facial Profile (${photos.length} Captured)`}
                 </button>
               )}
             </div>
@@ -1314,9 +1314,9 @@ export default function StudentOnboarding({ onComplete }) {
                 </div>
               </div>
               <div>
-                <span style={{ fontSize: '11px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>BIOMETRIC STATUS</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>VERIFICATION STATUS</span>
                 <div style={{ fontSize: '13px', color: '#34d399', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <CheckCircle size={15} /> 128-D Facial Biometric Vectors Active
+                  <CheckCircle size={15} /> Identity Verification Active
                 </div>
               </div>
             </div>

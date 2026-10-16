@@ -506,7 +506,7 @@ export default function StudentRosterManager() {
                       {st.embeddings_count > 0 ? (
                         <span className="badge-soft-success">
                           <Check size={12} className="me-1" />
-                          {st.embeddings_count} Vectors
+                          Verified
                         </span>
                       ) : (
                         <span className="badge-soft-warning">Pending Face</span>

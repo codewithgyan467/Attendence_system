@@ -17,6 +17,7 @@ const CorrectionRequestDesk = lazy(() => import('./components/admin/CorrectionRe
 const FeedbackTicketDesk = lazy(() => import('./components/admin/FeedbackTicketDesk'));
 const AuditLogViewer = lazy(() => import('./components/admin/AuditLogViewer'));
 const AttendanceScheduleManager = lazy(() => import('./components/admin/AttendanceScheduleManager'));
+const AdminDiagnostics = lazy(() => import('./components/admin/AdminDiagnostics'));
 const WardenDashboard = lazy(() => import('./components/warden/WardenDashboard'));
 const StudentPortal = lazy(() => import('./components/student/StudentPortal'));
 
@@ -49,8 +50,8 @@ function AppContent() {
         <div className="spinner-border text-primary mb-3" style={{ width: '3rem', height: '3rem' }} role="status">
           <span className="visually-hidden">Loading...</span>
         </div>
-        <div className="fw-semibold text-dark">Initializing HostelGuard Enterprise...</div>
-        <div className="text-muted small mt-1">Connecting to SQLite WAL Database & Vision Microservice</div>
+        <div className="fw-semibold text-dark">Initializing HostelGuard Portal...</div>
+        <div className="text-muted small mt-1">Connecting to secure server...</div>
       </div>
     );
   }
@@ -131,6 +132,7 @@ function AppContent() {
                 {activeTab === 'admin_corrections' && <CorrectionRequestDesk />}
                 {activeTab === 'admin_feedback' && <FeedbackTicketDesk />}
                 {activeTab === 'admin_audit' && <AuditLogViewer />}
+                {activeTab === 'admin_diagnostics' && <AdminDiagnostics />}
               </>
             )}
 
@@ -155,10 +157,17 @@ function AppContent() {
 
         {/* Global Footer */}
         <footer
-          className="text-center py-3 px-4 border-top bg-white"
+          className="text-center py-3 px-4 border-top bg-white d-flex align-items-center justify-content-between flex-wrap gap-2"
           style={{ fontSize: '12px', color: '#64748b', borderColor: '#e2e8f0' }}
         >
-          HostelGuard AI &bull; 100% Free & Open-Source (FOSS) &bull; Node.js Express + SQLite (WAL Mode) + Python OpenCV YuNet/SFace 128D
+          <div>&copy; 2026 HostelGuard &bull; Institutional Attendance &amp; Safety Platform</div>
+          <div className="d-flex align-items-center gap-3">
+            <span>Help &amp; Support</span>
+            <span>&bull;</span>
+            <span>Privacy Policy</span>
+            <span>&bull;</span>
+            <span>Terms of Service</span>
+          </div>
         </footer>
       </div>
     </div>

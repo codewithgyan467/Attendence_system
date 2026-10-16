@@ -141,7 +141,7 @@ export default function GeofenceManager() {
             Geofence Perimeter Configuration
           </h4>
           <p className="text-muted small mb-0">
-            Configure authoritative central GPS coordinates and acceptable attendance radius (Server enforced via Haversine algorithm).
+            Configure authoritative central GPS coordinates and acceptable attendance radius (Enforced via high-precision geolocation).
           </p>
         </div>
         <button
@@ -381,8 +381,8 @@ export default function GeofenceManager() {
                   <span className="fw-bold text-success">{config.radius_meters} meters</span>
                 </li>
                 <li className="list-group-item d-flex justify-content-between px-0">
-                  <span className="text-muted">Verification Algorithm:</span>
-                  <span className="text-dark">Haversine (Great-Circle Distance)</span>
+                  <span className="text-muted">Verification Method:</span>
+                  <span className="text-dark">High-Precision Geolocation</span>
                 </li>
                 <li className="list-group-item d-flex justify-content-between px-0">
                   <span className="text-muted">Strike Threshold:</span>
@@ -398,7 +398,7 @@ export default function GeofenceManager() {
               Security Architectural Note
             </h6>
             <p className="text-muted small mb-0" style={{ lineHeight: '1.5' }}>
-              Client coordinates are treated as untrusted input. The server independently calculates the great-circle distance using 64-bit floating point Haversine math. Mock GPS detection and timestamp freshness checks are layered on top to prevent replay spoofing.
+              Device coordinates are verified server-side against the calibrated hostel perimeter. Anti-spoofing checks, mock location detection, and cryptographic challenge tokens prevent out-of-boundary attendance marking.
             </p>
           </div>
         </div>

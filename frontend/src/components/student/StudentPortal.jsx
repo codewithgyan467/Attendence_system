@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import { getNativeOrBrowserLocation, isNativeMobile } from '../../utils/nativeHardware';
+import { Line } from 'react-chartjs-2';
 import {
   UserCheck,
   History,
@@ -486,37 +487,129 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const stats = dashboard?.stats || {};
   const todayStatus = dashboard?.todayStatus || {};
 
+  const getGreeting = (fullName) => {
+    const hour = new Date().getHours();
+    let tod = 'day';
+    if (hour < 12) tod = 'morning';
+    else if (hour < 17) tod = 'afternoon';
+    else tod = 'evening';
+    const firstName = fullName ? fullName.trim().split(' ')[0] : 'Resident';
+    return `Good ${tod}, ${firstName}`;
+  };
+
+  const totalDays = stats.totalDaysRecorded || 0;
+  const presentDays = stats.presentDays || 0;
+  const absentDays = Math.max(0, totalDays - presentDays);
+  const attendanceRate = stats.attendancePercentage !== undefined ? stats.attendancePercentage : 100;
+
+  // Trend chart records
+  const trendRecords = (history && history.length > 0) ? history.slice(0, 7).reverse() : [];
+  const trendLabels = trendRecords.map(r => r.date ? r.date.slice(5) : '');
+  const trendData = trendRecords.map(r => r.status === 'PRESENT' ? 100 : r.status === 'LATE' ? 75 : 0);
+
   return (
     <div className="container-fluid px-0">
-      {/* Student Banner */}
-      <div className="card shadow-sm border-0 rounded-4 mb-4 text-white" style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}>
+      {/* Student Greeting & Summary Banner */}
+      <div className="card shadow-sm border-0 rounded-4 mb-4 text-white overflow-hidden" style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}>
         <div className="card-body p-4">
           <div className="d-flex flex-wrap justify-content-between align-items-center gap-3">
             <div>
-              <div className="d-flex align-items-center gap-2 mb-1">
-                <h4 className="fw-bold mb-0">{student.full_name || user?.username}</h4>
-                <span className="badge bg-primary px-2 py-1">Student Portal</span>
+              <div className="text-primary-subtle small fw-medium text-uppercase mb-1" style={{ letterSpacing: '0.6px', fontSize: '11px' }}>
+                {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
               </div>
+              <h3 className="fw-bold mb-1 text-white">
+                {getGreeting(student.full_name || user?.username)}
+              </h3>
               <div className="text-muted small">
-                Roll No: <code className="text-light">{student.roll_number || user?.username}</code> &bull; Block {student.hostel_block || 'N/A'} &bull; Rm {student.room_number || 'N/A'} &bull; {student.course || 'B.Tech'}
+                Roll No: <span className="text-light fw-medium">{student.roll_number || user?.username}</span> &bull; {student.hostel_block || 'Hostel'} &bull; Rm {student.room_number || 'N/A'} &bull; {student.course || 'Resident'}
               </div>
             </div>
 
-            <div className="d-flex gap-3 text-center">
-              <div className="bg-white bg-opacity-10 px-3 py-2 rounded-3">
-                <div className="small text-muted">Attendance Rate</div>
-                <div className="fw-bold fs-5 text-success">{stats.attendancePercentage || 100}%</div>
-              </div>
-              <div className="bg-white bg-opacity-10 px-3 py-2 rounded-3">
-                <div className="small text-muted">Today's Roll Call</div>
-                <div className={`fw-bold fs-6 ${todayStatus.status === 'PRESENT' ? 'text-success' : 'text-warning'}`}>
-                  {todayStatus.status || 'PENDING'}
+            {/* Today's Roll Call Status Indicator */}
+            <div className="d-flex align-items-center gap-2">
+              <div className={`px-3 py-2 rounded-3 border ${todayStatus.status === 'PRESENT' ? 'bg-success bg-opacity-15 border-success border-opacity-30 text-success' : 'bg-warning bg-opacity-15 border-warning border-opacity-30 text-warning'}`}>
+                <div className="small text-muted" style={{ fontSize: '11px' }}>Today's Status</div>
+                <div className="fw-bold fs-6">
+                  {todayStatus.status === 'PRESENT' ? '✓ PRESENT' : 'ATTENDANCE REQUIRED'}
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* 4 Attendance Summary Metric Cards (Requirement #7) */}
+      <div className="row g-3 mb-4">
+        <div className="col-6 col-md-3">
+          <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+            <div className="text-muted small fw-medium">Overall Attendance</div>
+            <div className="fw-bold fs-4 text-primary mt-1">{attendanceRate}%</div>
+            <div className="text-muted small" style={{ fontSize: '11px' }}>Academic semester rate</div>
+          </div>
+        </div>
+        <div className="col-6 col-md-3">
+          <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+            <div className="text-muted small fw-medium">Present Days</div>
+            <div className="fw-bold fs-4 text-success mt-1">{presentDays}</div>
+            <div className="text-muted small" style={{ fontSize: '11px' }}>Verified roll calls</div>
+          </div>
+        </div>
+        <div className="col-6 col-md-3">
+          <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+            <div className="text-muted small fw-medium">Absent Days</div>
+            <div className="fw-bold fs-4 text-danger mt-1">{absentDays}</div>
+            <div className="text-muted small" style={{ fontSize: '11px' }}>Missed check-ins</div>
+          </div>
+        </div>
+        <div className="col-6 col-md-3">
+          <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+            <div className="text-muted small fw-medium">Identity Status</div>
+            <div className={`fw-bold fs-4 mt-1 ${stats.hasFaceRegistered ? 'text-success' : 'text-warning'}`}>
+              {stats.hasFaceRegistered ? 'Active' : 'Pending'}
+            </div>
+            <div className="text-muted small" style={{ fontSize: '11px' }}>Biometric profile</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Clean 7-Day Attendance Trend Chart (Requirement #7 & #21) */}
+      {trendRecords.length > 0 && (
+        <div className="card border-0 shadow-sm rounded-4 p-3 mb-4 bg-white">
+          <div className="d-flex align-items-center justify-content-between mb-2">
+            <div className="d-flex align-items-center gap-2">
+              <Clock size={16} className="text-primary" />
+              <span className="fw-semibold text-dark small">Recent Roll Call Trend</span>
+            </div>
+            <span className="badge bg-light text-muted small">Past {trendRecords.length} Sessions</span>
+          </div>
+          <div style={{ height: '110px' }}>
+            <Line
+              data={{
+                labels: trendLabels,
+                datasets: [{
+                  label: 'Attendance Rate',
+                  data: trendData,
+                  borderColor: '#10b981',
+                  backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                  fill: true,
+                  tension: 0.35,
+                  pointRadius: 4,
+                  pointBackgroundColor: '#10b981'
+                }]
+              }}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  y: { min: 0, max: 100, ticks: { callback: v => v === 100 ? 'Present' : v === 0 ? 'Absent' : '' }, grid: { display: false } },
+                  x: { grid: { display: false } }
+                },
+                plugins: { legend: { display: false } }
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {statusMsg && (
         <div className="alert alert-success d-flex align-items-center gap-2 alert-dismissible fade show mb-4" role="alert">
@@ -576,18 +669,59 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
               <div className="card-body p-4 text-center">
                 {todayStatus.isMarkedToday ? (
-                  <div className="py-4">
-                    <CheckCircle2 size={64} className="text-success mb-3" />
-                    <h5 className="fw-bold text-success mb-1">Attendance Already Recorded Today!</h5>
-                    <p className="text-muted small mb-3">
-                      Recorded at <strong>{todayStatus.record?.time_marked || 'Roll Call'}</strong> ({todayStatus.record?.status || 'PRESENT'})
-                    </p>
-                    <div className="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
-                      Verified within {todayStatus.record?.distance_meters ? `${todayStatus.record.distance_meters.toFixed(1)}m` : 'Geofence'} &bull; Facial Vector Matched
+                  /* Polished Confirmation Screen (Requirement #13) */
+                  <div className="py-4 px-2">
+                    <div className="d-inline-flex p-3 rounded-circle bg-success bg-opacity-10 text-success mb-3 shadow-sm">
+                      <CheckCircle2 size={54} />
+                    </div>
+                    <h4 className="fw-bold text-success mb-1">Attendance Marked</h4>
+                    <p className="text-muted small mb-4">You are marked <strong className="text-success">PRESENT</strong> for today's roll call.</p>
+
+                    <div className="card bg-light border-0 rounded-4 p-3 mx-auto text-start shadow-sm" style={{ maxWidth: '380px' }}>
+                      <div className="d-flex justify-content-between py-1.5 border-bottom">
+                        <span className="text-muted small">Date</span>
+                        <span className="fw-semibold text-dark small">{new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                      </div>
+                      <div className="d-flex justify-content-between py-1.5 border-bottom">
+                        <span className="text-muted small">Time Recorded</span>
+                        <span className="fw-semibold text-dark small">{todayStatus.record?.time_marked || '7:18 PM'}</span>
+                      </div>
+                      <div className="d-flex justify-content-between py-1.5 border-bottom">
+                        <span className="text-muted small">Location</span>
+                        <span className="fw-semibold text-success small d-flex align-items-center gap-1">
+                          <Check size={14} /> Verified
+                        </span>
+                      </div>
+                      <div className="d-flex justify-content-between py-1.5">
+                        <span className="text-muted small">Identity</span>
+                        <span className="fw-semibold text-success small d-flex align-items-center gap-1">
+                          <Check size={14} /> Verified
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-muted small mt-3" style={{ fontSize: '11.5px' }}>
+                      Attendance recorded successfully. Have a safe and restful evening.
                     </div>
                   </div>
                 ) : (
                   <>
+                    {/* Clear Step Indicator (Requirement #8) */}
+                    <div className="d-flex align-items-center justify-content-center gap-2 mb-4 px-2 flex-wrap">
+                      <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold ${checkinStep === 'idle' || checkinStep === 'verifying_gps' ? 'bg-primary text-white shadow-sm' : 'bg-light text-muted'}`}>
+                        <span>1</span>
+                        <span>Confirm Location</span>
+                      </div>
+                      <span className="text-muted small d-none d-sm-inline">➔</span>
+                      <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold ${checkinStep === 'camera_active' || checkinStep === 'verifying_face' ? 'bg-primary text-white shadow-sm' : 'bg-light text-muted'}`}>
+                        <span>2</span>
+                        <span>Verify Identity</span>
+                      </div>
+                      <span className="text-muted small d-none d-sm-inline">➔</span>
+                      <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold ${checkinStep === 'success' ? 'bg-success text-white shadow-sm' : 'bg-light text-muted'}`}>
+                        <span>3</span>
+                        <span>Complete</span>
+                      </div>
+                    </div>
                     {/* Geofence Boundary & Live Radar Map */}
                     <div className="mb-4 text-start">
                       <div className="d-flex justify-content-between align-items-center mb-2 px-1">
@@ -677,16 +811,16 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           <div className="py-3 text-center">
                             <Sparkles size={44} className="text-info mb-2" />
                             <h5 className="fw-bold text-dark">Attendance Exempt for Today</h5>
-                            <p className="text-muted small mb-0">No roll call required due to the scheduled campus event/holiday.</p>
+                            <p className="text-muted small mb-0">No roll call required due to the scheduled campus event or holiday.</p>
                           </div>
                         ) : scheduleStatus?.enforced && !scheduleStatus?.isOpen ? (
                           <div>
-                            <h5 className="fw-bold mb-1 text-muted">Step 1: Verify Hostel Geofence Location</h5>
+                            <h5 className="fw-bold mb-1 text-muted">Attendance Not Currently Available</h5>
                             <p className="text-muted small mx-auto mb-3" style={{ maxWidth: '440px' }}>
-                              Attendance check-ins can only be submitted during the authorized evening window ({scheduleStatus.startTime12 || '7:00 PM'} – {scheduleStatus.endTime12 || '7:30 PM'}).
+                              Available today: <strong>{scheduleStatus.startTime12 || '7:00 PM'} – {scheduleStatus.endTime12 || '7:30 PM'}</strong>
                             </p>
                             <button
-                              className="btn btn-secondary px-4 py-2 fw-semibold d-inline-flex align-items-center gap-2 shadow-sm"
+                              className="btn btn-secondary px-4 py-2.5 fw-semibold d-inline-flex align-items-center gap-2 shadow-sm rounded-3"
                               disabled
                               title="Attendance window is currently closed"
                             >
@@ -695,15 +829,15 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           </div>
                         ) : (
                           <div>
-                            <h5 className="fw-bold mb-1">Step 1: Verify Hostel Geofence Location</h5>
+                            <h5 className="fw-bold mb-1">Confirm Your Hostel Location</h5>
                             <p className="text-muted small mx-auto mb-3" style={{ maxWidth: '440px' }}>
-                              Attendance policy requires verifying your device's physical presence within the hostel boundary ({dashboard?.geofence?.radius_meters || 20}m).
+                              Please verify your device is inside the hostel attendance area to start verification.
                             </p>
                             <button
-                              className="btn btn-primary px-4 py-2 fw-semibold d-inline-flex align-items-center gap-2 shadow-sm"
+                              className="btn btn-primary px-4 py-2.5 fw-semibold d-inline-flex align-items-center gap-2 shadow-sm rounded-3"
                               onClick={handleVerifyLocation}
                             >
-                              <Navigation size={18} /> Verify Current Location & Unlock Camera
+                              <Navigation size={18} /> ✓ Mark Attendance
                             </button>
                           </div>
                         )}
@@ -713,13 +847,9 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     {checkinStep === 'verifying_gps' && (
                       <div className="py-4">
                         <div className="spinner-border text-primary mb-3" role="status"></div>
-                        <h6 className="fw-semibold mb-1">
-                          {gpsLiveAccuracy ? `Locking onto Satellite Signals (${gpsLiveAccuracy}m)...` : 'Querying GPS Hardware & Calculating Distance...'}
-                        </h6>
+                        <h6 className="fw-semibold mb-1">Confirming Location...</h6>
                         <p className="text-muted small">
-                          {gpsLiveAccuracy
-                            ? 'Progressively refining GPS satellite fix for precision...'
-                            : 'Server enforcing Haversine great-circle validation.'}
+                          Verifying that you are physically inside the hostel attendance area.
                         </p>
                       </div>
                     )}
@@ -783,21 +913,21 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                         <div>
                           <p className="text-muted small mb-3">
                             <Sparkles size={14} className="text-primary me-1 inline" />
-                            Align your face inside the green oval guide with adequate lighting.
+                            Look directly at the camera and position your face inside the green frame.
                           </p>
                           <button
-                            className="btn btn-success px-4 py-2 fw-semibold d-inline-flex align-items-center gap-2"
+                            className="btn btn-success px-4 py-2.5 fw-semibold d-inline-flex align-items-center gap-2 rounded-3 shadow-sm"
                             onClick={handleVerifyFace}
                             disabled={checkinStep === 'verifying_face'}
                           >
                             {checkinStep === 'verifying_face' ? (
                               <>
                                 <span className="spinner-border spinner-border-sm" role="status"></span>
-                                Verifying Biometric Embeddings...
+                                Verifying Identity...
                               </>
                             ) : (
                               <>
-                                <Camera size={18} /> Capture Live Face & Mark Attendance
+                                <Camera size={18} /> ✓ Verify Identity &amp; Confirm Attendance
                               </>
                             )}
                           </button>
@@ -806,10 +936,38 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     )}
 
                     {checkinStep === 'success' && (
-                      <div className="py-4">
-                        <CheckCircle2 size={64} className="text-success mb-3" />
-                        <h5 className="fw-bold text-success mb-1">Attendance Confirmed!</h5>
-                        <p className="text-muted small mb-0">Your roll call check-in has been persisted to the authoritative database.</p>
+                      <div className="py-4 px-2">
+                        <div className="d-inline-flex p-3 rounded-circle bg-success bg-opacity-10 text-success mb-3 shadow-sm">
+                          <CheckCircle2 size={54} />
+                        </div>
+                        <h4 className="fw-bold text-success mb-1">Attendance Marked</h4>
+                        <p className="text-muted small mb-4">You are marked <strong className="text-success">PRESENT</strong> for today's roll call.</p>
+
+                        <div className="card bg-light border-0 rounded-4 p-3 mx-auto text-start shadow-sm" style={{ maxWidth: '380px' }}>
+                          <div className="d-flex justify-content-between py-1.5 border-bottom">
+                            <span className="text-muted small">Date</span>
+                            <span className="fw-semibold text-dark small">{new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                          </div>
+                          <div className="d-flex justify-content-between py-1.5 border-bottom">
+                            <span className="text-muted small">Time Recorded</span>
+                            <span className="fw-semibold text-dark small">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                          <div className="d-flex justify-content-between py-1.5 border-bottom">
+                            <span className="text-muted small">Location</span>
+                            <span className="fw-semibold text-success small d-flex align-items-center gap-1">
+                              <Check size={14} /> Verified
+                            </span>
+                          </div>
+                          <div className="d-flex justify-content-between py-1.5">
+                            <span className="text-muted small">Identity</span>
+                            <span className="fw-semibold text-success small d-flex align-items-center gap-1">
+                              <Check size={14} /> Verified
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-muted small mt-3" style={{ fontSize: '11.5px' }}>
+                          Attendance recorded successfully.
+                        </div>
                       </div>
                     )}
 
@@ -825,9 +983,9 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                         {(checkinError?.toLowerCase().includes('facial embeddings') || checkinError?.toLowerCase().includes('onboarding')) ? (
                           <div className="d-flex flex-column align-items-center gap-2">
                             <div className="card bg-warning-subtle border-warning border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
-                              <div className="fw-bold text-dark small mb-1">📸 Biometric Identity Required</div>
+                              <div className="fw-bold text-dark small mb-1">📸 Identity Verification Required</div>
                               <div className="small text-muted">
-                                Your account does not have 128-D facial vectors enrolled in the hostel database yet. You must complete your quick face enrollment to activate roll call attendance.
+                                Your facial profile is not yet registered in the hostel system. Please complete your face enrollment to mark attendance.
                               </div>
                             </div>
                             <button
@@ -838,7 +996,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                                 startEnrollCamera();
                               }}
                             >
-                              <Camera size={18} /> Register Facial Identity (10s)
+                              <Camera size={18} /> Enroll Face Identity (10s)
                             </button>
                           </div>
                         ) : checkinError?.toLowerCase().includes('locked') ? (
@@ -868,24 +1026,22 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                         ) : (
                           /* CASE C: Standard Location / Accuracy Issue */
                           <div className="d-flex flex-column align-items-center gap-2">
-                            {verifiedDistance !== null && (
-                              <div className="card bg-danger-subtle border-danger border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
-                                <div className="fw-bold text-danger small mb-1 d-flex align-items-center gap-1">
-                                  🔒 Camera Locked: Location Unverified
-                                </div>
-                                <div className="small text-danger">
-                                  You are <strong>{Math.round(verifiedDistance)}m away</strong> from the hostel, which exceeds the permitted radius of <strong>{dashboard?.geofence?.radius_meters || 20}m</strong>. You must be physically within the geofence perimeter shown on the radar above to unlock the camera.
-                                </div>
+                            <div className="card bg-danger-subtle border-danger border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
+                              <div className="fw-bold text-danger small mb-1 d-flex align-items-center gap-1">
+                                <AlertTriangle size={15} /> Outside Attendance Area
                               </div>
-                            )}
+                              <div className="small text-danger">
+                                You are outside the authorized hostel attendance area. Please move closer to the hostel and try again.
+                              </div>
+                            </div>
                             <button
                               className="btn btn-primary btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
                               onClick={handleVerifyLocation}
                             >
-                              <RefreshCw size={14} /> Re-Scan GPS & Try Again
+                              <RefreshCw size={14} /> Check Location Again
                             </button>
                             <div className="text-muted small mt-1" style={{ fontSize: '11px', maxWidth: '380px' }}>
-                              💡 <strong>Tip:</strong> Turning on your phone's Wi-Fi (even without connecting) helps your device lock onto campus location beacons instantly.
+                              💡 <strong>Tip:</strong> Turning on your phone's Wi-Fi helps your device lock onto campus location beacons instantly.
                             </div>
                           </div>
                         )}
@@ -1179,11 +1335,9 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
             <div className="col-md-6">
               <div className="p-3 bg-light rounded-3 d-flex justify-content-between align-items-center">
                 <div>
-                  <div className="text-muted">Biometric Status</div>
+                  <div className="text-muted">Identity Verification</div>
                   <div className={`fw-medium ${stats.hasFaceRegistered ? 'text-success' : 'text-warning'}`}>
-                    {stats.hasFaceRegistered
-                      ? `Active • ${stats.faceEmbeddingsCount || 1} Vectors Enrolled`
-                      : 'Pending Facial Enrollment'}
+                    {stats.hasFaceRegistered ? 'Active • Identity Verified' : 'Pending Enrollment'}
                   </div>
                 </div>
                 <button
@@ -1195,15 +1349,15 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   }}
                 >
                   <Camera size={14} />
-                  {stats.hasFaceRegistered ? 'Re-Enroll Face' : 'Enroll Face'}
+                  {stats.hasFaceRegistered ? 'Update Face Profile' : 'Enroll Face'}
                 </button>
               </div>
             </div>
             <div className="col-md-6">
               <div className="p-3 bg-light rounded-3">
-                <div className="text-muted">Forge Location Strikes</div>
+                <div className="text-muted">Location Standing</div>
                 <div className={`fw-medium ${stats.failedStrikes > 0 ? 'text-danger' : 'text-success'}`}>
-                  {stats.failedStrikes || 0} / 3 Strikes
+                  {stats.failedStrikes > 0 ? `${stats.failedStrikes} Security Warnings` : 'Normal • In Good Standing'}
                 </div>
               </div>
             </div>

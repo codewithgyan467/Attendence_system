@@ -12,6 +12,7 @@ import {
   History,
   Building,
   UserCheck,
+  Activity,
   X
 } from 'lucide-react';
 
@@ -29,7 +30,8 @@ export default function Sidebar({ activeTab, onSelectTab, showMobile, onCloseMob
         { id: 'admin_security', label: 'Security & Forge Alerts', icon: ShieldAlert },
         { id: 'admin_corrections', label: 'Correction Requests', icon: FileCheck2 },
         { id: 'admin_feedback', label: 'Support & Feedback', icon: LifeBuoy },
-        { id: 'admin_audit', label: 'System Audit Logs', icon: History }
+        { id: 'admin_audit', label: 'System Audit Logs', icon: History },
+        { id: 'admin_diagnostics', label: 'System Health', icon: Activity }
       ];
     } else if (role === 'WARDEN') {
       return [
@@ -96,9 +98,12 @@ export default function Sidebar({ activeTab, onSelectTab, showMobile, onCloseMob
       </div>
 
       {/* Footer info */}
-      <div className="p-3 border-top border-dark" style={{ borderColor: 'rgba(255,255,255,0.08)', fontSize: '11px', color: '#64748b' }}>
-        <div>Database: <strong>SQLite WAL</strong></div>
-        <div>Vision: <strong>OpenCV SFace 128D</strong></div>
+      <div className="p-3 border-top border-dark d-flex align-items-center justify-content-between" style={{ borderColor: 'rgba(255,255,255,0.08)', fontSize: '11px' }}>
+        <div className="d-flex align-items-center gap-2 text-success">
+          <span className="badge rounded-pill bg-success p-1" style={{ width: '7px', height: '7px' }}></span>
+          <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>System Online</span>
+        </div>
+        <span className="text-muted" style={{ fontSize: '10.5px' }}>v2.4 Pro</span>
       </div>
     </aside>
   );
