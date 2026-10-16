@@ -285,17 +285,17 @@ router.post('/verify-face', attendanceLimiter, async (req, res) => {
       return res.status(403).json({
         success: false,
         status: 'SPOOF_DETECTED',
-        error: 'Anti-spoofing check failed: Live human presence required. Digital screens and printed photos are rejected.',
+        error: "We couldn't verify that you're physically present. Please look directly at the camera in good lighting and try again.",
         details: aiResult.details
       });
     }
 
-    // 5. Check Cosine Similarity Match
+    // 5. Check Identity Match
     if (!aiResult.is_match) {
       return res.status(403).json({
         success: false,
         status: 'FACE_MISMATCH',
-        error: 'Facial recognition failed: Live scan does not match registered student profile.',
+        error: 'Face verification failed: Live photo does not match registered student profile. Please ensure adequate lighting and face the camera directly.',
         similarityScore: aiResult.similarity_score,
         details: aiResult.details
       });

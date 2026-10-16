@@ -409,14 +409,14 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     try {
       const res = await api.student.registerFace({ photos: enrollPhotos });
       if (res.success) {
-        setStatusMsg('Biometric facial vectors successfully registered! You can now mark attendance.');
+        setStatusMsg('Face profile successfully registered! You can now mark attendance.');
         stopEnrollCamera();
         setShowEnrollModal(false);
         setEnrollPhotos([]);
         setCheckinStep('idle');
         fetchStudentData();
       } else {
-        setEnrollError(res.error || 'Failed to register facial embeddings.');
+        setEnrollError(res.error || 'Failed to register face profile.');
       }
     } catch (err) {
       setEnrollError(err.message || 'Face enrollment failed. Ensure your face is centered with adequate lighting.');
@@ -727,20 +727,25 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   </div>
                 ) : (
                   <>
-                    {/* Clear Step Indicator (Requirement #8) */}
+                    {/* Clear 4-Step Attendance Workflow (Section 7) */}
                     <div className="d-flex align-items-center justify-content-center gap-2 mb-4 px-2 flex-wrap">
                       <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold ${checkinStep === 'idle' || checkinStep === 'verifying_gps' ? 'bg-primary text-white shadow-sm' : 'bg-light text-muted'}`}>
                         <span>1</span>
-                        <span>Confirm Location</span>
+                        <span>Location</span>
                       </div>
                       <span className="text-muted small d-none d-sm-inline">➔</span>
-                      <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold ${checkinStep === 'camera_active' || checkinStep === 'verifying_face' ? 'bg-primary text-white shadow-sm' : 'bg-light text-muted'}`}>
+                      <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold ${checkinStep === 'camera_active' ? 'bg-primary text-white shadow-sm' : 'bg-light text-muted'}`}>
                         <span>2</span>
-                        <span>Verify Identity</span>
+                        <span>Identity</span>
+                      </div>
+                      <span className="text-muted small d-none d-sm-inline">➔</span>
+                      <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold ${checkinStep === 'verifying_face' ? 'bg-primary text-white shadow-sm' : 'bg-light text-muted'}`}>
+                        <span>3</span>
+                        <span>Verification</span>
                       </div>
                       <span className="text-muted small d-none d-sm-inline">➔</span>
                       <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold ${checkinStep === 'success' ? 'bg-success text-white shadow-sm' : 'bg-light text-muted'}`}>
-                        <span>3</span>
+                        <span>4</span>
                         <span>Complete</span>
                       </div>
                     </div>
@@ -1002,7 +1007,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                         </div>
 
                         {/* CASE A: Missing Facial Registration / Onboarding */}
-                        {(checkinError?.toLowerCase().includes('facial embeddings') || checkinError?.toLowerCase().includes('onboarding')) ? (
+                        {(checkinError?.toLowerCase().includes('facial embeddings') || checkinError?.toLowerCase().includes('face profile') || checkinError?.toLowerCase().includes('onboarding')) ? (
                           <div className="d-flex flex-column align-items-center gap-2">
                             <div className="card bg-warning-subtle border-warning border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
                               <div className="fw-bold text-dark small mb-1">📸 Identity Verification Required</div>
@@ -1045,8 +1050,32 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                               <LifeBuoy size={14} /> Submit Strike Appeal to Warden
                             </button>
                           </div>
+                        ) : (checkinError?.toLowerCase().includes('physically present') || checkinError?.toLowerCase().includes('anti-spoof') || checkinError?.toLowerCase().includes('liveness') || checkinError?.toLowerCase().includes('match') || checkinError?.toLowerCase().includes('camera') || checkinError?.toLowerCase().includes('facial') || checkinError?.toLowerCase().includes('photo')) ? (
+                          /* CASE C: Face or Liveness Verification Notice (Section 24) */
+                          <div className="d-flex flex-column align-items-center gap-2">
+                            <div className="card bg-warning-subtle border-warning border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
+                              <div className="fw-bold text-dark small mb-1 d-flex align-items-center gap-1">
+                                <AlertTriangle size={15} className="text-warning" /> Face Verification Notice
+                              </div>
+                              <div className="small text-dark">
+                                We couldn't verify that you're physically present. Please look directly at the camera in good lighting and try again.
+                              </div>
+                            </div>
+                            <button
+                              className="btn btn-primary btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
+                              onClick={() => {
+                                setCheckinStep('camera_active');
+                                startCamera();
+                              }}
+                            >
+                              <RefreshCw size={14} /> Try Face Verification Again
+                            </button>
+                            <div className="text-muted small mt-1" style={{ fontSize: '11px', maxWidth: '380px' }}>
+                              💡 <strong>Tip:</strong> Please try again in better lighting. Avoid backlighting or tilted angles.
+                            </div>
+                          </div>
                         ) : (
-                          /* CASE C: Standard Location / Accuracy Issue */
+                          /* CASE D: Standard Location / Accuracy Issue */
                           <div className="d-flex flex-column align-items-center gap-2">
                             <div className="card bg-danger-subtle border-danger border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
                               <div className="fw-bold text-danger small mb-1 d-flex align-items-center gap-1">
@@ -1643,7 +1672,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     {enrollSubmitting ? (
                       <>
                         <span className="spinner-border spinner-border-sm" role="status"></span>
-                        Extracting & Enrolling 128D Vectors...
+                        Saving & Verifying Face Profile...
                       </>
                     ) : (
                       <>

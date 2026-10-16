@@ -128,7 +128,7 @@ sequenceDiagram
     alt Outside Geofence Perimeter
         Server-->>Client: HTTP 403: Outside authorized area
     else Inside Geofence (<= 20m)
-        Server->>DB: Store single-use challenge token (3m expiry)
+        Server->>DB: Store single-use challenge token (120s expiry)
         Server-->>Client: { verified: true, challengeToken: "uuid-token" }
     end
 
@@ -139,7 +139,7 @@ sequenceDiagram
     AI-->>Server: 128-D vector + landmarks + liveness metrics
     Server->>DB: Query student's enrolled multi-angle embeddings
     Server->>Server: Calculate Cosine Similarity across Enrolled Angles
-    alt Cosine Similarity >= 0.70 & Liveness OK
+    alt Cosine Similarity >= 0.65 & Liveness OK
         Server->>DB: INSERT INTO attendance_records (status: 'PRESENT')
         Server-->>Client: HTTP 200: Attendance Confirmed
     else Face Mismatch or Spoofing Detected
@@ -149,7 +149,7 @@ sequenceDiagram
 ```
 
 ### Anti-Fraud & 3-Strike Security Protocol
-* **Presentation Attack Defenses (PAD)**: Active angle calibration (frontal, left 30°, right 30°, dynamic expression) prevents static photo/replay presentation attacks.
+* **Presentation Attack Defenses (PAD)**: Multi-signal passive stack (Laplacian variance, 2D FFT moiré harmonics, YCrCb skin tone analysis) neutralizes paper photo prints and display replays.
 * **Teleportation & Mock-Location Defense**: Verifies distance variance over time. Locations indicating unnatural speeds (> 100 km/h between check-ins) are blocked.
 * **3-Strike Lockout**: Three consecutive failed verifications lock the account. Unlocking requires administrator review with mandatory documented audit justification.
 
@@ -168,7 +168,7 @@ sequenceDiagram
 
 * **Individual Deletion**: Every data desk (corrections, incident alerts, audit logs, grievance tickets, attendance marks) provides individual row deletion with audit tracking.
 * **Single-Click "Clear All"**: Dedicated bulk-purge workflows with item count confirmation dialogs prevent database bloat while preserving active rosters.
-* **Automated Backups**: Built-in snapshot archiver generating encrypted `.sqlite` backup archives stored in `backend/data/backups/`.
+* **Automated Backups**: Built-in snapshot archiver generating verified SQLite backups using WAL checkpointing and `VACUUM INTO`.
 
 ---
 
@@ -182,6 +182,6 @@ sequenceDiagram
 
 ## 9. Automated Testing & Production Build Health
 
-* **Jest Test Suite**: 8 suites passing, 86/86 automated unit and integration tests passing.
-* **Vite Production Bundle**: Compiles cleanly with 0 errors across all 24 chunks in ~5 seconds.
+* **Jest Test Suite**: 9 suites passing, 91/91 automated unit and integration tests passing.
+* **Vite Production Bundle**: Compiles cleanly with 0 errors across all 24 chunks in ~5.59 seconds.
 * **Git Repository**: Clean working tree on `main` branch, synchronized with GitHub remote `origin/main`.

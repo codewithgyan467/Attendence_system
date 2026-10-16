@@ -1,0 +1,277 @@
+{
+  "timestamp": "2026-10-16 14:51:17",
+  "models": {
+    "detector": "OpenCV YuNet ONNX (face_detection_yunet_2023mar.onnx)",
+    "recognizer": "OpenCV SFace ONNX (face_recognition_sface_2021dec.onnx)",
+    "embedding_dimension": 128,
+    "distance_metric": "Cosine Similarity"
+  },
+  "operating_threshold": 0.65,
+  "genuine_evaluations": [
+    {
+      "condition": "Normal Lighting / Standard Distance",
+      "detected": true,
+      "detector_confidence": 0.9458,
+      "similarity_score": 1.0,
+      "liveness_score": 1.0,
+      "is_live": true,
+      "decision_at_0_65": true,
+      "latency_ms": 23.49
+    },
+    {
+      "condition": "Low Lighting (55% Intensity)",
+      "detected": true,
+      "detector_confidence": 0.9438,
+      "similarity_score": 0.9772,
+      "liveness_score": 1.0,
+      "is_live": true,
+      "decision_at_0_65": true,
+      "latency_ms": 23.19
+    },
+    {
+      "condition": "High Lighting / Direct Lamp",
+      "detected": true,
+      "detector_confidence": 0.9452,
+      "similarity_score": 0.9726,
+      "liveness_score": 1.0,
+      "is_live": true,
+      "decision_at_0_65": true,
+      "latency_ms": 23.19
+    },
+    {
+      "condition": "Slight Tilt Left (-8 deg)",
+      "detected": true,
+      "detector_confidence": 0.9446,
+      "similarity_score": 0.9633,
+      "liveness_score": 1.0,
+      "is_live": true,
+      "decision_at_0_65": true,
+      "latency_ms": 23.86
+    },
+    {
+      "condition": "Slight Tilt Right (+8 deg)",
+      "detected": true,
+      "detector_confidence": 0.9458,
+      "similarity_score": 0.9724,
+      "liveness_score": 1.0,
+      "is_live": true,
+      "decision_at_0_65": true,
+      "latency_ms": 22.88
+    },
+    {
+      "condition": "Closer Distance (1.15x Zoom)",
+      "detected": true,
+      "detector_confidence": 0.951,
+      "similarity_score": 0.9864,
+      "liveness_score": 1.0,
+      "is_live": true,
+      "decision_at_0_65": true,
+      "latency_ms": 24.14
+    },
+    {
+      "condition": "Further Distance (0.82x Scale)",
+      "detected": true,
+      "detector_confidence": 0.946,
+      "similarity_score": 0.9573,
+      "liveness_score": 1.0,
+      "is_live": true,
+      "decision_at_0_65": true,
+      "latency_ms": 23.55
+    },
+    {
+      "condition": "Eyeglasses Simulation",
+      "detected": true,
+      "detector_confidence": 0.9458,
+      "similarity_score": 1.0,
+      "liveness_score": 1.0,
+      "is_live": true,
+      "decision_at_0_65": true,
+      "latency_ms": 22.92
+    },
+    {
+      "condition": "Soft Focus / Minor Motion Blur",
+      "detected": true,
+      "detector_confidence": 0.9455,
+      "similarity_score": 0.9959,
+      "liveness_score": 1.0,
+      "is_live": true,
+      "decision_at_0_65": true,
+      "latency_ms": 23.59
+    },
+    {
+      "condition": "Contrast / Gamma Shift (0.80)",
+      "detected": true,
+      "detector_confidence": 0.945,
+      "similarity_score": 0.9952,
+      "liveness_score": 1.0,
+      "is_live": true,
+      "decision_at_0_65": true,
+      "latency_ms": 23.31
+    }
+  ],
+  "impostor_evaluations": [
+    {
+      "impostor_id": "IMP_01",
+      "similarity_score": -0.0625,
+      "falsely_accepted_at_0_65": false
+    },
+    {
+      "impostor_id": "IMP_02",
+      "similarity_score": -0.1236,
+      "falsely_accepted_at_0_65": false
+    },
+    {
+      "impostor_id": "IMP_03",
+      "similarity_score": 0.061,
+      "falsely_accepted_at_0_65": false
+    },
+    {
+      "impostor_id": "IMP_04",
+      "similarity_score": 0.1753,
+      "falsely_accepted_at_0_65": false
+    },
+    {
+      "impostor_id": "IMP_05",
+      "similarity_score": -0.1466,
+      "falsely_accepted_at_0_65": false
+    },
+    {
+      "impostor_id": "IMP_06",
+      "similarity_score": 0.2169,
+      "falsely_accepted_at_0_65": false
+    },
+    {
+      "impostor_id": "IMP_07",
+      "similarity_score": 0.0601,
+      "falsely_accepted_at_0_65": false
+    },
+    {
+      "impostor_id": "IMP_08",
+      "similarity_score": 0.1006,
+      "falsely_accepted_at_0_65": false
+    },
+    {
+      "impostor_id": "IMP_09",
+      "similarity_score": -0.0626,
+      "falsely_accepted_at_0_65": false
+    },
+    {
+      "impostor_id": "IMP_10",
+      "similarity_score": 0.0283,
+      "falsely_accepted_at_0_65": false
+    },
+    {
+      "impostor_id": "IMP_11",
+      "similarity_score": 0.1244,
+      "falsely_accepted_at_0_65": false
+    },
+    {
+      "impostor_id": "IMP_12",
+      "similarity_score": -0.0122,
+      "falsely_accepted_at_0_65": false
+    },
+    {
+      "impostor_id": "IMP_13",
+      "similarity_score": -0.1383,
+      "falsely_accepted_at_0_65": false
+    },
+    {
+      "impostor_id": "IMP_14",
+      "similarity_score": 0.0398,
+      "falsely_accepted_at_0_65": false
+    },
+    {
+      "impostor_id": "IMP_15",
+      "similarity_score": 0.093,
+      "falsely_accepted_at_0_65": false
+    }
+  ],
+  "pad_attack_evaluations": [
+    {
+      "attack_type": "Mobile Phone Screen Replay (Moir\u00e9 Artifacts)",
+      "category": "SCREEN_REPLAY",
+      "liveness_score": 0.7,
+      "is_live_flag": true,
+      "neutralized": false
+    },
+    {
+      "attack_type": "Tablet OLED Display Replay",
+      "category": "SCREEN_REPLAY",
+      "liveness_score": 0.7,
+      "is_live_flag": true,
+      "neutralized": false
+    },
+    {
+      "attack_type": "Printed Color Paper Photograph",
+      "category": "PRINT_ATTACK",
+      "liveness_score": 0.35,
+      "is_live_flag": false,
+      "neutralized": true
+    },
+    {
+      "attack_type": "Low-Brightness Screen Replay in Dark Room",
+      "category": "SCREEN_REPLAY",
+      "liveness_score": 0.7,
+      "is_live_flag": true,
+      "neutralized": false
+    }
+  ],
+  "threshold_sweep": [
+    {
+      "threshold": 0.5,
+      "tar_pct": 100.0,
+      "frr_pct": 0.0,
+      "far_pct": 0.0,
+      "trr_pct": 100.0
+    },
+    {
+      "threshold": 0.55,
+      "tar_pct": 100.0,
+      "frr_pct": 0.0,
+      "far_pct": 0.0,
+      "trr_pct": 100.0
+    },
+    {
+      "threshold": 0.6,
+      "tar_pct": 100.0,
+      "frr_pct": 0.0,
+      "far_pct": 0.0,
+      "trr_pct": 100.0
+    },
+    {
+      "threshold": 0.65,
+      "tar_pct": 100.0,
+      "frr_pct": 0.0,
+      "far_pct": 0.0,
+      "trr_pct": 100.0
+    },
+    {
+      "threshold": 0.7,
+      "tar_pct": 100.0,
+      "frr_pct": 0.0,
+      "far_pct": 0.0,
+      "trr_pct": 100.0
+    },
+    {
+      "threshold": 0.75,
+      "tar_pct": 100.0,
+      "frr_pct": 0.0,
+      "far_pct": 0.0,
+      "trr_pct": 100.0
+    },
+    {
+      "threshold": 0.8,
+      "tar_pct": 100.0,
+      "frr_pct": 0.0,
+      "far_pct": 0.0,
+      "trr_pct": 100.0
+    },
+    {
+      "threshold": 0.85,
+      "tar_pct": 100.0,
+      "frr_pct": 0.0,
+      "far_pct": 0.0,
+      "trr_pct": 100.0
+    }
+  ]
+}

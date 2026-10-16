@@ -406,7 +406,7 @@ export default function StudentOnboarding({ onComplete }) {
       setRegisteredResult(result.student);
       setCurrentStep('success');
     } catch (err) {
-      setErrorMsg(err.message || 'Facial vector processing failed.');
+      setErrorMsg(err.message || 'Face enrollment processing failed. Please ensure good lighting and try again.');
     } finally {
       setSubmitLoading(false);
     }

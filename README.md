@@ -67,31 +67,33 @@ npm run dev
 
 ---
 
-## 🧪 Automated Test Suite (85 of 85 Tests Passing)
+## 🧪 Automated Test Suite (91 of 91 Tests Passing)
 
-Run the comprehensive integration test suite verifying authentication, OTP password resets, concurrency hardening, schedule windows, and bulk purges:
+Run the comprehensive integration test suite verifying authentication, OTP password resets, concurrency hardening, schedule windows, SQLite backup restoration, and bulk purges:
 ```bash
 cd backend
 npm test
 ```
 ```
-Test Suites: 8 passed, 8 total
-Tests:       85 passed, 85 total
+Test Suites: 9 passed, 9 total
+Tests:       91 passed, 91 total
 Snapshots:   0 total
-Time:        7.241 s
+Time:        8.085 s
 ```
 
 ---
 
-## 📚 Documentation Reference
+## 📚 Certified Release Documentation
 
 * **System Architecture**: [docs/CURRENT_SYSTEM_ARCHITECTURE.md](docs/CURRENT_SYSTEM_ARCHITECTURE.md)
+* **Final Production Certification Audit (24-Point Scorecard)**: [docs/FINAL_PRODUCTION_AUDIT.md](docs/FINAL_PRODUCTION_AUDIT.md)
+* **Biometric Calibration & Technology Evaluation Report**: [docs/BIOMETRIC_CALIBRATION_REPORT.md](docs/BIOMETRIC_CALIBRATION_REPORT.md)
+* **Pre-Change Release Baseline Snapshot**: [docs/RELEASE_BASELINE.md](docs/RELEASE_BASELINE.md)
+* **Official Release Notes**: [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md)
+* **Security & Threat Model Guide**: [docs/SECURITY.md](docs/SECURITY.md)
 * **Student & Warden Guide**: [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
 * **Administrator Guide**: [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)
 * **Production Deployment Guide**: [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
-* **Security & Privacy Model**: [docs/SECURITY.md](docs/SECURITY.md)
-* **Version 2.4 Release Notes**: [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md)
-* **Product Audit Report**: [FINAL_PRODUCT_AUDIT.md](FINAL_PRODUCT_AUDIT.md)
 
 ---
 

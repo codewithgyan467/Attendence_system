@@ -20,9 +20,9 @@
       "pad_accuracy_pct": 50.0
     },
     "performance": {
-      "cold_latency_ms": 4.63,
+      "cold_latency_ms": 3.65,
       "mean_latency_ms": 3.53,
-      "p95_latency_ms": 4.18,
+      "p95_latency_ms": 4.01,
       "memory_rss_mb": 65.0,
       "memory_delta_mb": 0.0
     }
@@ -48,9 +48,9 @@
       "pad_accuracy_pct": 50.0
     },
     "performance": {
-      "cold_latency_ms": 3.72,
-      "mean_latency_ms": 3.7,
-      "p95_latency_ms": 4.12,
+      "cold_latency_ms": 3.7,
+      "mean_latency_ms": 3.53,
+      "p95_latency_ms": 3.94,
       "memory_rss_mb": 65.0,
       "memory_delta_mb": 0.0
     }
@@ -76,9 +76,9 @@
       "pad_accuracy_pct": 100.0
     },
     "performance": {
-      "cold_latency_ms": 5.05,
-      "mean_latency_ms": 3.57,
-      "p95_latency_ms": 4.33,
+      "cold_latency_ms": 3.41,
+      "mean_latency_ms": 3.73,
+      "p95_latency_ms": 4.43,
       "memory_rss_mb": 65.0,
       "memory_delta_mb": 0.0
     }

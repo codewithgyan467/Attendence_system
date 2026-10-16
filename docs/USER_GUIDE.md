@@ -18,23 +18,26 @@ Welcome to **HostelGuard**, the official digital attendance and residential safe
 Roll-call attendance is required every evening during the scheduled attendance window (normally **7:00 PM – 7:30 PM**).
 
 ```
-Step 1: Confirm Location  ➔  Step 2: Verify Identity  ➔  Step 3: Complete
+Step 1: Location  ➔  Step 2: Identity  ➔  Step 3: Verification  ➔  Step 4: Complete
 ```
 
-1. **Step 1: Location Check**:
+1. **Step 1: Location**:
    * Open the **Mark Attendance** tab.
    * Tap the **✓ Mark Attendance** button.
-   * Your device will confirm that you are physically inside the hostel residential area.
-   * *Tip: Ensure your phone's Wi-Fi or location services are turned on for fast satellite positioning.*
-2. **Step 2: Identity Verification**:
-   * Position your face inside the green circular camera frame on your screen.
-   * Ensure good lighting and look straight at the camera.
+   * Your device verifies that you are physically inside the authorized hostel boundary.
+   * *Status message: "Checking your location..." ➔ "Location verified."*
+   * *Tip: Ensure your phone's Wi-Fi or location services are turned on for fast positioning.*
+2. **Step 2: Identity**:
+   * The live camera viewfinder opens with a green oval guide.
+   * Look directly at the camera in good lighting.
+   * *Status message: "Look at the camera."*
+3. **Step 3: Verification**:
    * Tap **✓ Verify Identity & Confirm Attendance**.
-3. **Step 3: Attendance Marked**:
+   * *Status message: "Verifying your identity..."*
+4. **Step 4: Complete**:
    * You will see the confirmation screen with:
-     * ✓ Status: **PRESENT**
-     * Date & exact check-in time recorded.
-     * Location & Identity verified.
+     * Status message: *"Attendance marked successfully."*
+     * Date, exact time recorded, and verified identity status.
 
 ---
 

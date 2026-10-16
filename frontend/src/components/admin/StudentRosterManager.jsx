@@ -1093,7 +1093,7 @@ export default function StudentRosterManager() {
                 <div className="alert alert-warning py-2 px-3 mb-0 d-flex align-items-start gap-2" style={{ fontSize: '12px' }}>
                   <AlertTriangle size={16} className="text-warning flex-shrink-0 mt-1" />
                   <span>
-                    <strong>Hostel Checkout Action:</strong> This permanently removes their room allotment, login credentials, biometric facial vectors, and attendance records. Their active sessions will be revoked immediately.
+                    <strong>Hostel Checkout Action:</strong> This permanently removes their room allotment, login credentials, biometric face profile, and attendance records. Their active sessions will be revoked immediately.
                   </span>
                 </div>
               </div>
