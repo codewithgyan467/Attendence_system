@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import { getNativeOrBrowserLocation, isNativeMobile } from '../../utils/nativeHardware';
+import { Line } from 'react-chartjs-2';
 import {
   UserCheck,
   History,
