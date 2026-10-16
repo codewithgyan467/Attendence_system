@@ -22,14 +22,21 @@ if (!fs.existsSync(dataDir)) {
 }
 const dbPath = path.join(dataDir, 'hostel_attendance.sqlite');
 
+let connectingPromise = null;
+
 const openSqliteConnection = () => {
-  return new Promise((resolve, reject) => {
-    if (useTurso) return resolve();
-    sqliteDb = new sqlite3.Database(dbPath, (err) => {
+  if (useTurso) return Promise.resolve();
+  if (sqliteDb) return Promise.resolve(sqliteDb);
+  if (connectingPromise) return connectingPromise;
+
+  connectingPromise = new Promise((resolve, reject) => {
+    const db = new sqlite3.Database(dbPath, (err) => {
+      connectingPromise = null;
       if (err) {
         console.error('Failed to open SQLite database:', err.message);
         reject(err);
       } else {
+        sqliteDb = db;
         sqliteDb.serialize(() => {
           sqliteDb.run('PRAGMA journal_mode = WAL;');
           sqliteDb.run('PRAGMA foreign_keys = ON;');
@@ -40,17 +47,24 @@ const openSqliteConnection = () => {
       }
     });
   });
+  return connectingPromise;
+};
+
+const ensureDbConnected = async () => {
+  if (useTurso) return;
+  if (!sqliteDb) {
+    await openSqliteConnection();
+  }
 };
 
 const closeSqliteConnection = () => {
   return new Promise((resolve, reject) => {
     if (useTurso || !sqliteDb) return resolve();
-    sqliteDb.close((err) => {
+    const db = sqliteDb;
+    sqliteDb = null;
+    db.close((err) => {
       if (err) reject(err);
-      else {
-        sqliteDb = null;
-        resolve();
-      }
+      else resolve();
     });
   });
 };
@@ -65,6 +79,7 @@ const runQuery = async (sql, params = []) => {
     const res = await tursoClient.execute({ sql, args: params });
     return { id: res.lastInsertRowid, changes: res.rowsAffected };
   }
+  await ensureDbConnected();
   return new Promise((resolve, reject) => {
     sqliteDb.run(sql, params, function (err) {
       if (err) reject(err);
@@ -78,6 +93,7 @@ const getQuery = async (sql, params = []) => {
     const res = await tursoClient.execute({ sql, args: params });
     return res.rows[0] || null;
   }
+  await ensureDbConnected();
   return new Promise((resolve, reject) => {
     sqliteDb.get(sql, params, (err, row) => {
       if (err) reject(err);
@@ -91,6 +107,7 @@ const allQuery = async (sql, params = []) => {
     const res = await tursoClient.execute({ sql, args: params });
     return res.rows || [];
   }
+  await ensureDbConnected();
   return new Promise((resolve, reject) => {
     sqliteDb.all(sql, params, (err, rows) => {
       if (err) reject(err);

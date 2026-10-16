@@ -39,8 +39,8 @@ export default function SecurityIncidentDesk() {
     setErrorMsg(null);
     try {
       const data = await api.admin.getSecurityAlerts();
-      const rawStudents = data?.flagged_students || data?.flaggedStudents || [];
-      const rawLogs = data?.recent_logs || data?.recentAuditLogs || [];
+      const rawStudents = Array.isArray(data?.flagged_students) ? data.flagged_students : (Array.isArray(data?.flaggedStudents) ? data.flaggedStudents : []);
+      const rawLogs = Array.isArray(data?.recent_logs) ? data.recent_logs : (Array.isArray(data?.recentAuditLogs) ? data.recentAuditLogs : []);
 
       // Normalize fields so the component works universally
       const normalizedStudents = rawStudents.map(s => ({

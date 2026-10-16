@@ -486,7 +486,7 @@ export default function StudentRosterManager() {
                     Loading student roster...
                   </td>
                 </tr>
-              ) : students.length > 0 ? (
+              ) : (Array.isArray(students) && students.length > 0) ? (
                 students.map((st) => (
                   <tr key={st.id}>
                     <td className="font-mono fw-bold text-primary">{st.roll_number}</td>
@@ -706,7 +706,7 @@ export default function StudentRosterManager() {
                           </tr>
                         </thead>
                         <tbody>
-                          {previewData.validRecords.map((r, i) => (
+                          {(previewData.validRecords || []).map((r, i) => (
                             <tr key={i}>
                               <td className="font-mono text-primary fw-bold">{r.roll_number}</td>
                               <td>{r.full_name}</td>

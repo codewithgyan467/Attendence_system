@@ -1,8 +1,8 @@
 import { Capacitor } from '@capacitor/core';
 
 // Dynamically determine the API base URL:
-// - Browser development uses relative '/api/v1' via Vite proxy
-// - Android Native Emulator uses 'http://10.0.2.2:5000/api/v1'
+// - Browser environments use relative '/api/v1' via Vite proxy or reverse proxy (works on localhost, LAN IP, and domain)
+// - Native Mobile (Capacitor) uses deployed backend or custom url
 // - Physical phone or custom network can set localStorage 'hg_backend_url'
 export const getApiBaseUrl = () => {
   if (typeof window !== 'undefined') {
@@ -15,7 +15,7 @@ export const getApiBaseUrl = () => {
   if (Capacitor.isNativePlatform()) {
     return 'https://hostelguard-backend-oimp.onrender.com/api/v1';
   }
-  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+  if (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')) {
     return 'https://hostelguard-backend-oimp.onrender.com/api/v1';
   }
   return '/api/v1';
@@ -61,10 +61,17 @@ async function request(endpoint, options = {}, isRetry = false) {
   };
 
   const url = `${getApiBaseUrl()}${endpoint}`;
-  const response = await fetch(url, {
-    ...options,
-    headers
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers
+    });
+  } catch (networkErr) {
+    throw new Error(
+      `Unable to reach server (${networkErr.message || 'Connection failed'}). Please check your connection.`
+    );
+  }
 
   const data = await response.json().catch(() => ({}));
 

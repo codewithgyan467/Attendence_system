@@ -87,13 +87,25 @@ export default function GeofenceMap({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    const map = L.map(containerRef.current, {
-      center: [validCenterLat, validCenterLng],
-      zoom: 17,
-      zoomControl: true,
-      scrollWheelZoom: false,
-      attributionControl: true,
-    });
+    // Defend against stale Leaflet container id across fast remounts or StrictMode
+    if (containerRef.current._leaflet_id) {
+      delete containerRef.current._leaflet_id;
+    }
+
+    let map;
+    try {
+      map = L.map(containerRef.current, {
+        center: [validCenterLat, validCenterLng],
+        zoom: 17,
+        zoomControl: true,
+        scrollWheelZoom: false,
+        attributionControl: true,
+      });
+    } catch (mapInitErr) {
+      console.warn('Leaflet map initialization guarded:', mapInitErr);
+      if (containerRef.current) delete containerRef.current._leaflet_id;
+      return;
+    }
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -122,13 +134,20 @@ export default function GeofenceMap({
     centerMarkerRef.current = centerMarker;
 
     const resizeTimer = setTimeout(() => {
-      map.invalidateSize();
+      try { map.invalidateSize(); } catch (_) {}
     }, 250);
 
     return () => {
       clearTimeout(resizeTimer);
-      map.remove();
-      mapRef.current = null;
+      if (mapRef.current) {
+        try {
+          mapRef.current.remove();
+        } catch (_) {}
+        mapRef.current = null;
+      }
+      if (containerRef.current) {
+        delete containerRef.current._leaflet_id;
+      }
     };
   }, []);
 

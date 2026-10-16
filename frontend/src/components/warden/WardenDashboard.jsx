@@ -251,7 +251,7 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
             </h6>
           </div>
           <div className="card-body p-0">
-            {!exceptions || exceptions.absentStudents.length === 0 ? (
+            {!exceptions?.absentStudents || exceptions.absentStudents.length === 0 ? (
               <div className="text-center p-4 text-muted small">
                 <CheckCircle2 size={32} className="text-success mb-2 opacity-50" />
                 <div>All residents have verified attendance today!</div>
@@ -270,7 +270,10 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                     </tr>
                   </thead>
                   <tbody>
-                    {exceptions.absentStudents.slice(0, 10).map((st) => (
+                    {(subTab === 'warden_overview'
+                      ? (exceptions?.absentStudents || []).slice(0, 10)
+                      : (exceptions?.absentStudents || [])
+                    ).map((st) => (
                       <tr key={st.id}>
                         <td className="ps-3 fw-medium text-dark">{st.full_name}</td>
                         <td><code>{st.roll_number}</code></td>

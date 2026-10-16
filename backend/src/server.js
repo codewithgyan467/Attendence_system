@@ -1,4 +1,6 @@
 require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -98,6 +100,22 @@ app.use('/api/v1/students', studentRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
 app.use('/api/v1/ota', otaRoutes);
 
+// Serve Frontend Static Assets if built
+const frontendDistPath = path.join(__dirname, '../../frontend/dist');
+if (fs.existsSync(frontendDistPath)) {
+  app.use(express.static(frontendDistPath));
+  app.get('*', (req, res, next) => {
+    if (
+      req.originalUrl.startsWith('/api') ||
+      req.originalUrl.startsWith('/health') ||
+      req.originalUrl.startsWith('/uploads')
+    ) {
+      return next();
+    }
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+  });
+}
+
 // Centralized 404 Handler
 app.use((req, res) => {
   res.status(404).json({ success: false, error: `Endpoint not found: ${req.method} ${req.originalUrl}` });
@@ -116,7 +134,6 @@ app.use((err, req, res, next) => {
 
 // Auto-Launch Python AI microservice if not already running
 const { spawn } = require('child_process');
-const path = require('path');
 const aiServiceClient = require('./services/aiServiceClient');
 
 let aiProcess = null;
@@ -152,6 +169,15 @@ async function ensureAiServiceRunning() {
   process.on('SIGTERM', () => { cleanup(); process.exit(); });
 }
 
+// Process Level Crash Shields
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ [Process Unhandled Rejection]:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ [Process Uncaught Exception]:', err);
+});
+
 // Start Server
 async function startServer() {
   try {
@@ -164,6 +190,14 @@ async function startServer() {
       console.log(`📡 URL: http://localhost:${PORT}`);
       console.log(`💎 Stack: Node.js + Express + SQLite (WAL) + Python OpenCV AI`);
       console.log(`=======================================================`);
+    });
+
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} is already in use by another process.`);
+      } else {
+        console.error('❌ Server error:', err);
+      }
     });
 
     // Graceful Shutdown

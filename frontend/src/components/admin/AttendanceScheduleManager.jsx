@@ -477,7 +477,7 @@ export default function AttendanceScheduleManager() {
                       </tr>
                     </thead>
                     <tbody>
-                      {scheduleData.overrides.map((ov) => (
+                      {(scheduleData?.overrides || []).map((ov) => (
                         <tr key={ov.id}>
                           <td className="fw-bold font-monospace text-dark">
                             {ov.override_date}
