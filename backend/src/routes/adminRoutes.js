@@ -50,127 +50,174 @@ function sanitizeFormulaInjection(value) {
 // Base router authentication guard
 router.use(requireAuth);
 
+// In-memory short TTL cache to make dashboard stats instantaneous
+let adminDashboardCache = null;
+let adminDashboardCacheExpiry = 0;
+const DASHBOARD_CACHE_TTL_MS = 10000; // 10 seconds
+
+function invalidateAdminDashboardCache() {
+  adminDashboardCache = null;
+  adminDashboardCacheExpiry = 0;
+}
+
 // 1. Executive Dashboard KPIs & Real Chart.js Datasets (Admin only)
 router.get('/dashboard-stats', requireRole('ADMIN'), async (req, res) => {
   try {
+    const now = Date.now();
+    // Return cached metrics if within TTL and fresh query param is not requested
+    if (adminDashboardCache && now < adminDashboardCacheExpiry && req.query.fresh !== 'true') {
+      return res.json(adminDashboardCache);
+    }
+
     const today = new Date().toISOString().split('T')[0];
 
-    // Core KPIs
-    const totalStudents = await getQuery(`SELECT COUNT(*) as count FROM students WHERE is_active = 1`);
-    const totalAllotted = await getQuery(`SELECT COUNT(*) as count FROM hostel_allotments`);
-    const presentTodayRow = await getQuery(`SELECT COUNT(*) as count FROM attendance_records WHERE date = ? AND status = 'PRESENT'`, [today]);
-    const lateTodayRow = await getQuery(`SELECT COUNT(*) as count FROM attendance_records WHERE date = ? AND status = 'LATE'`, [today]);
-    const flaggedForgeRow = await getQuery(`SELECT COUNT(*) as count FROM students WHERE is_flagged_forge = 1`);
-    const pendingCorrectionsRow = await getQuery(`SELECT COUNT(*) as count FROM attendance_corrections WHERE status = 'PENDING'`);
-    const openTicketsRow = await getQuery(`SELECT COUNT(*) as count FROM feedback_tickets WHERE status = 'OPEN'`);
-    const activeGeofence = await getQuery(`SELECT * FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
-
-    const totalReg = totalStudents?.count || 0;
-    const presentCount = presentTodayRow?.count || 0;
-    const lateCount = lateTodayRow?.count || 0;
-    const absentCount = Math.max(0, totalReg - presentCount - lateCount);
-
-    // 7-Day Attendance Trend for Chart.js Line Chart
+    // Build the 7-day trend date window
     const past7Days = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split('T')[0];
       const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
-
-      const dayPresent = await getQuery(`SELECT COUNT(*) as count FROM attendance_records WHERE date = ? AND status = 'PRESENT'`, [dateStr]);
-      const dayLate = await getQuery(`SELECT COUNT(*) as count FROM attendance_records WHERE date = ? AND status = 'LATE'`, [dateStr]);
-
       past7Days.push({
         date: dateStr,
         day: dayName,
-        present: dayPresent?.count || 0,
-        late: dayLate?.count || 0,
-        absent: Math.max(0, totalReg - (dayPresent?.count || 0) - (dayLate?.count || 0))
+        present: 0,
+        late: 0,
+        absent: 0
       });
     }
+    const startDate = past7Days[0].date;
 
-    // Attendance by Hostel Block for Chart.js Bar Chart
-    const blockStats = await allQuery(`
-      SELECT
-        s.hostel_block as block,
-        COUNT(s.id) as total_students,
-        COUNT(a.id) as present_today
-      FROM students s
-      LEFT JOIN attendance_records a ON s.id = a.student_id AND a.date = ? AND a.status = 'PRESENT'
-      WHERE s.is_active = 1 AND s.hostel_block IS NOT NULL
-      GROUP BY s.hostel_block
-    `, [today]);
+    // Execute all database queries concurrently with Promise.all
+    const [
+      totalStudents,
+      totalAllotted,
+      todayStatusCounts,
+      flaggedForgeRow,
+      pendingCorrectionsRow,
+      openTicketsRow,
+      activeGeofence,
+      trendRows,
+      blockStats,
+      recentActivity,
+      recentAuditEvents,
+      rawPresent,
+      todayAbsent
+    ] = await Promise.all([
+      getQuery(`SELECT COUNT(*) as count FROM students WHERE is_active = 1`),
+      getQuery(`SELECT COUNT(*) as count FROM hostel_allotments`),
+      allQuery(`SELECT status, COUNT(*) as count FROM attendance_records WHERE date = ? GROUP BY status`, [today]),
+      getQuery(`SELECT COUNT(*) as count FROM students WHERE is_flagged_forge = 1`),
+      getQuery(`SELECT COUNT(*) as count FROM attendance_corrections WHERE status = 'PENDING'`),
+      getQuery(`SELECT COUNT(*) as count FROM feedback_tickets WHERE status = 'OPEN'`),
+      getQuery(`SELECT * FROM geofence_configs WHERE is_active = 1 LIMIT 1`),
+      allQuery(`
+        SELECT date, status, COUNT(*) as count
+        FROM attendance_records
+        WHERE date >= ? AND date <= ?
+        GROUP BY date, status
+      `, [startDate, today]),
+      allQuery(`
+        SELECT
+          s.hostel_block as block,
+          COUNT(s.id) as total_students,
+          COUNT(a.id) as present_today
+        FROM students s
+        LEFT JOIN attendance_records a ON s.id = a.student_id AND a.date = ? AND a.status = 'PRESENT'
+        WHERE s.is_active = 1 AND s.hostel_block IS NOT NULL
+        GROUP BY s.hostel_block
+      `, [today]),
+      allQuery(`
+        SELECT roll_number, full_name, date, time_marked, status, verified_distance
+        FROM attendance_records
+        ORDER BY created_at DESC
+        LIMIT 10
+      `),
+      allQuery(`
+        SELECT username, action, target_type, details, created_at
+        FROM admin_audit_events
+        ORDER BY created_at DESC
+        LIMIT 8
+      `),
+      allQuery(`
+        SELECT
+          a.id AS attendance_id,
+          a.student_id,
+          a.roll_number,
+          a.full_name,
+          a.date,
+          a.time_marked,
+          a.status,
+          a.verified_distance,
+          a.is_override,
+          a.override_reason,
+          COALESCE(s.room_number, 'N/A') AS room_number,
+          COALESCE(s.hostel_block, 'Block A') AS hostel_block,
+          s.course,
+          s.phone,
+          s.email
+        FROM attendance_records a
+        LEFT JOIN students s ON a.student_id = s.id
+        WHERE a.date = ? AND a.status IN ('PRESENT', 'LATE', 'EXCUSED')
+        ORDER BY a.time_marked DESC
+      `, [today]),
+      allQuery(`
+        SELECT
+          s.id AS student_id,
+          s.roll_number,
+          s.full_name,
+          COALESCE(s.room_number, 'N/A') AS room_number,
+          COALESCE(s.hostel_block, 'Block A') AS hostel_block,
+          s.course,
+          s.phone,
+          s.email,
+          'ABSENT' AS status
+        FROM students s
+        WHERE s.is_active = 1
+          AND NOT EXISTS (
+            SELECT 1 FROM attendance_records a
+            WHERE a.student_id = s.id
+              AND a.date = ?
+              AND a.status IN ('PRESENT', 'LATE', 'EXCUSED')
+          )
+        ORDER BY s.hostel_block ASC, s.room_number ASC, s.full_name ASC
+      `, [today])
+    ]);
 
-    // Recent Attendance Events
-    const recentActivity = await allQuery(`
-      SELECT roll_number, full_name, date, time_marked, status, verified_distance
-      FROM attendance_records
-      ORDER BY created_at DESC
-      LIMIT 10
-    `);
+    const totalReg = totalStudents?.count || 0;
 
-    // Recent Admin Audit Events
-    const recentAuditEvents = await allQuery(`
-      SELECT username, action, target_type, details, created_at
-      FROM admin_audit_events
-      ORDER BY created_at DESC
-      LIMIT 8
-    `);
+    let presentCount = 0;
+    let lateCount = 0;
+    if (Array.isArray(todayStatusCounts)) {
+      for (const row of todayStatusCounts) {
+        if (row.status === 'PRESENT') presentCount = row.count || 0;
+        else if (row.status === 'LATE') lateCount = row.count || 0;
+      }
+    }
+    const absentCount = Math.max(0, totalReg - presentCount - lateCount);
 
-    // Detailed list of Present residents today
-    const rawPresent = await allQuery(`
-      SELECT
-        a.id AS attendance_id,
-        a.student_id,
-        a.roll_number,
-        a.full_name,
-        a.date,
-        a.time_marked,
-        a.status,
-        a.verified_distance,
-        a.is_override,
-        a.override_reason,
-        COALESCE(s.room_number, 'N/A') AS room_number,
-        COALESCE(s.hostel_block, 'Block A') AS hostel_block,
-        s.course,
-        s.phone,
-        s.email
-      FROM attendance_records a
-      LEFT JOIN students s ON a.student_id = s.id
-      WHERE a.date = ? AND a.status IN ('PRESENT', 'LATE', 'EXCUSED')
-      ORDER BY a.time_marked DESC
-    `, [today]);
+    // Map trends by date and status
+    const trendMap = {};
+    if (Array.isArray(trendRows)) {
+      for (const row of trendRows) {
+        if (!trendMap[row.date]) trendMap[row.date] = {};
+        trendMap[row.date][row.status] = row.count || 0;
+      }
+    }
+
+    for (const dayItem of past7Days) {
+      const stats = trendMap[dayItem.date] || {};
+      dayItem.present = stats.PRESENT || 0;
+      dayItem.late = stats.LATE || 0;
+      dayItem.absent = Math.max(0, totalReg - dayItem.present - dayItem.late);
+    }
 
     const todayPresent = rawPresent.map(p => ({
       ...p,
       time_marked_12: p.time_marked ? formatTime12h(p.time_marked) : 'N/A'
     }));
 
-    // Detailed list of Absent / Unmarked residents today
-    const todayAbsent = await allQuery(`
-      SELECT
-        s.id AS student_id,
-        s.roll_number,
-        s.full_name,
-        COALESCE(s.room_number, 'N/A') AS room_number,
-        COALESCE(s.hostel_block, 'Block A') AS hostel_block,
-        s.course,
-        s.phone,
-        s.email,
-        'ABSENT' AS status
-      FROM students s
-      WHERE s.is_active = 1
-        AND NOT EXISTS (
-          SELECT 1 FROM attendance_records a
-          WHERE a.student_id = s.id
-            AND a.date = ?
-            AND a.status IN ('PRESENT', 'LATE', 'EXCUSED')
-        )
-      ORDER BY s.hostel_block ASC, s.room_number ASC, s.full_name ASC
-    `, [today]);
-
-    res.json({
+    const responsePayload = {
       success: true,
       summary: {
         totalRegistered: totalReg,
@@ -191,13 +238,19 @@ router.get('/dashboard-stats', requireRole('ADMIN'), async (req, res) => {
           late: lateCount,
           absent: absentCount
         },
-        blockDistribution: blockStats
+        blockDistribution: blockStats || []
       },
       todayPresent,
       todayAbsent,
-      recentActivity,
-      recentAuditEvents
-    });
+      recentActivity: recentActivity || [],
+      recentAuditEvents: recentAuditEvents || []
+    };
+
+    // Cache the payload in memory
+    adminDashboardCache = responsePayload;
+    adminDashboardCacheExpiry = now + DASHBOARD_CACHE_TTL_MS;
+
+    res.json(responsePayload);
   } catch (err) {
     console.error('Dashboard Stats Error:', err);
     res.status(500).json({ success: false, error: err.message });
@@ -209,55 +262,56 @@ router.get('/today-roster', requireRole('ADMIN'), async (req, res) => {
   try {
     const targetDate = req.query.date || new Date().toISOString().split('T')[0];
 
-    const rawPresent = await allQuery(`
-      SELECT
-        a.id AS attendance_id,
-        a.student_id,
-        a.roll_number,
-        a.full_name,
-        a.date,
-        a.time_marked,
-        a.status,
-        a.verified_distance,
-        a.is_override,
-        a.override_reason,
-        COALESCE(s.room_number, 'N/A') AS room_number,
-        COALESCE(s.hostel_block, 'Block A') AS hostel_block,
-        s.course,
-        s.phone,
-        s.email
-      FROM attendance_records a
-      LEFT JOIN students s ON a.student_id = s.id
-      WHERE a.date = ? AND a.status IN ('PRESENT', 'LATE', 'EXCUSED')
-      ORDER BY a.time_marked DESC
-    `, [targetDate]);
+    const [rawPresent, absent] = await Promise.all([
+      allQuery(`
+        SELECT
+          a.id AS attendance_id,
+          a.student_id,
+          a.roll_number,
+          a.full_name,
+          a.date,
+          a.time_marked,
+          a.status,
+          a.verified_distance,
+          a.is_override,
+          a.override_reason,
+          COALESCE(s.room_number, 'N/A') AS room_number,
+          COALESCE(s.hostel_block, 'Block A') AS hostel_block,
+          s.course,
+          s.phone,
+          s.email
+        FROM attendance_records a
+        LEFT JOIN students s ON a.student_id = s.id
+        WHERE a.date = ? AND a.status IN ('PRESENT', 'LATE', 'EXCUSED')
+        ORDER BY a.time_marked DESC
+      `, [targetDate]),
+      allQuery(`
+        SELECT
+          s.id AS student_id,
+          s.roll_number,
+          s.full_name,
+          COALESCE(s.room_number, 'N/A') AS room_number,
+          COALESCE(s.hostel_block, 'Block A') AS hostel_block,
+          s.course,
+          s.phone,
+          s.email,
+          'ABSENT' AS status
+        FROM students s
+        WHERE s.is_active = 1
+          AND NOT EXISTS (
+            SELECT 1 FROM attendance_records a
+            WHERE a.student_id = s.id
+              AND a.date = ?
+              AND a.status IN ('PRESENT', 'LATE', 'EXCUSED')
+          )
+        ORDER BY s.hostel_block ASC, s.room_number ASC, s.full_name ASC
+      `, [targetDate])
+    ]);
 
     const present = rawPresent.map(p => ({
       ...p,
       time_marked_12: p.time_marked ? formatTime12h(p.time_marked) : 'N/A'
     }));
-
-    const absent = await allQuery(`
-      SELECT
-        s.id AS student_id,
-        s.roll_number,
-        s.full_name,
-        COALESCE(s.room_number, 'N/A') AS room_number,
-        COALESCE(s.hostel_block, 'Block A') AS hostel_block,
-        s.course,
-        s.phone,
-        s.email,
-        'ABSENT' AS status
-      FROM students s
-      WHERE s.is_active = 1
-        AND NOT EXISTS (
-          SELECT 1 FROM attendance_records a
-          WHERE a.student_id = s.id
-            AND a.date = ?
-            AND a.status IN ('PRESENT', 'LATE', 'EXCUSED')
-        )
-      ORDER BY s.hostel_block ASC, s.room_number ASC, s.full_name ASC
-    `, [targetDate]);
 
     res.json({
       success: true,

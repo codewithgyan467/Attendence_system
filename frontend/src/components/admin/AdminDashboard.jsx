@@ -21,9 +21,22 @@ import {
   ArrowRight
 } from 'lucide-react';
 
+const DASHBOARD_CACHE_KEY = 'hg_cached_admin_dashboard_stats';
+
+const getCachedDashboardStats = () => {
+  try {
+    const raw = localStorage.getItem(DASHBOARD_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
 export default function AdminDashboard({ onNavigate }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(getCachedDashboardStats);
+  const [loading, setLoading] = useState(!data);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSynced, setLastSynced] = useState(() => (getCachedDashboardStats() ? 'Cached' : ''));
   const [error, setError] = useState('');
 
   // Today's Roster Interactive Modal State
@@ -32,18 +45,28 @@ export default function AdminDashboard({ onNavigate }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [blockFilter, setBlockFilter] = useState('');
 
-  const fetchStats = async () => {
+  const fetchStats = async (isManual = false) => {
     try {
-      setLoading(true);
+      if (!data || isManual) {
+        setLoading(true);
+      }
+      setIsSyncing(true);
       setError('');
       const res = await api.admin.getDashboardStats();
       if (res.success) {
         setData(res);
+        setLastSynced(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        try {
+          localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(res));
+        } catch (_) {}
       }
     } catch (err) {
-      setError(err.message || 'Failed to load dashboard metrics');
+      if (!data) {
+        setError(err.message || 'Failed to load dashboard metrics');
+      }
     } finally {
       setLoading(false);
+      setIsSyncing(false);
     }
   };
 
@@ -53,11 +76,44 @@ export default function AdminDashboard({ onNavigate }) {
 
   if (loading && !data) {
     return (
-      <div className="p-4 text-center">
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">Loading...</span>
+      <div className="container-fluid px-0 py-2">
+        <div className="d-flex justify-content-between align-items-center mb-4 placeholder-glow">
+          <div>
+            <div className="placeholder col-8 bg-secondary rounded py-2 mb-2" style={{ minWidth: '220px' }}></div>
+            <div className="placeholder col-6 bg-secondary rounded py-1" style={{ minWidth: '160px' }}></div>
+          </div>
+          <div className="placeholder col-2 bg-secondary rounded py-3" style={{ minWidth: '100px' }}></div>
         </div>
-        <div className="text-muted mt-2">Loading enterprise metrics...</div>
+
+        <div className="row g-3 mb-4">
+          {[1, 2, 3, 4].map((n) => (
+            <div key={n} className="col-12 col-sm-6 col-xl-3">
+              <div className="hg-card p-3 placeholder-glow" style={{ borderRadius: '12px' }}>
+                <div className="d-flex justify-content-between mb-2">
+                  <span className="placeholder col-6 bg-secondary rounded py-1"></span>
+                  <span className="placeholder rounded-circle bg-secondary" style={{ width: '28px', height: '28px' }}></span>
+                </div>
+                <div className="placeholder col-4 bg-secondary rounded py-3 my-2"></div>
+                <span className="placeholder col-8 bg-secondary rounded py-1"></span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="row g-3">
+          <div className="col-12 col-lg-8">
+            <div className="hg-card p-4 placeholder-glow" style={{ minHeight: '300px', borderRadius: '12px' }}>
+              <span className="placeholder col-4 bg-secondary rounded py-2 mb-4 d-block"></span>
+              <div className="placeholder col-12 bg-secondary rounded" style={{ height: '220px' }}></div>
+            </div>
+          </div>
+          <div className="col-12 col-lg-4">
+            <div className="hg-card p-4 placeholder-glow" style={{ minHeight: '300px', borderRadius: '12px' }}>
+              <span className="placeholder col-6 bg-secondary rounded py-2 mb-4 d-block"></span>
+              <div className="placeholder col-12 bg-secondary rounded-circle mx-auto" style={{ width: '160px', height: '160px' }}></div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -145,8 +201,17 @@ export default function AdminDashboard({ onNavigate }) {
           </p>
         </div>
         <div className="d-flex align-items-center gap-2">
-          <button onClick={fetchStats} className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" disabled={loading}>
-            <RotateCw size={14} className={loading ? 'animate-spin' : ''} />
+          {isSyncing ? (
+            <span className="badge bg-light text-primary border d-none d-sm-inline-flex align-items-center gap-1 py-2 px-2" style={{ fontSize: '11px' }}>
+              <RotateCw size={11} className="spin-fast" /> Syncing live...
+            </span>
+          ) : lastSynced ? (
+            <span className="badge bg-light text-muted border d-none d-sm-inline-block py-2 px-2" style={{ fontSize: '11px' }}>
+              ✓ Synced {lastSynced}
+            </span>
+          ) : null}
+          <button onClick={() => fetchStats(true)} className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" disabled={isSyncing}>
+            <RotateCw size={14} className={isSyncing ? 'animate-spin' : ''} />
             <span>Refresh Data</span>
           </button>
         </div>

@@ -4,21 +4,27 @@ import { api, authStorage } from '../utils/api';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(authStorage.getUser());
-  const [token, setToken] = useState(authStorage.getToken());
-  const [loading, setLoading] = useState(true);
+  const initialUser = authStorage.getUser();
+  const initialToken = authStorage.getToken();
+
+  const [user, setUser] = useState(initialUser);
+  const [token, setToken] = useState(initialToken);
+  // Instant App Opening: If we already have stored user credentials, DO NOT block the UI.
+  // Only wait if there is a raw token without a stored user profile.
+  const [loading, setLoading] = useState(Boolean(initialToken && !initialUser));
 
   useEffect(() => {
     const handleUnauthorized = () => {
       setUser(null);
       setToken(null);
       authStorage.clearToken();
+      authStorage.clearRefreshToken();
       authStorage.clearUser();
     };
 
     window.addEventListener('auth:unauthorized', handleUnauthorized);
 
-    // Validate stored token with server on startup
+    // Revalidate stored token with server in the background (stale-while-revalidate)
     if (token) {
       api.auth.getMe()
         .then((res) => {
@@ -27,8 +33,21 @@ export function AuthProvider({ children }) {
             authStorage.setUser(res.user);
           }
         })
-        .catch(() => {
-          handleUnauthorized();
+        .catch((err) => {
+          const errMsg = (err?.message || '').toLowerCase();
+          // Only clear session if token was rejected by server (401 / unauthorized / forbidden / invalid)
+          if (
+            errMsg.includes('401') ||
+            errMsg.includes('unauthorized') ||
+            errMsg.includes('forbidden') ||
+            errMsg.includes('token expired') ||
+            errMsg.includes('invalid token')
+          ) {
+            handleUnauthorized();
+          } else {
+            // Temporary network glitch or Render free-tier waking up: keep cached session alive
+            console.warn('[Auth] Server revalidation deferred:', err.message);
+          }
         })
         .finally(() => {
           setLoading(false);

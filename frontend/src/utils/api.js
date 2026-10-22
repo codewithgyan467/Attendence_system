@@ -63,11 +63,20 @@ async function request(endpoint, options = {}, isRetry = false) {
   const url = `${getApiBaseUrl()}${endpoint}`;
   let response;
   try {
+    const controller = new AbortController();
+    const timeoutMs = options.timeout || (endpoint === '/auth/me' ? 15000 : 40000);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
     response = await fetch(url, {
       ...options,
+      signal: options.signal || controller.signal,
       headers
     });
+    clearTimeout(timeoutId);
   } catch (networkErr) {
+    if (networkErr.name === 'AbortError') {
+      throw new Error('Connection timed out. Cloud server may be waking up, retrying shortly...');
+    }
     throw new Error(
       `Unable to reach server (${networkErr.message || 'Connection failed'}). Please check your connection.`
     );

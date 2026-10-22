@@ -13,6 +13,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Instant Backend Preconnect & Server Wake-Up -->
+    <link rel="preconnect" href="https://hostelguard-backend-oimp.onrender.com" crossorigin>
+    <link rel="dns-prefetch" href="https://hostelguard-backend-oimp.onrender.com">
+    <script>
+      (function() {
+        try {
+          var backend = localStorage.getItem('hg_backend_url') || 'https://hostelguard-backend-oimp.onrender.com';
+          if (backend && backend.indexOf('http') === 0) {
+            var pingUrl = backend.replace(/\/api\/v1\/?$/, '') + '/health';
+            fetch(pingUrl, { mode: 'cors', cache: 'no-store' }).catch(function() {});
+          }
+        } catch(e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

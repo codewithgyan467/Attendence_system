@@ -4,6 +4,7 @@ const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const { v4: uuidv4 } = require('uuid');
 const { initDatabase, getQuery } = require('./db/database');
 const { generalLimiter } = require('./middleware/rateLimiter');
@@ -23,6 +24,9 @@ app.use(helmet({
   contentSecurityPolicy: false, // Allows cross-origin camera/PWA media streaming
   crossOriginEmbedderPolicy: false
 }));
+
+// High-Performance Gzip/Brotli Compression for Fast Mobile Loading
+app.use(compression());
 
 const defaultOrigins = [
   'http://localhost:3000',
@@ -190,6 +194,26 @@ async function startServer() {
       console.log(`📡 URL: http://localhost:${PORT}`);
       console.log(`💎 Stack: Node.js + Express + SQLite (WAL) + Python OpenCV AI`);
       console.log(`=======================================================`);
+
+      // Automatic Anti-Spin-Down Keep-Alive for Cloud / Render Free Tier
+      const isCloudEnv = process.env.RENDER || process.env.NODE_ENV === 'production' || process.env.ENABLE_KEEP_ALIVE === 'true';
+      const keepAliveUrl = process.env.KEEP_ALIVE_URL ||
+        (process.env.RENDER_EXTERNAL_URL ? `${process.env.RENDER_EXTERNAL_URL}/health` : 'https://hostelguard-backend-oimp.onrender.com/health');
+
+      if (isCloudEnv && keepAliveUrl) {
+        const TEN_MINUTES_MS = 10 * 60 * 1000;
+        setInterval(() => {
+          fetch(keepAliveUrl, { headers: { 'User-Agent': 'HostelGuard-KeepAlive-Worker/1.0' } })
+            .then((r) => r.json())
+            .then((data) => {
+              console.log(`[Keep-Alive Ping] Server pulse healthy at ${new Date().toLocaleTimeString()} (status: ${data.status})`);
+            })
+            .catch((pingErr) => {
+              console.warn('[Keep-Alive Ping Notice]', pingErr.message);
+            });
+        }, TEN_MINUTES_MS);
+        console.log(`🛡️ Anti-spin-down keep-alive active: pinging ${keepAliveUrl} every 10 minutes`);
+      }
     });
 
     server.on('error', (err) => {

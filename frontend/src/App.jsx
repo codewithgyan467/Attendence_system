@@ -28,11 +28,24 @@ function AppContent() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [activeTab, setActiveTab] = useState('');
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
 
   // Initialize Over-The-Air (OTA) live updater on app launch
   useEffect(() => {
     initOtaUpdater();
   }, []);
+
+  // Track loading time for transparent feedback on cold starts
+  useEffect(() => {
+    if (!loading) {
+      setLoadingSeconds(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setLoadingSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [loading]);
 
   // Set default tab when role changes
   useEffect(() => {
@@ -47,12 +60,36 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="d-flex flex-column align-items-center justify-content-center vh-100 bg-light">
+      <div className="d-flex flex-column align-items-center justify-content-center vh-100 bg-light px-3 text-center">
         <div className="spinner-border text-primary mb-3" style={{ width: '3rem', height: '3rem' }} role="status">
           <span className="visually-hidden">Loading...</span>
         </div>
-        <div className="fw-semibold text-dark">Initializing HostelGuard Portal...</div>
-        <div className="text-muted small mt-1">Connecting to secure server...</div>
+        <div className="fw-semibold text-dark fs-5">Initializing HostelGuard Portal...</div>
+        {loadingSeconds < 3 ? (
+          <div className="text-muted small mt-1">Connecting to secure server...</div>
+        ) : loadingSeconds < 10 ? (
+          <div className="text-primary small mt-1 fw-medium">
+            ⚡ Waking up cloud server (Render cold-start)...
+          </div>
+        ) : (
+          <div className="text-muted small mt-1">
+            Server warming up ({loadingSeconds}s). Almost ready...
+          </div>
+        )}
+        {loadingSeconds >= 10 && (
+          <div className="mt-4">
+            <button
+              className="btn btn-outline-secondary btn-sm"
+              onClick={() => {
+                localStorage.removeItem('hg_token');
+                localStorage.removeItem('hg_user');
+                window.location.reload();
+              }}
+            >
+              Reset Session / Go to Sign In
+            </button>
+          </div>
+        )}
       </div>
     );
   }
