@@ -19,7 +19,11 @@ import {
   ExternalLink,
   Zap,
   Check,
-  X
+  X,
+  ShieldAlert,
+  Copy,
+  Key,
+  User
 } from 'lucide-react';
 
 export default function ForgotPasswordModal({
@@ -29,6 +33,7 @@ export default function ForgotPasswordModal({
   initialRollNumber = '',
   initialToken = null
 }) {
+  const [recoveryMode, setRecoveryMode] = useState('STANDARD'); // 'STANDARD' or 'MASTER_KEY'
   const [step, setStep] = useState(initialToken ? 3 : 1); // 1: Request, 2: OTP/Verify, 3: New Password, 4: Success
   const [identifier, setIdentifier] = useState(initialRollNumber);
   const [method, setMethod] = useState('EMAIL'); // 'EMAIL' or 'PHONE'
@@ -38,6 +43,16 @@ export default function ForgotPasswordModal({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Master Recovery Key state
+  const [masterKey, setMasterKey] = useState('');
+  const [masterUsername, setMasterUsername] = useState('admin');
+  const [masterEmail, setMasterEmail] = useState('');
+  const [masterPassword, setMasterPassword] = useState('');
+  const [masterConfirmPassword, setMasterConfirmPassword] = useState('');
+  const [masterShowPassword, setMasterShowPassword] = useState(false);
+  const [masterNewKeyResult, setMasterNewKeyResult] = useState(null);
+  const [copiedNewKey, setCopiedNewKey] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -223,6 +238,58 @@ export default function ForgotPasswordModal({
     await handleRequestOtp();
   };
 
+  // Emergency Master Key reset handler
+  const handleMasterRecoveryReset = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+
+    if (!masterKey.trim() || !masterPassword) {
+      setErrorMsg('Emergency Master Recovery Key and new password are required.');
+      return;
+    }
+
+    if (masterPassword.length < 8) {
+      setErrorMsg('New password must be at least 8 characters long.');
+      return;
+    }
+
+    if (masterPassword !== masterConfirmPassword) {
+      setErrorMsg('Passwords do not match.');
+      return;
+    }
+
+    if (masterEmail && masterEmail.trim().toLowerCase().endsWith('@hostelguard.local')) {
+      setErrorMsg('Please specify a valid institutional or personal email, not a placeholder.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await api.auth.masterRecoveryReset({
+        master_key: masterKey.trim().toUpperCase(),
+        new_username: masterUsername.trim() || 'admin',
+        new_email: masterEmail.trim().toLowerCase(),
+        new_password: masterPassword
+      });
+
+      if (res.success) {
+        setMasterNewKeyResult(res.newMasterRecoveryKey);
+      }
+    } catch (err) {
+      setErrorMsg(err.message || 'Master recovery verification failed. Please check the key.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopyNewMasterKey = () => {
+    if (masterNewKeyResult) {
+      navigator.clipboard.writeText(masterNewKeyResult);
+      setCopiedNewKey(true);
+      setTimeout(() => setCopiedNewKey(false), 2500);
+    }
+  };
+
   return (
     <div
       className="modal show d-block"
@@ -243,53 +310,91 @@ export default function ForgotPasswordModal({
             ></button>
             <div className="d-flex align-items-center gap-3">
               <div
-                className="p-2 rounded-circle bg-primary bg-opacity-25 text-primary border border-primary border-opacity-25"
+                className={`p-2 rounded-circle ${
+                  recoveryMode === 'MASTER_KEY'
+                    ? 'bg-warning bg-opacity-25 text-warning border border-warning border-opacity-25'
+                    : 'bg-primary bg-opacity-25 text-primary border border-primary border-opacity-25'
+                }`}
                 style={{ width: '48px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <KeyRound size={24} />
+                {recoveryMode === 'MASTER_KEY' ? <ShieldAlert size={24} /> : <KeyRound size={24} />}
               </div>
               <div>
-                <h5 className="fw-bold mb-0 text-white">Student Password Recovery</h5>
+                <h5 className="fw-bold mb-0 text-white">
+                  {recoveryMode === 'MASTER_KEY' ? 'Emergency Admin Recovery' : 'Account Password Recovery'}
+                </h5>
                 <span className="text-muted small">
-                  {step === 1 && 'Choose Phone.Email or Email Authentication'}
-                  {step === 2 && (method === 'PHONE' ? 'Verify via Phone.Email OTP' : 'Verify via Email OTP')}
-                  {step === 3 && 'Create new secure password'}
-                  {step === 4 && 'Password successfully updated'}
+                  {recoveryMode === 'MASTER_KEY'
+                    ? 'Cryptographic institutional override using Master Recovery Key'
+                    : step === 1
+                    ? 'Choose Phone.Email or Email Authentication'
+                    : step === 2
+                    ? (method === 'PHONE' ? 'Verify via Phone.Email OTP' : 'Verify via Email OTP')
+                    : step === 3
+                    ? 'Create new secure password'
+                    : 'Password successfully updated'}
                 </span>
               </div>
             </div>
 
-            {/* Stepper Dots */}
-            <div className="d-flex align-items-center justify-content-between mt-3 pt-2 border-top border-secondary border-opacity-25">
-              {[1, 2, 3].map((num) => (
-                <div key={num} className="d-flex align-items-center flex-grow-1">
-                  <div
-                    className={`rounded-circle d-flex align-items-center justify-content-center fw-bold small ${
-                      step === num
-                        ? 'bg-primary text-white'
-                        : step > num
-                        ? 'bg-success text-white'
-                        : 'bg-secondary bg-opacity-25 text-muted'
-                    }`}
-                    style={{ width: '24px', height: '24px', fontSize: '11px' }}
-                  >
-                    {step > num ? '✓' : num}
-                  </div>
-                  {num < 3 && (
+            {/* Stepper Dots (only in STANDARD mode) */}
+            {recoveryMode === 'STANDARD' && (
+              <div className="d-flex align-items-center justify-content-between mt-3 pt-2 border-top border-secondary border-opacity-25">
+                {[1, 2, 3].map((num) => (
+                  <div key={num} className="d-flex align-items-center flex-grow-1">
                     <div
-                      className={`flex-grow-1 mx-2 ${
-                        step > num ? 'bg-success' : 'bg-secondary bg-opacity-25'
+                      className={`rounded-circle d-flex align-items-center justify-content-center fw-bold small ${
+                        step === num
+                          ? 'bg-primary text-white'
+                          : step > num
+                          ? 'bg-success text-white'
+                          : 'bg-secondary bg-opacity-25 text-muted'
                       }`}
-                      style={{ height: '2px' }}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
+                      style={{ width: '24px', height: '24px', fontSize: '11px' }}
+                    >
+                      {step > num ? '✓' : num}
+                    </div>
+                    {num < 3 && (
+                      <div
+                        className={`flex-grow-1 mx-2 ${
+                          step > num ? 'bg-success' : 'bg-secondary bg-opacity-25'
+                        }`}
+                        style={{ height: '2px' }}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Body */}
           <div className="modal-body p-4">
+            {/* Mode Switcher */}
+            <div className="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">
+              <span
+                className={`badge ${
+                  recoveryMode === 'MASTER_KEY'
+                    ? 'bg-warning text-dark border'
+                    : 'bg-light text-muted border'
+                }`}
+                style={{ fontSize: '11px' }}
+              >
+                {recoveryMode === 'MASTER_KEY' ? '🛡️ Institutional Override' : 'Student / Warden OTP'}
+              </span>
+              <button
+                type="button"
+                className="btn btn-link btn-sm p-0 text-decoration-none fw-semibold"
+                style={{ fontSize: '11.5px', color: recoveryMode === 'MASTER_KEY' ? '#3b82f6' : '#d97706' }}
+                onClick={() => {
+                  setErrorMsg('');
+                  setRecoveryMode(recoveryMode === 'MASTER_KEY' ? 'STANDARD' : 'MASTER_KEY');
+                }}
+              >
+                {recoveryMode === 'MASTER_KEY' ? '← Back to Standard Recovery' : '🔑 Emergency Admin Master Key'}
+              </button>
+            </div>
+
             {errorMsg && (
               <div className="alert alert-danger d-flex align-items-center gap-2 py-2 px-3 small mb-3 rounded-3" role="alert">
                 <AlertTriangle size={16} className="flex-shrink-0" />
@@ -297,8 +402,201 @@ export default function ForgotPasswordModal({
               </div>
             )}
 
-            {/* STEP 1: SELECT CHANNEL & IDENTIFIER */}
-            {step === 1 && (
+            {/* MASTER KEY EMERGENCY RECOVERY FLOW */}
+            {recoveryMode === 'MASTER_KEY' && (
+              <>
+                {masterNewKeyResult ? (
+                  <div className="text-center py-2">
+                    <div
+                      className="rounded-circle bg-success bg-opacity-10 text-success p-3 mx-auto mb-3"
+                      style={{ width: '64px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <CheckCircle2 size={36} />
+                    </div>
+                    <h5 className="fw-bold text-dark mb-1">Admin Account Successfully Claimed!</h5>
+                    <p className="text-muted small mb-3">
+                      Root administrator credentials have been rotated for <strong>{masterUsername}</strong>. All active admin sessions have been invalidated.
+                    </p>
+
+                    {/* Prominent replacement master key alert */}
+                    <div className="card border-warning bg-warning bg-opacity-10 p-3 mb-4 text-start rounded-3">
+                      <div className="d-flex align-items-center gap-2 text-warning-emphasis fw-bold small mb-1">
+                        <AlertTriangle size={16} className="text-warning" />
+                        <span>IMPORTANT: REPLACEMENT MASTER RECOVERY KEY GENERATED</span>
+                      </div>
+                      <div className="text-dark small mb-2" style={{ fontSize: '11.5px' }}>
+                        The recovery key you just used has been permanently burned. Store this replacement key in your physical institution safe:
+                      </div>
+                      <div className="input-group">
+                        <input
+                          type="text"
+                          readOnly
+                          className="form-control font-monospace fw-bold text-dark bg-white fs-6"
+                          value={masterNewKeyResult}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-warning fw-semibold d-flex align-items-center gap-1"
+                          onClick={handleCopyNewMasterKey}
+                        >
+                          {copiedNewKey ? <Check size={16} /> : <Copy size={16} />}
+                          <span>{copiedNewKey ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      </div>
+                      <div className="text-muted mt-1" style={{ fontSize: '10.5px' }}>
+                        * This replacement key will NOT be shown again once you close this modal.
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn btn-primary w-100 py-2 fw-semibold d-inline-flex align-items-center justify-content-center gap-2"
+                      onClick={() => {
+                        onClose();
+                        if (onPasswordResetSuccess) {
+                          onPasswordResetSuccess(masterUsername || 'admin');
+                        }
+                      }}
+                    >
+                      <span>Proceed to Sign In</span>
+                      <ArrowRight size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleMasterRecoveryReset}>
+                    <div className="alert alert-secondary py-2 px-3 small mb-3 rounded-3" style={{ fontSize: '11.5px' }}>
+                      <div className="fw-semibold text-dark mb-0.5 d-flex align-items-center gap-1.5">
+                        <ShieldAlert size={14} className="text-warning flex-shrink-0" />
+                        Disaster Recovery &amp; Warden Handover
+                      </div>
+                      Enter your institutional Emergency Master Recovery Key. This completely overrides and resets the root administrator credentials.
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="form-label small fw-semibold text-dark mb-1">
+                        Emergency Master Recovery Key
+                      </label>
+                      <div className="input-group">
+                        <span className="input-group-text bg-light">
+                          <Key size={15} className="text-muted" />
+                        </span>
+                        <input
+                          type="text"
+                          className="form-control font-monospace text-uppercase"
+                          placeholder="HG-MASTER-XXXX-XXXX-XXXX-XXXX"
+                          value={masterKey}
+                          onChange={(e) => setMasterKey(e.target.value.toUpperCase())}
+                          required
+                          disabled={loading}
+                          autoFocus
+                        />
+                      </div>
+                      <div className="form-text" style={{ fontSize: '10.5px' }}>
+                        16-character hex emergency override key provided during deployment.
+                      </div>
+                    </div>
+
+                    <div className="row g-2 mb-3">
+                      <div className="col-sm-6">
+                        <label className="form-label small fw-semibold text-dark mb-1">New Admin Username</label>
+                        <div className="input-group input-group-sm">
+                          <span className="input-group-text bg-light">
+                            <User size={14} className="text-muted" />
+                          </span>
+                          <input
+                            type="text"
+                            className="form-control"
+                            placeholder="admin"
+                            value={masterUsername}
+                            onChange={(e) => setMasterUsername(e.target.value)}
+                            required
+                            disabled={loading}
+                          />
+                        </div>
+                      </div>
+                      <div className="col-sm-6">
+                        <label className="form-label small fw-semibold text-dark mb-1">New Institutional Email</label>
+                        <div className="input-group input-group-sm">
+                          <span className="input-group-text bg-light">
+                            <Mail size={14} className="text-muted" />
+                          </span>
+                          <input
+                            type="email"
+                            className="form-control"
+                            placeholder="warden@college.edu"
+                            value={masterEmail}
+                            onChange={(e) => setMasterEmail(e.target.value)}
+                            required
+                            disabled={loading}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="row g-2 mb-3">
+                      <div className="col-sm-6">
+                        <label className="form-label small fw-semibold text-dark mb-1">New Password</label>
+                        <div className="input-group input-group-sm">
+                          <input
+                            type={masterShowPassword ? 'text' : 'password'}
+                            className="form-control"
+                            placeholder="Min 8 characters"
+                            value={masterPassword}
+                            onChange={(e) => setMasterPassword(e.target.value)}
+                            required
+                            minLength={8}
+                            disabled={loading}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-outline-secondary"
+                            onClick={() => setMasterShowPassword(!masterShowPassword)}
+                          >
+                            {masterShowPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="col-sm-6">
+                        <label className="form-label small fw-semibold text-dark mb-1">Confirm Password</label>
+                        <div className="input-group input-group-sm">
+                          <input
+                            type={masterShowPassword ? 'text' : 'password'}
+                            className="form-control"
+                            placeholder="Re-enter password"
+                            value={masterConfirmPassword}
+                            onChange={(e) => setMasterConfirmPassword(e.target.value)}
+                            required
+                            minLength={8}
+                            disabled={loading}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="btn btn-danger w-100 py-2 d-flex align-items-center justify-content-center gap-2 fw-semibold shadow-sm"
+                      disabled={loading || !masterKey.trim() || masterPassword.length < 8 || masterPassword !== masterConfirmPassword}
+                    >
+                      {loading ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm" role="status" />
+                          Executing Master Override...
+                        </>
+                      ) : (
+                        <>
+                          <ShieldAlert size={16} />
+                          <span>Reset Root Admin &amp; Rotate Master Key</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                )}
+              </>
+            )}
+
+            {/* STANDARD STUDENT / WARDEN FLOW */}
+            {recoveryMode === 'STANDARD' && step === 1 && (
               <form onSubmit={handleRequestOtp}>
                 <div className="mb-3">
                   <label className="form-label small fw-semibold text-dark">
@@ -394,7 +692,7 @@ export default function ForgotPasswordModal({
             )}
 
             {/* STEP 2: VERIFICATION (PHONE.EMAIL OR EMAIL MODEL) */}
-            {step === 2 && (
+            {recoveryMode === 'STANDARD' && step === 2 && (
               <div>
                 {/* METHOD A: PHONE.EMAIL VERIFICATION */}
                 {method === 'PHONE' ? (
@@ -549,7 +847,7 @@ export default function ForgotPasswordModal({
             )}
 
             {/* STEP 3: CREATE NEW PASSWORD */}
-            {step === 3 && (
+            {recoveryMode === 'STANDARD' && step === 3 && (
               <form onSubmit={handleResetPassword}>
                 <div className="alert alert-success py-2 px-3 small d-flex align-items-center gap-2 mb-3 rounded-3">
                   <Check size={16} className="text-success flex-shrink-0" />
@@ -635,7 +933,7 @@ export default function ForgotPasswordModal({
             )}
 
             {/* STEP 4: SUCCESS */}
-            {step === 4 && (
+            {recoveryMode === 'STANDARD' && step === 4 && (
               <div className="text-center py-3">
                 <div
                   className="rounded-circle bg-success bg-opacity-10 text-success p-3 mx-auto mb-3"

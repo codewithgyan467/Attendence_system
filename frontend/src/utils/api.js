@@ -151,7 +151,10 @@ export const api = {
     phoneEmailLogin: (data) => request('/auth/phone-login', { method: 'POST', body: JSON.stringify(data) }),
     requestLoginOtp: (data) => request('/auth/otp-login/request', { method: 'POST', body: JSON.stringify(data) }),
     verifyLoginOtp: (data) => request('/auth/otp-login/verify', { method: 'POST', body: JSON.stringify(data) }),
-    googleLogin: (data) => request('/auth/google-login', { method: 'POST', body: JSON.stringify(data) })
+    googleLogin: (data) => request('/auth/google-login', { method: 'POST', body: JSON.stringify(data) }),
+    initialAdminSetup: (data) => request('/auth/initial-admin-setup', { method: 'POST', body: JSON.stringify(data) }),
+    masterRecoveryVerify: (data) => request('/auth/master-recovery/verify', { method: 'POST', body: JSON.stringify(data) }),
+    masterRecoveryReset: (data) => request('/auth/master-recovery/reset', { method: 'POST', body: JSON.stringify(data) })
   },
 
   // Admin APIs
@@ -159,6 +162,9 @@ export const api = {
     getDashboardStats: () => request('/admin/dashboard-stats'),
     getTodayRoster: (date) => request(`/admin/today-roster${date ? '?date=' + encodeURIComponent(date) : ''}`),
     getCredentialsDirectory: () => request('/admin/credentials-directory'),
+    getSecurityProfile: () => request('/admin/security/profile'),
+    updateSecurityProfile: (data) => request('/admin/security/update-profile', { method: 'POST', body: JSON.stringify(data) }),
+    regenerateMasterKey: (data) => request('/admin/security/regenerate-master-key', { method: 'POST', body: JSON.stringify(data) }),
     resetStudentPassword: (id, data) => request(`/admin/students/${encodeURIComponent(id)}/reset-password`, { method: 'POST', body: JSON.stringify(data || {}) }),
     getStudents: (params = {}) => {
       const q = new URLSearchParams(params).toString();

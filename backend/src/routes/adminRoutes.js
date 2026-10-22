@@ -14,6 +14,7 @@ const { clearForgeFlag } = require('../services/fraudService');
 const backupService = require('../services/backupService');
 const aiServiceClient = require('../services/aiServiceClient');
 const { getAttendanceWindowStatus, formatTime12h } = require('../services/scheduleService');
+const { createMasterRecoveryKey, getActiveRecoveryKeyMetadata } = require('../services/recoveryService');
 
 // Security Hardened Multer Configuration: 10MB limit and strict file format filter
 const uploadDir = path.join(__dirname, '../../uploads');
@@ -2080,6 +2081,131 @@ router.get('/system-health', requireRole('ADMIN'), async (req, res) => {
           lastBackup
         }
       }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 14. Administrator Security & Master Recovery Key Desk
+router.get('/security/profile', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const adminUser = await getQuery(`
+      SELECT id, username, email, role, must_change_password, created_at, updated_at
+      FROM users WHERE id = ?
+    `, [req.user.id]);
+
+    const recoveryMeta = await getActiveRecoveryKeyMetadata();
+
+    res.json({
+      success: true,
+      user: {
+        id: adminUser?.id || req.user.id,
+        username: adminUser?.username || req.user.username,
+        email: adminUser?.email || req.user.email,
+        role: 'ADMIN',
+        mustChangePassword: Boolean(adminUser?.must_change_password),
+        createdAt: adminUser?.created_at,
+        updatedAt: adminUser?.updated_at
+      },
+      recoveryKey: recoveryMeta ? {
+        hint: recoveryMeta.key_hint,
+        createdAt: recoveryMeta.created_at,
+        isActive: Boolean(recoveryMeta.is_active)
+      } : null
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/security/update-profile', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const { username, email, current_password } = req.body;
+
+    if (!username || !email || !current_password) {
+      return res.status(400).json({ success: false, error: 'Username, email, and current password are required.' });
+    }
+
+    if (email.trim().toLowerCase().endsWith('@hostelguard.local')) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid official email address.' });
+    }
+
+    const user = await getQuery(`SELECT password_hash FROM users WHERE id = ?`, [req.user.id]);
+    const isMatch = await bcrypt.compare(current_password, user.password_hash);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, error: 'Incorrect current password.' });
+    }
+
+    const conflict = await getQuery(`
+      SELECT id FROM users
+      WHERE (LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)) AND id != ?
+    `, [username.trim(), email.trim(), req.user.id]);
+
+    if (conflict) {
+      return res.status(409).json({ success: false, error: 'Username or email is already taken by another account.' });
+    }
+
+    await runQuery(`
+      UPDATE users
+      SET username = ?, email = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [username.trim(), email.trim().toLowerCase(), req.user.id]);
+
+    await recordAuditEvent(
+      req.user.id,
+      username.trim(),
+      'ADMIN_PROFILE_UPDATE',
+      'USER',
+      req.user.id,
+      `Administrator profile updated: username='${username.trim()}', email='${email.trim().toLowerCase()}'`,
+      req
+    );
+
+    res.json({
+      success: true,
+      message: 'Administrator profile updated successfully.',
+      user: {
+        id: req.user.id,
+        username: username.trim(),
+        email: email.trim().toLowerCase(),
+        role: 'ADMIN'
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/security/regenerate-master-key', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const { current_password } = req.body;
+    if (!current_password) {
+      return res.status(400).json({ success: false, error: 'Current password is required to generate a new Master Recovery Key.' });
+    }
+
+    const user = await getQuery(`SELECT password_hash FROM users WHERE id = ?`, [req.user.id]);
+    const isMatch = await bcrypt.compare(current_password, user.password_hash);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, error: 'Incorrect current password.' });
+    }
+
+    const newKey = await createMasterRecoveryKey();
+
+    await recordAuditEvent(
+      req.user.id,
+      req.user.username,
+      'MASTER_KEY_REGENERATED',
+      'SYSTEM',
+      'MASTER_KEY',
+      'Administrator regenerated the Emergency Master Recovery Key',
+      req
+    );
+
+    res.json({
+      success: true,
+      message: 'New Emergency Master Recovery Key generated! Store it securely.',
+      masterRecoveryKey: newKey
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

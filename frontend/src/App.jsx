@@ -19,8 +19,10 @@ const FeedbackTicketDesk = lazy(() => import('./components/admin/FeedbackTicketD
 const AuditLogViewer = lazy(() => import('./components/admin/AuditLogViewer'));
 const AttendanceScheduleManager = lazy(() => import('./components/admin/AttendanceScheduleManager'));
 const AdminDiagnostics = lazy(() => import('./components/admin/AdminDiagnostics'));
+const AdminSecurityDesk = lazy(() => import('./components/admin/AdminSecurityDesk'));
 const WardenDashboard = lazy(() => import('./components/warden/WardenDashboard'));
 const StudentPortal = lazy(() => import('./components/student/StudentPortal'));
+import InitialAdminSetupModal from './components/auth/InitialAdminSetupModal';
 
 
 function AppContent() {
@@ -172,6 +174,7 @@ function AppContent() {
                   {activeTab === 'admin_feedback' && <FeedbackTicketDesk />}
                   {activeTab === 'admin_audit' && <AuditLogViewer />}
                   {activeTab === 'admin_diagnostics' && <AdminDiagnostics />}
+                  {activeTab === 'admin_security_desk' && <AdminSecurityDesk />}
                 </>
               )}
 
@@ -210,6 +213,13 @@ function AppContent() {
           </div>
         </footer>
       </div>
+
+      {/* Mandatory Admin Initial Setup Modal (triggers on default credentials or must_change_password) */}
+      <InitialAdminSetupModal
+        isOpen={Boolean(user && user.role === 'ADMIN' && (user.mustChangePassword || user.email === 'admin@hostelguard.local'))}
+        user={user}
+        onSetupComplete={() => window.location.reload()}
+      />
     </div>
   );
 }

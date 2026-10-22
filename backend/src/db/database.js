@@ -458,6 +458,18 @@ const initDatabase = async () => {
     )
   `);
 
+  // 18. Emergency Master Recovery Keys (Tamper-proof disaster recovery & warden handover)
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS system_recovery_keys (
+      id TEXT PRIMARY KEY,
+      key_hash TEXT NOT NULL,
+      key_hint TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      used_at DATETIME,
+      is_active INTEGER DEFAULT 1
+    )
+  `);
+
   // Automatic Non-Destructive Column Migrations (upgrades existing SQLite db schema)
   const ensureColumns = async (tableName, requiredCols) => {
     try {
@@ -571,16 +583,34 @@ const clearAllStudentData = async () => {
 };
 
 const seedInitialData = async () => {
-  // A. Seed Default Admin User if missing
-  const existingAdmin = await getQuery(`SELECT id FROM users WHERE username = ?`, ['admin']);
+  // A. Seed Default Admin User if missing or enforce password rotation
+  const existingAdmin = await getQuery(`SELECT id, email, must_change_password FROM users WHERE username = ?`, ['admin']);
   if (!existingAdmin) {
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash('Admin@12345', salt);
     await runQuery(`
       INSERT INTO users (id, username, email, password_hash, role, is_active, must_change_password)
-      VALUES (?, ?, ?, ?, 'ADMIN', 1, 0)
+      VALUES (?, ?, ?, ?, 'ADMIN', 1, 1)
     `, [uuidv4(), 'admin', 'admin@hostelguard.local', hash]);
-    console.log('✅ Default Administrator seeded (Username: admin | Pass: Admin@12345)');
+    console.log('✅ Default Administrator seeded (Username: admin | Pass: Admin@12345) [Password rotation flagged]');
+  } else if (existingAdmin.email === 'admin@hostelguard.local') {
+    await runQuery(`UPDATE users SET must_change_password = 1 WHERE id = ?`, [existingAdmin.id]);
+  }
+
+  // A2. Seed Initial Master Recovery Key if missing
+  try {
+    const { createMasterRecoveryKey } = require('../services/recoveryService');
+    const existingKey = await getQuery(`SELECT id FROM system_recovery_keys WHERE is_active = 1 LIMIT 1`);
+    if (!existingKey) {
+      const recoveryKey = await createMasterRecoveryKey();
+      console.log(`========================================================================`);
+      console.log(`🔑 [HOSTELGUARD RECOVERY] INITIAL MASTER RECOVERY KEY GENERATED:`);
+      console.log(`>>> ${recoveryKey} <<<`);
+      console.log(`⚠️ STORE THIS MASTER KEY SAFELY! Used for admin handover and disaster recovery.`);
+      console.log(`========================================================================`);
+    }
+  } catch (keyErr) {
+    console.warn('[Recovery Key Seed Notice]', keyErr.message);
   }
 
   // B. Seed Default Warden User if missing

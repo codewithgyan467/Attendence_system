@@ -15,6 +15,11 @@ const {
   JWT_SECRET
 } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/rateLimiter');
+const {
+  verifyMasterRecoveryKey,
+  createMasterRecoveryKey,
+  getActiveRecoveryKeyMetadata
+} = require('../services/recoveryService');
 
 // 1. User Login (Issues Short-Lived Access Token + Rotated Refresh Token)
 router.post('/login', authLimiter, async (req, res) => {
@@ -115,6 +120,7 @@ router.get('/me', requireAuth, async (req, res) => {
       success: true,
       user: {
         ...req.user,
+        mustChangePassword: Boolean(req.user.must_change_password),
         studentProfile
       }
     });
@@ -159,6 +165,207 @@ router.post('/change-password', requireAuth, async (req, res) => {
 
     res.json({ success: true, message: 'Password changed successfully. Please log in with your new credentials.' });
   } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4b. Mandatory Administrator Initial Security Setup (Sets official email & rotates away from Admin@12345)
+router.post('/initial-admin-setup', requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({ success: false, error: 'Only administrators can perform initial admin security setup.' });
+    }
+
+    const { new_username, new_email, new_password, current_password } = req.body;
+
+    if (!new_username || !new_email || !new_password || !current_password) {
+      return res.status(400).json({ success: false, error: 'All fields (username, email, new password, current password) are required.' });
+    }
+
+    if (new_password.length < 8) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 8 characters long.' });
+    }
+
+    if (new_password === 'Admin@12345') {
+      return res.status(400).json({ success: false, error: 'New password cannot be the default Admin@12345 password.' });
+    }
+
+    if (new_email.trim().toLowerCase().endsWith('@hostelguard.local')) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid official email address.' });
+    }
+
+    // Verify current password
+    const user = await getQuery(`SELECT password_hash FROM users WHERE id = ?`, [req.user.id]);
+    const isMatch = await bcrypt.compare(current_password, user.password_hash);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, error: 'Incorrect current password.' });
+    }
+
+    // Check collision with other accounts
+    const existing = await getQuery(`
+      SELECT id FROM users
+      WHERE (LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)) AND id != ?
+    `, [new_username.trim(), new_email.trim(), req.user.id]);
+
+    if (existing) {
+      return res.status(409).json({ success: false, error: 'The requested username or email is already taken by another user.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const newHash = await bcrypt.hash(new_password, salt);
+
+    await runQuery(`
+      UPDATE users
+      SET username = ?, email = ?, password_hash = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [new_username.trim(), new_email.trim().toLowerCase(), newHash, req.user.id]);
+
+    // Generate fresh Master Recovery Key for emergency offline backup
+    const newRecoveryKey = await createMasterRecoveryKey();
+
+    // Invalidate prior sessions
+    await revokeAllUserSessions(req.user.id);
+
+    const updatedUser = {
+      id: req.user.id,
+      username: new_username.trim(),
+      email: new_email.trim().toLowerCase(),
+      role: 'ADMIN',
+      mustChangePassword: false
+    };
+
+    const newAccessToken = generateAccessToken(updatedUser);
+    const refreshResult = await createRefreshToken(req.user.id, req);
+
+    await recordAuditEvent(
+      req.user.id,
+      new_username.trim(),
+      'ADMIN_INITIAL_SECURITY_SETUP',
+      'USER',
+      req.user.id,
+      'Administrator completed initial security setup (rotated credentials and master recovery key issued)',
+      req
+    );
+
+    res.json({
+      success: true,
+      message: 'Administrator security profile successfully configured! Store your Master Recovery Key safely.',
+      token: newAccessToken,
+      accessToken: newAccessToken,
+      refreshToken: refreshResult.refreshToken,
+      user: updatedUser,
+      masterRecoveryKey: newRecoveryKey
+    });
+  } catch (err) {
+    console.error('Initial Admin Setup Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4c. Verify Master Recovery Key
+router.post('/master-recovery/verify', authLimiter, async (req, res) => {
+  try {
+    const { master_key } = req.body;
+    if (!master_key) {
+      return res.status(400).json({ success: false, error: 'Master Recovery Key is required.' });
+    }
+
+    const validKeyRecord = await verifyMasterRecoveryKey(master_key);
+    if (!validKeyRecord) {
+      return res.status(401).json({ success: false, error: 'Invalid or inactive Master Recovery Key.' });
+    }
+
+    res.json({ success: true, message: 'Master Recovery Key verified successfully.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4d. Emergency Master Key Recovery Reset (Warden handover or lost password disaster recovery)
+router.post('/master-recovery/reset', authLimiter, async (req, res) => {
+  try {
+    const { master_key, new_username, new_email, new_password } = req.body;
+
+    if (!master_key || !new_password) {
+      return res.status(400).json({ success: false, error: 'Master Recovery Key and new password are required.' });
+    }
+
+    if (new_password.length < 8) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 8 characters long.' });
+    }
+
+    const validKeyRecord = await verifyMasterRecoveryKey(master_key);
+    if (!validKeyRecord) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid or inactive Master Recovery Key. Please verify the key or contact your server administrator.'
+      });
+    }
+
+    // Find the primary Administrator user
+    let adminUser = await getQuery(`SELECT id, username, email FROM users WHERE role = 'ADMIN' LIMIT 1`);
+    if (!adminUser) {
+      const newAdminId = uuidv4();
+      const salt = await bcrypt.genSalt(10);
+      const hash = await bcrypt.hash(new_password, salt);
+      const finalUsername = (new_username && new_username.trim()) || 'admin';
+      const finalEmail = (new_email && new_email.trim().toLowerCase()) || 'admin@college.edu';
+
+      await runQuery(`
+        INSERT INTO users (id, username, email, password_hash, role, is_active, must_change_password)
+        VALUES (?, ?, ?, ?, 'ADMIN', 1, 0)
+      `, [newAdminId, finalUsername, finalEmail, hash]);
+
+      adminUser = { id: newAdminId, username: finalUsername, email: finalEmail };
+    } else {
+      const finalUsername = (new_username && new_username.trim()) || adminUser.username;
+      const finalEmail = (new_email && new_email.trim().toLowerCase()) || adminUser.email;
+
+      const conflict = await getQuery(`
+        SELECT id FROM users
+        WHERE (LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)) AND id != ?
+      `, [finalUsername, finalEmail, adminUser.id]);
+
+      if (conflict) {
+        return res.status(409).json({ success: false, error: 'Requested username or email is already assigned to another user.' });
+      }
+
+      const salt = await bcrypt.genSalt(10);
+      const newHash = await bcrypt.hash(new_password, salt);
+
+      await runQuery(`
+        UPDATE users
+        SET username = ?, email = ?, password_hash = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `, [finalUsername, finalEmail, newHash, adminUser.id]);
+
+      adminUser.username = finalUsername;
+      adminUser.email = finalEmail;
+    }
+
+    // Revoke all active sessions on all devices for this administrator
+    await revokeAllUserSessions(adminUser.id);
+
+    // Invalidate the used master key and generate a brand-new one
+    const newMasterKey = await createMasterRecoveryKey();
+
+    await recordAuditEvent(
+      adminUser.id,
+      adminUser.username,
+      'MASTER_KEY_RECOVERY_OVERRIDE',
+      'USER',
+      adminUser.id,
+      'Emergency Master Recovery Key executed: credentials reset and session tokens invalidated.',
+      req
+    );
+
+    res.json({
+      success: true,
+      message: 'Emergency recovery successful! The administrator login has been reset and all old sessions revoked. Please log in with your new credentials.',
+      newMasterRecoveryKey: newMasterKey
+    });
+  } catch (err) {
+    console.error('Master Recovery Reset Error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

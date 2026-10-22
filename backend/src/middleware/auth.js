@@ -145,7 +145,7 @@ async function requireAuth(req, res, next) {
     }
 
     // Verify user is still active in database (Immediate Revocation Enforcement)
-    const user = await getQuery(`SELECT id, username, email, role, student_id, is_active FROM users WHERE id = ?`, [decoded.id]);
+    const user = await getQuery(`SELECT id, username, email, role, student_id, is_active, must_change_password FROM users WHERE id = ?`, [decoded.id]);
     if (!user || user.is_active !== 1) {
       return res.status(401).json({
         success: false,

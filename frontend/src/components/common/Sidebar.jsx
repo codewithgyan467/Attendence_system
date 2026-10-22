@@ -13,6 +13,7 @@ import {
   Building,
   UserCheck,
   Activity,
+  Key,
   X
 } from 'lucide-react';
 
@@ -23,6 +24,7 @@ export default function Sidebar({ activeTab, onSelectTab, showMobile, onCloseMob
     if (role === 'ADMIN') {
       return [
         { id: 'admin_dashboard', label: 'Executive Dashboard', icon: LayoutDashboard },
+        { id: 'admin_security_desk', label: 'Admin Security & Keys', icon: Key },
         { id: 'admin_students', label: 'Student Roster', icon: Users },
         { id: 'admin_geofence', label: 'Geofence Perimeter', icon: MapPin },
         { id: 'admin_attendance', label: 'Attendance Records', icon: CalendarCheck },
