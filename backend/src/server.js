@@ -104,6 +104,27 @@ app.use('/api/v1/students', studentRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
 app.use('/api/v1/ota', otaRoutes);
 
+// Public Technical Report Download Endpoints
+app.get('/api/v1/reports/camera-face-verification', (req, res) => {
+  const format = (req.query.format || 'pdf').toLowerCase();
+  const filename = format === 'html'
+    ? 'CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.html'
+    : format === 'md'
+    ? 'CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.md'
+    : 'CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.pdf';
+
+  const filePath = path.join(__dirname, '../../', filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ success: false, error: 'Report file not found on server.' });
+  }
+
+  if (req.query.view === 'true' && format === 'html') {
+    return res.sendFile(filePath);
+  }
+
+  res.download(filePath, filename);
+});
+
 // Serve Frontend Static Assets if built
 const frontendDistPath = path.join(__dirname, '../../frontend/dist');
 if (fs.existsSync(frontendDistPath)) {
