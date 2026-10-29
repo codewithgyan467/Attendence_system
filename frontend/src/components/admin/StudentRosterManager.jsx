@@ -24,6 +24,44 @@ import {
   Download
 } from 'lucide-react';
 
+// Assam Engineering College (AEC), Jalukbari, Guwahati - Comprehensive Academic Architecture
+export const AEC_PROGRAMS = {
+  COURSES: [
+    { id: 'B.Tech', label: 'B.Tech (Bachelor of Technology - 8 Semesters)' },
+    { id: 'M.Tech', label: 'M.Tech (Master of Technology - 4 Semesters)' },
+    { id: 'MCA', label: 'MCA (Master of Computer Applications - 4 Semesters)' }
+  ],
+  BRANCHES: [
+    // Undergraduate B.Tech Branches (Assam Engineering College)
+    { code: 'CSE', name: 'Computer Science & Engineering', degree: 'B.Tech' },
+    { code: 'CE', name: 'Civil Engineering', degree: 'B.Tech' },
+    { code: 'ME', name: 'Mechanical Engineering', degree: 'B.Tech' },
+    { code: 'EE', name: 'Electrical Engineering', degree: 'B.Tech' },
+    { code: 'ETE', name: 'Electronics & Telecommunication Engineering', degree: 'B.Tech' },
+    { code: 'ChE', name: 'Chemical Engineering', degree: 'B.Tech' },
+    { code: 'IE', name: 'Instrumentation Engineering', degree: 'B.Tech' },
+    { code: 'IPE', name: 'Industrial & Production Engineering', degree: 'B.Tech' },
+    // Postgraduate M.Tech Specializations (Assam Engineering College)
+    { code: 'CE-GEO', name: 'Civil - Geotechnical Engineering', degree: 'M.Tech' },
+    { code: 'CE-WRE', name: 'Civil - Water Resources Engineering', degree: 'M.Tech' },
+    { code: 'CE-STR', name: 'Civil - Structural Engineering', degree: 'M.Tech' },
+    { code: 'EE-PS', name: 'Electrical - Power Systems', degree: 'M.Tech' },
+    { code: 'ME-TFE', name: 'Mechanical - Thermal & Fluid Engineering', degree: 'M.Tech' },
+    // Postgraduate MCA (Assam Engineering College)
+    { code: 'MCA', name: 'Master of Computer Applications', degree: 'MCA' }
+  ],
+  SEMESTERS: [
+    { num: 1, label: '1st Semester (Sem 1)' },
+    { num: 2, label: '2nd Semester (Sem 2)' },
+    { num: 3, label: '3rd Semester (Sem 3)' },
+    { num: 4, label: '4th Semester (Sem 4)' },
+    { num: 5, label: '5th Semester (Sem 5)' },
+    { num: 6, label: '6th Semester (Sem 6)' },
+    { num: 7, label: '7th Semester (Sem 7)' },
+    { num: 8, label: '8th Semester (Sem 8)' }
+  ]
+};
+
 export default function StudentRosterManager() {
   const [students, setStudents] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -46,15 +84,21 @@ export default function StudentRosterManager() {
   // Manual Add Student Modal state
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualFormData, setManualFormData] = useState({
-    roll_number: '',
-    full_name: '',
-    room_number: 'A-101',
-    hostel_block: 'Block A',
-    email: '',
-    phone: '',
-    course: 'B.Tech Computer Science',
-    admission_year: new Date().getFullYear(),
+    course: 'BTech',
     semester: 1,
+    full_name: '',
+    branch: 'CSE',
+    roll_number: '',
+    building: 'Block A',
+    floor: '1',
+    room_number: 'A-101',
+    whatsapp_no: '',
+    phone: '',
+    email: '',
+    admission_year: new Date().getFullYear(),
+    remarks: 'Regular',
+    date_of_entry: new Date().toISOString().split('T')[0],
+    hostel_block: 'Block A',
     create_login: true,
     default_password: 'Student@12345'
   });
@@ -151,43 +195,205 @@ export default function StudentRosterManager() {
     }
   };
 
-  // 1. Download Official Excel Roster Template (.xlsx)
+  // 1. Download Official Excel Roster Template (.xlsx) - Exact 13-Column Specification
   const handleDownloadExcelTemplate = async () => {
     try {
       const XLSX = await import('xlsx');
       const sampleRows = [
         {
-          'Roll Number': '2024CS01',
-          'Full Name': 'Aditya Sharma',
-          'Room Number': 'A-101',
-          'Hostel Block': 'Block A',
-          'Email': 'aditya.sharma@example.edu',
-          'Phone': '+919876543210',
-          'Course': 'B.Tech Computer Science',
+          'Course': 'B.Tech',
+          'Semester': 1,
+          'Name': 'Aditya Sharma',
+          'Branch': 'CSE',
+          'RollNo': '2024CS01',
+          'Building': 'Block A',
+          'Floor': '1',
+          'RoomNo': 'A-101',
+          'WhatsApp No': '+919876543210',
+          'E-Mail': 'aditya.sharma@aec.ac.in',
           'Admission Year': 2024,
-          'Semester': 1
+          'Remarks': 'Regular',
+          'Date of Entry': '2024-08-01'
         },
         {
-          'Roll Number': '2024CS02',
-          'Full Name': 'Priya Nair',
-          'Room Number': 'A-102',
-          'Hostel Block': 'Block A',
-          'Email': 'priya.nair@example.edu',
-          'Phone': '+919876543211',
-          'Course': 'B.Tech Computer Science',
+          'Course': 'B.Tech',
+          'Semester': 2,
+          'Name': 'Arunabh Das',
+          'Branch': 'IE',
+          'RollNo': '2024IE05',
+          'Building': 'Block A',
+          'Floor': '1',
+          'RoomNo': 'A-104',
+          'WhatsApp No': '+919876543214',
+          'E-Mail': 'arunabh.ie@aec.ac.in',
           'Admission Year': 2024,
-          'Semester': 1
+          'Remarks': 'Regular',
+          'Date of Entry': '2024-08-01'
         },
         {
-          'Roll Number': '2024EC01',
-          'Full Name': 'Rahul Verma',
-          'Room Number': 'B-201',
-          'Hostel Block': 'Block B',
-          'Email': 'rahul.verma@example.edu',
-          'Phone': '+919876543212',
-          'Course': 'B.Tech Electronics & Comm',
+          'Course': 'B.Tech',
+          'Semester': 3,
+          'Name': 'Priya Baruah',
+          'Branch': 'CE',
+          'RollNo': '2023CE15',
+          'Building': 'Block A',
+          'Floor': '1',
+          'RoomNo': 'A-102',
+          'WhatsApp No': '+919876543211',
+          'E-Mail': 'priya.ce@aec.ac.in',
+          'Admission Year': 2023,
+          'Remarks': 'Lateral',
+          'Date of Entry': '2023-08-05'
+        },
+        {
+          'Course': 'B.Tech',
+          'Semester': 4,
+          'Name': 'Tanmay Sarma',
+          'Branch': 'ChE',
+          'RollNo': '2023CHE08',
+          'Building': 'Block A',
+          'Floor': '2',
+          'RoomNo': 'A-203',
+          'WhatsApp No': '+919876543216',
+          'E-Mail': 'tanmay.che@aec.ac.in',
+          'Admission Year': 2023,
+          'Remarks': 'Regular',
+          'Date of Entry': '2023-08-01'
+        },
+        {
+          'Course': 'B.Tech',
+          'Semester': 5,
+          'Name': 'Rahul Kalita',
+          'Branch': 'ME',
+          'RollNo': '2022ME24',
+          'Building': 'Block B',
+          'Floor': '2',
+          'RoomNo': 'B-201',
+          'WhatsApp No': '+919876543212',
+          'E-Mail': 'rahul.me@aec.ac.in',
+          'Admission Year': 2022,
+          'Remarks': 'Regular',
+          'Date of Entry': '2022-08-10'
+        },
+        {
+          'Course': 'B.Tech',
+          'Semester': 6,
+          'Name': 'Jitu Saikia',
+          'Branch': 'IPE',
+          'RollNo': '2022IPE11',
+          'Building': 'Block B',
+          'Floor': '1',
+          'RoomNo': 'B-105',
+          'WhatsApp No': '+919876543217',
+          'E-Mail': 'jitu.ipe@aec.ac.in',
+          'Admission Year': 2022,
+          'Remarks': 'Regular',
+          'Date of Entry': '2022-08-01'
+        },
+        {
+          'Course': 'B.Tech',
+          'Semester': 7,
+          'Name': 'Ananya Das',
+          'Branch': 'EE',
+          'RollNo': '2021EE08',
+          'Building': 'Block B',
+          'Floor': '2',
+          'RoomNo': 'B-202',
+          'WhatsApp No': '+919876543213',
+          'E-Mail': 'ananya.ee@aec.ac.in',
+          'Admission Year': 2021,
+          'Remarks': 'Regular',
+          'Date of Entry': '2021-08-01'
+        },
+        {
+          'Course': 'B.Tech',
+          'Semester': 8,
+          'Name': 'Pallabi Medhi',
+          'Branch': 'ETE',
+          'RollNo': '2021ETE18',
+          'Building': 'Block B',
+          'Floor': '3',
+          'RoomNo': 'B-301',
+          'WhatsApp No': '+919876543218',
+          'E-Mail': 'pallabi.ete@aec.ac.in',
+          'Admission Year': 2021,
+          'Remarks': 'Regular',
+          'Date of Entry': '2021-08-01'
+        },
+        {
+          'Course': 'M.Tech',
+          'Semester': 1,
+          'Name': 'Bikram Deka',
+          'Branch': 'CE-WRE',
+          'RollNo': '2024MTC02',
+          'Building': 'Block C',
+          'Floor': '1',
+          'RoomNo': 'C-101',
+          'WhatsApp No': '+919876543220',
+          'E-Mail': 'bikram.wre@aec.ac.in',
           'Admission Year': 2024,
-          'Semester': 1
+          'Remarks': 'Regular',
+          'Date of Entry': '2024-08-15'
+        },
+        {
+          'Course': 'M.Tech',
+          'Semester': 2,
+          'Name': 'Debajit Nath',
+          'Branch': 'CE-GEO',
+          'RollNo': '2024MTC07',
+          'Building': 'Block C',
+          'Floor': '1',
+          'RoomNo': 'C-102',
+          'WhatsApp No': '+919876543221',
+          'E-Mail': 'debajit.geo@aec.ac.in',
+          'Admission Year': 2024,
+          'Remarks': 'Regular',
+          'Date of Entry': '2024-08-15'
+        },
+        {
+          'Course': 'M.Tech',
+          'Semester': 3,
+          'Name': 'Manash Pratim Saikia',
+          'Branch': 'EE-PS',
+          'RollNo': '2023MTE04',
+          'Building': 'Block C',
+          'Floor': '2',
+          'RoomNo': 'C-201',
+          'WhatsApp No': '+919876543222',
+          'E-Mail': 'manash.ps@aec.ac.in',
+          'Admission Year': 2023,
+          'Remarks': 'Regular',
+          'Date of Entry': '2023-08-15'
+        },
+        {
+          'Course': 'M.Tech',
+          'Semester': 4,
+          'Name': 'Kalyan Jyoti Hazarika',
+          'Branch': 'ME-TFE',
+          'RollNo': '2023MTM03',
+          'Building': 'Block C',
+          'Floor': '2',
+          'RoomNo': 'C-202',
+          'WhatsApp No': '+919876543223',
+          'E-Mail': 'kalyan.tfe@aec.ac.in',
+          'Admission Year': 2023,
+          'Remarks': 'Regular',
+          'Date of Entry': '2023-08-15'
+        },
+        {
+          'Course': 'MCA',
+          'Semester': 2,
+          'Name': 'Neha Boro',
+          'Branch': 'MCA',
+          'RollNo': '2024MCA12',
+          'Building': 'Block A',
+          'Floor': '2',
+          'RoomNo': 'A-205',
+          'WhatsApp No': '+919876543224',
+          'E-Mail': 'neha.mca@aec.ac.in',
+          'Admission Year': 2024,
+          'Remarks': 'Late Admission',
+          'Date of Entry': '2024-08-20'
         }
       ];
 
@@ -195,7 +401,7 @@ export default function StudentRosterManager() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'StudentRoster');
       XLSX.writeFile(wb, 'hostelguard_student_roster_template.xlsx');
-      showFeedback('Official Excel Template (.xlsx) downloaded successfully!', 'success');
+      showFeedback('Official Excel Template (.xlsx) downloaded with 13-column format!', 'success');
     } catch (err) {
       showFeedback('Failed to generate Excel template: ' + err.message, 'danger');
     }
@@ -204,10 +410,15 @@ export default function StudentRosterManager() {
   // 2. Download Official CSV Roster Template (.csv)
   const handleDownloadCsvTemplate = () => {
     const csvContent =
-      "Roll Number,Full Name,Room Number,Hostel Block,Email,Phone,Course,Admission Year,Semester\n" +
-      "2024CS01,Aditya Sharma,A-101,Block A,aditya.sharma@example.edu,+919876543210,B.Tech Computer Science,2024,1\n" +
-      "2024CS02,Priya Nair,A-102,Block A,priya.nair@example.edu,+919876543211,B.Tech Computer Science,2024,1\n" +
-      "2024EC01,Rahul Verma,B-201,Block B,rahul.verma@example.edu,+919876543212,B.Tech Electronics & Comm,2024,1\n";
+      "Course,Semester,Name,Branch,RollNo,Building,Floor,RoomNo,WhatsApp No,E-Mail,Admission Year,Remarks,Date of Entry\n" +
+      "B.Tech,1,Aditya Sharma,CSE,2024CS01,Block A,1,A-101,+919876543210,aditya.sharma@aec.ac.in,2024,Regular,2024-08-01\n" +
+      "B.Tech,3,Priya Baruah,CE,2023CE15,Block A,1,A-102,+919876543211,priya.ce@aec.ac.in,2023,Lateral,2023-08-05\n" +
+      "B.Tech,5,Rahul Kalita,ME,2022ME24,Block B,2,B-201,+919876543212,rahul.me@aec.ac.in,2022,Regular,2022-08-10\n" +
+      "B.Tech,7,Ananya Das,EE,2021EE08,Block B,2,B-202,+919876543213,ananya.ee@aec.ac.in,2021,Regular,2021-08-01\n" +
+      "B.Tech,8,Pallabi Medhi,ETE,2021ETE18,Block B,3,B-301,+919876543218,pallabi.ete@aec.ac.in,2021,Regular,2021-08-01\n" +
+      "M.Tech,1,Bikram Deka,CE-WRE,2024MTC02,Block C,1,C-101,+919876543220,bikram.wre@aec.ac.in,2024,Regular,2024-08-15\n" +
+      "M.Tech,3,Manash Saikia,EE-PS,2023MTE04,Block C,2,C-201,+919876543222,manash.ps@aec.ac.in,2023,Regular,2023-08-15\n" +
+      "MCA,2,Neha Boro,MCA,2024MCA12,Block A,2,A-205,+919876543224,neha.mca@aec.ac.in,2024,Late Admission,2024-08-20\n";
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -216,7 +427,7 @@ export default function StudentRosterManager() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showFeedback('CSV Template (.csv) downloaded successfully!', 'success');
+    showFeedback('CSV Template (.csv) downloaded with 13-column format!', 'success');
   };
 
   // 3. Download Word / Document Roster Template (.docx format preview)
@@ -226,13 +437,13 @@ export default function StudentRosterManager() {
       "========================================================================\n\n" +
       "Instructions for Warden / Admin:\n" +
       "1. You can paste a table or line-separated student list directly into Microsoft Word (.docx).\n" +
-      "2. Ensure each row contains: Roll Number, Full Name, Room Number, Hostel Block, Email, Phone.\n" +
-      "3. Real OTP authentication will use the Email and Mobile Phone specified for each student.\n\n" +
+      "2. Columns: Course, Semester, Name, Branch, RollNo, Building, Floor, RoomNo, WhatsApp No, E-Mail, Admission Year, Remarks, Date of Entry.\n" +
+      "3. Real OTP authentication will use the E-Mail and WhatsApp / Mobile No specified for each student.\n\n" +
       "Sample Table Format:\n" +
-      "Roll Number\tFull Name\tRoom Number\tHostel Block\tEmail\tPhone\n" +
-      "2024CS01\tAditya Sharma\tA-101\tBlock A\taditya.sharma@example.edu\t+919876543210\n" +
-      "2024CS02\tPriya Nair\tA-102\tBlock A\tpriya.nair@example.edu\t+919876543211\n" +
-      "2024EC01\tRahul Verma\tB-201\tBlock B\trahul.verma@example.edu\t+919876543212\n";
+      "Course\tSemester\tName\tBranch\tRollNo\tBuilding\tFloor\tRoomNo\tWhatsApp No\tE-Mail\tAdmission Year\tRemarks\tDate of Entry\n" +
+      "BTech\t1\tAditya Sharma\tCSE\t2024CS01\tBlock A\t1\tA-101\t+919876543210\taditya.sharma@example.edu\t2024\tRegular\t2024-08-01\n" +
+      "MCA\t1\tPriya Nair\tCA\t2024CS02\tBlock A\t1\tA-102\t+919876543211\tpriya.nair@example.edu\t2024\tLateral\t2024-08-05\n" +
+      "Mtech\t1\tRahul Verma\tECE\t2024EC01\tBlock B\t2\tB-201\t+919876543212\trahul.verma@example.edu\t2024\tLate Admission\t2024-08-10\n";
 
     const blob = new Blob([docContent], { type: 'text/plain;charset=utf-8;' });
     const link = document.createElement('a');
@@ -328,12 +539,19 @@ export default function StudentRosterManager() {
   const openEditModal = (student) => {
     setSelectedStudent(student);
     setEditFormData({
-      course: student.course,
-      semester: student.semester,
+      course: student.course || 'BTech',
+      semester: student.semester || 1,
+      branch: student.branch || '',
+      building: student.building || student.hostel_block || 'Block A',
+      hostel_block: student.hostel_block || student.building || 'Block A',
+      floor: student.floor || '',
       room_number: student.room_number || '',
-      hostel_block: student.hostel_block || '',
-      phone: student.phone || '',
+      whatsapp_no: student.whatsapp_no || student.phone || '',
+      phone: student.phone || student.whatsapp_no || '',
       email: student.email || '',
+      admission_year: student.admission_year || new Date().getFullYear(),
+      remarks: student.remarks || 'Regular',
+      date_of_entry: student.date_of_entry || '',
       is_active: student.is_active === 1
     });
     setShowEditModal(true);
@@ -445,11 +663,25 @@ export default function StudentRosterManager() {
                 value={courseFilter}
                 onChange={(e) => { setCourseFilter(e.target.value); setPage(1); }}
               >
-                <option value="">All Programs / Courses</option>
-                <option value="B.Tech Computer Science">B.Tech Computer Science</option>
-                <option value="B.Tech Information Technology">B.Tech IT</option>
-                <option value="B.Tech Electronics & Comm">B.Tech ECE</option>
-                <option value="B.Tech Mechanical Engineering">B.Tech ME</option>
+                <option value="">All AEC Programs & Branches</option>
+                <optgroup label="Assam Engg College (AEC) - B.Tech (Sem 1-8)">
+                  <option value="CSE">B.Tech - Computer Science & Engineering (CSE)</option>
+                  <option value="CE">B.Tech - Civil Engineering (CE)</option>
+                  <option value="ME">B.Tech - Mechanical Engineering (ME)</option>
+                  <option value="EE">B.Tech - Electrical Engineering (EE)</option>
+                  <option value="ETE">B.Tech - Electronics & Telecommunication (ETE)</option>
+                  <option value="ChE">B.Tech - Chemical Engineering (ChE)</option>
+                  <option value="IE">B.Tech - Instrumentation Engineering (IE)</option>
+                  <option value="IPE">B.Tech - Industrial & Production Engineering (IPE)</option>
+                </optgroup>
+                <optgroup label="Assam Engg College (AEC) - Masters (M.Tech / MCA)">
+                  <option value="CE-GEO">M.Tech Civil (Geotechnical Engineering)</option>
+                  <option value="CE-WRE">M.Tech Civil (Water Resources Engineering)</option>
+                  <option value="CE-STR">M.Tech Civil (Structural Engineering)</option>
+                  <option value="EE-PS">M.Tech Electrical (Power Systems)</option>
+                  <option value="ME-TFE">M.Tech Mechanical (Thermal & Fluid Engineering)</option>
+                  <option value="MCA">MCA - Master of Computer Applications</option>
+                </optgroup>
               </select>
             </div>
 
@@ -462,18 +694,25 @@ export default function StudentRosterManager() {
         </div>
       </div>
 
-      {/* Student Table */}
+      {/* Student Table - 13-Column Comprehensive Roster View */}
       <div className="hg-card">
         <div className="table-responsive">
-          <table className="table table-hover mb-0">
-            <thead>
-              <tr>
-                <th>Roll Number</th>
-                <th>Full Name</th>
-                <th>Course / Year</th>
-                <th>Block & Room</th>
-                <th>Device ID</th>
-                <th>Biometrics</th>
+          <table className="table table-hover align-middle mb-0" style={{ fontSize: '12.5px' }}>
+            <thead className="table-light">
+              <tr className="text-nowrap">
+                <th>Course</th>
+                <th>Sem</th>
+                <th>Name</th>
+                <th>Branch</th>
+                <th>RollNo</th>
+                <th>Building</th>
+                <th>Floor</th>
+                <th>RoomNo</th>
+                <th>WhatsApp No</th>
+                <th>E-Mail</th>
+                <th>Adm Year</th>
+                <th>Remarks</th>
+                <th>Date of Entry</th>
                 <th>Status</th>
                 <th className="text-end">Actions</th>
               </tr>
@@ -481,7 +720,7 @@ export default function StudentRosterManager() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="8" className="text-center py-4 text-muted">
+                  <td colSpan="15" className="text-center py-4 text-muted">
                     <div className="spinner-border spinner-border-sm me-2 text-primary" role="status"></div>
                     Loading student roster...
                   </td>
@@ -489,65 +728,77 @@ export default function StudentRosterManager() {
               ) : (Array.isArray(students) && students.length > 0) ? (
                 students.map((st) => (
                   <tr key={st.id}>
-                    <td className="font-mono fw-bold text-primary">{st.roll_number}</td>
-                    <td className="fw-semibold">{st.full_name}</td>
-                    <td style={{ fontSize: '12px' }}>
-                      {st.course} <span className="text-muted">(Sem {st.semester})</span>
-                    </td>
                     <td>
-                      <span className="badge bg-light text-dark font-mono">
-                        {st.hostel_block || 'N/A'} &bull; {st.room_number || 'N/A'}
+                      <span className="badge bg-primary-subtle text-primary border border-primary-subtle fw-bold px-2 py-1">
+                        {st.course || 'BTech'}
                       </span>
                     </td>
-                    <td className="font-mono text-muted" style={{ fontSize: '11px' }}>
-                      {st.device_id ? st.device_id.slice(0, 14) + '...' : 'Pending'}
-                    </td>
+                    <td className="text-center fw-bold">{st.semester || 1}</td>
+                    <td className="fw-semibold text-dark text-nowrap">{st.full_name}</td>
                     <td>
-                      {st.embeddings_count > 0 ? (
-                        <span className="badge-soft-success">
-                          <Check size={12} className="me-1" />
-                          Verified
-                        </span>
-                      ) : (
-                        <span className="badge-soft-warning">Pending Face</span>
-                      )}
+                      <span className="badge bg-light text-dark border">
+                        {st.branch || '—'}
+                      </span>
+                    </td>
+                    <td className="font-mono fw-bold text-primary text-nowrap">{st.roll_number}</td>
+                    <td className="text-nowrap">{st.building || st.hostel_block || 'Block A'}</td>
+                    <td className="text-center">{st.floor || '—'}</td>
+                    <td className="font-mono fw-semibold text-nowrap">{st.room_number || 'N/A'}</td>
+                    <td className="font-mono text-nowrap" style={{ fontSize: '11.5px' }}>
+                      {st.whatsapp_no || st.phone || 'N/A'}
+                    </td>
+                    <td className="text-muted text-truncate" style={{ maxWidth: '140px', fontSize: '11.5px' }} title={st.email}>
+                      {st.email || 'N/A'}
+                    </td>
+                    <td className="text-center">{st.admission_year || 2024}</td>
+                    <td>
+                      <span className={`badge ${
+                        st.remarks === 'Lateral' ? 'bg-info' : 
+                        st.remarks === 'Late Admission' ? 'bg-warning text-dark' : 
+                        'bg-light text-muted border'
+                      }`}>
+                        {st.remarks || 'Regular'}
+                      </span>
+                    </td>
+                    <td className="font-mono text-nowrap text-muted" style={{ fontSize: '11px' }}>
+                      {st.date_of_entry || '—'}
                     </td>
                     <td>
                       {st.is_active ? (
                         <span className="badge bg-success">Active</span>
                       ) : (
-                        <span className="badge bg-secondary">Deactivated</span>
+                        <span className="badge bg-secondary">Inactive</span>
                       )}
                     </td>
-                    <td className="text-end">
+                    <td className="text-end text-nowrap">
                       <div className="btn-group btn-group-sm">
                         <button
                           onClick={() => { setSelectedStudent(st); setShowViewModal(true); }}
                           className="btn btn-outline-secondary"
                           title="View Details"
                         >
-                          <Eye size={14} />
+                          <Eye size={13} />
                         </button>
                         <button
                           onClick={() => openEditModal(st)}
                           className="btn btn-outline-primary"
                           title="Edit Student"
                         >
-                          <Edit2 size={14} />
+                          <Edit2 size={13} />
                         </button>
                         <button
                           onClick={() => openResetModal(st)}
                           className="btn btn-outline-warning text-dark"
                           title="Admin Reset Password"
                         >
-                          <Key size={14} />
+                          <Key size={13} />
                         </button>
                         <button
                           onClick={() => openDeleteModal(st)}
                           className="btn btn-outline-danger"
                           title="Delete Student (Left Hostel)"
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </td>
@@ -555,7 +806,7 @@ export default function StudentRosterManager() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="8" className="text-center py-4 text-muted">
+                  <td colSpan="15" className="text-center py-4 text-muted">
                     No students found. Upload student records via Excel, Word, or CSV, or add a student manually above.
                   </td>
                 </tr>
@@ -693,26 +944,50 @@ export default function StudentRosterManager() {
                       </div>
                     )}
 
-                    <h6 className="fw-bold" style={{ fontSize: '13px' }}>Verified Records Ready for Import:</h6>
-                    <div className="table-responsive" style={{ maxHeight: '220px', overflowY: 'auto' }}>
-                      <table className="table table-sm table-bordered" style={{ fontSize: '12px' }}>
-                        <thead className="table-light">
-                          <tr>
-                            <th>Roll Number</th>
-                            <th>Student Name</th>
-                            <th>Room & Block</th>
-                            <th>Email Address</th>
-                            <th>Phone (For OTP)</th>
+                    <h6 className="fw-bold" style={{ fontSize: '13px' }}>Verified Records Ready for Import (13-Column Format):</h6>
+                    <div className="table-responsive" style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                      <table className="table table-sm table-bordered mb-0" style={{ fontSize: '11px' }}>
+                        <thead className="table-light sticky-top">
+                          <tr className="text-nowrap">
+                            <th>Course</th>
+                            <th>Sem</th>
+                            <th>Name</th>
+                            <th>Branch</th>
+                            <th>RollNo</th>
+                            <th>Building</th>
+                            <th>Floor</th>
+                            <th>RoomNo</th>
+                            <th>WhatsApp No</th>
+                            <th>E-Mail</th>
+                            <th>Adm Year</th>
+                            <th>Remarks</th>
+                            <th>Date of Entry</th>
                           </tr>
                         </thead>
                         <tbody>
                           {(previewData.validRecords || []).map((r, i) => (
-                            <tr key={i}>
+                            <tr key={i} className="text-nowrap">
+                              <td><span className="badge bg-light text-dark">{r.course || 'BTech'}</span></td>
+                              <td className="text-center">{r.semester || 1}</td>
+                              <td className="fw-semibold">{r.full_name}</td>
+                              <td>{r.branch || '—'}</td>
                               <td className="font-mono text-primary fw-bold">{r.roll_number}</td>
-                              <td>{r.full_name}</td>
-                              <td>{r.room_number} ({r.hostel_block})</td>
-                              <td className="text-muted">{r.email || 'Will auto-generate'}</td>
-                              <td className="font-mono">{r.phone || 'N/A'}</td>
+                              <td>{r.building || r.hostel_block || 'Block A'}</td>
+                              <td className="text-center">{r.floor || '—'}</td>
+                              <td className="font-mono">{r.room_number || 'A-101'}</td>
+                              <td className="font-mono">{r.whatsapp_no || r.phone || 'N/A'}</td>
+                              <td className="text-muted">{r.email || 'Auto-generate'}</td>
+                              <td className="text-center">{r.admission_year || 2024}</td>
+                              <td>
+                                <span className={`badge ${
+                                  r.remarks === 'Lateral' ? 'bg-info' : 
+                                  r.remarks === 'Late Admission' ? 'bg-warning text-dark' : 
+                                  'bg-secondary'
+                                }`}>
+                                  {r.remarks || 'Regular'}
+                                </span>
+                              </td>
+                              <td className="font-mono">{r.date_of_entry || '—'}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -758,30 +1033,61 @@ export default function StudentRosterManager() {
         </div>
       )}
 
-      {/* MODAL 2: View Student Details */}
+      {/* MODAL 2: View Student Details - Full 13 Fields */}
       {showViewModal && selectedStudent && (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog">
+          <div className="modal-dialog modal-lg">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title fw-bold">Student Identity Details</h5>
+                <h5 className="modal-title fw-bold">Student Identity & Academic Record</h5>
                 <button type="button" className="btn-close" onClick={() => setShowViewModal(false)}></button>
               </div>
               <div className="modal-body" style={{ fontSize: '13px' }}>
-                <div className="mb-2"><strong>Roll Number:</strong> <span className="font-mono text-primary">{selectedStudent.roll_number}</span></div>
-                <div className="mb-2"><strong>Full Name:</strong> {selectedStudent.full_name}</div>
-                <div className="mb-2"><strong>Course / Degree:</strong> {selectedStudent.course}</div>
-                <div className="mb-2"><strong>Admission Year:</strong> {selectedStudent.admission_year} | Semester: {selectedStudent.semester}</div>
-                <div className="mb-2"><strong>Hostel Room:</strong> {selectedStudent.hostel_block} &bull; Room {selectedStudent.room_number}</div>
-                <div className="mb-2"><strong>Hardware Device ID:</strong> <span className="font-mono text-muted">{selectedStudent.device_id}</span></div>
-                <div className="mb-2"><strong>Failed Location Strikes:</strong> {selectedStudent.failed_attempts} / 3</div>
-                <div className="mb-2">
-                  <strong>Forge Location Status:</strong>{' '}
-                  {selectedStudent.is_flagged_forge ? (
-                    <span className="badge bg-danger">Flagged Forge Location</span>
-                  ) : (
-                    <span className="badge bg-success">Clear</span>
-                  )}
+                <div className="row g-3">
+                  <div className="col-md-6">
+                    <div className="p-3 bg-light rounded-3 border h-100">
+                      <h6 className="fw-bold text-primary mb-3">Academic Details</h6>
+                      <div className="mb-2"><strong>Course:</strong> <span className="badge bg-primary ms-1">{selectedStudent.course || 'BTech'}</span></div>
+                      <div className="mb-2"><strong>Semester:</strong> Semester {selectedStudent.semester || 1}</div>
+                      <div className="mb-2"><strong>Branch:</strong> {selectedStudent.branch || '—'}</div>
+                      <div className="mb-2"><strong>Roll Number:</strong> <span className="font-mono text-primary fw-bold">{selectedStudent.roll_number}</span></div>
+                      <div className="mb-2"><strong>Admission Year:</strong> {selectedStudent.admission_year || 2024}</div>
+                      <div className="mb-2"><strong>Remarks:</strong> <span className="badge bg-secondary ms-1">{selectedStudent.remarks || 'Regular'}</span></div>
+                      <div className="mb-2"><strong>Date of Entry:</strong> <span className="font-mono">{selectedStudent.date_of_entry || '—'}</span></div>
+                    </div>
+                  </div>
+                  <div className="col-md-6">
+                    <div className="p-3 bg-light rounded-3 border h-100">
+                      <h6 className="fw-bold text-success mb-3">Hostel & Contact Allocation</h6>
+                      <div className="mb-2"><strong>Full Name:</strong> {selectedStudent.full_name}</div>
+                      <div className="mb-2"><strong>Building:</strong> {selectedStudent.building || selectedStudent.hostel_block || 'Block A'}</div>
+                      <div className="mb-2"><strong>Floor:</strong> {selectedStudent.floor || '—'}</div>
+                      <div className="mb-2"><strong>Room Number:</strong> <span className="font-mono fw-semibold">{selectedStudent.room_number || 'N/A'}</span></div>
+                      <div className="mb-2"><strong>WhatsApp No:</strong> <span className="font-mono">{selectedStudent.whatsapp_no || selectedStudent.phone || 'N/A'}</span></div>
+                      <div className="mb-2"><strong>E-Mail:</strong> {selectedStudent.email || 'N/A'}</div>
+                    </div>
+                  </div>
+                  <div className="col-12">
+                    <div className="p-3 bg-white rounded-3 border">
+                      <h6 className="fw-bold text-secondary mb-2">Hardware Telemetry & Security</h6>
+                      <div className="row g-2">
+                        <div className="col-md-6">
+                          <strong>Hardware Device ID:</strong> <span className="font-mono text-muted d-block">{selectedStudent.device_id || 'Pending'}</span>
+                        </div>
+                        <div className="col-md-3">
+                          <strong>Failed Strikes:</strong> {selectedStudent.failed_attempts || 0} / 3
+                        </div>
+                        <div className="col-md-3">
+                          <strong>Forge Status:</strong>{' '}
+                          {selectedStudent.is_flagged_forge ? (
+                            <span className="badge bg-danger">Flagged Forge</span>
+                          ) : (
+                            <span className="badge bg-success">Clear & Active</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="modal-footer">
@@ -794,71 +1100,180 @@ export default function StudentRosterManager() {
         </div>
       )}
 
-      {/* MODAL 3: Edit Student */}
+      {/* MODAL 3: Edit Student - 13 Details */}
       {showEditModal && selectedStudent && (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog">
+          <div className="modal-dialog modal-lg">
             <form onSubmit={handleSaveEdit} className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title fw-bold">Edit Student Details</h5>
+                <h5 className="modal-title fw-bold">Edit Student Details ({selectedStudent.roll_number})</h5>
                 <button type="button" className="btn-close" onClick={() => setShowEditModal(false)}></button>
               </div>
-              <div className="modal-body">
-                <div className="mb-3">
-                  <label className="form-label" style={{ fontSize: '12px' }}>Full Name (Locked to Roster)</label>
-                  <input type="text" className="form-control form-control-sm" value={selectedStudent.full_name} disabled />
-                </div>
-                <div className="row g-2 mb-3">
-                  <div className="col-6">
-                    <label className="form-label" style={{ fontSize: '12px' }}>Hostel Block</label>
+              <div className="modal-body" style={{ fontSize: '13px' }}>
+                <div className="row g-3">
+                  <div className="col-md-6">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Full Name (Locked to Roster)</label>
+                    <input type="text" className="form-control form-control-sm" value={selectedStudent.full_name} disabled />
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Roll Number (Locked)</label>
+                    <input type="text" className="form-control form-control-sm font-mono text-primary fw-bold" value={selectedStudent.roll_number} disabled />
+                  </div>
+
+                  <div className="col-md-4">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Degree / Program</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={editFormData.course}
+                      onChange={(e) => setEditFormData({ ...editFormData, course: e.target.value })}
+                    >
+                      <option value="B.Tech">B.Tech (Assam Engineering College)</option>
+                      <option value="M.Tech">M.Tech (Assam Engineering College)</option>
+                      <option value="MCA">MCA (Assam Engineering College)</option>
+                    </select>
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>AEC Branch</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={editFormData.branch}
+                      onChange={(e) => setEditFormData({ ...editFormData, branch: e.target.value })}
+                    >
+                      <optgroup label="B.Tech Branches (Assam Engineering College)">
+                        <option value="CSE">Computer Science & Engineering (CSE)</option>
+                        <option value="CE">Civil Engineering (CE)</option>
+                        <option value="ME">Mechanical Engineering (ME)</option>
+                        <option value="EE">Electrical Engineering (EE)</option>
+                        <option value="ETE">Electronics & Telecommunication (ETE)</option>
+                        <option value="ChE">Chemical Engineering (ChE)</option>
+                        <option value="IE">Instrumentation Engineering (IE)</option>
+                        <option value="IPE">Industrial & Production Engineering (IPE)</option>
+                      </optgroup>
+                      <optgroup label="M.Tech Masters Specializations">
+                        <option value="CE-GEO">M.Tech Civil (Geotechnical Engineering)</option>
+                        <option value="CE-WRE">M.Tech Civil (Water Resources Engineering)</option>
+                        <option value="CE-STR">M.Tech Civil (Structural Engineering)</option>
+                        <option value="EE-PS">M.Tech Electrical (Power Systems)</option>
+                        <option value="ME-TFE">M.Tech Mechanical (Thermal & Fluid Engineering)</option>
+                      </optgroup>
+                      <optgroup label="MCA Masters Program">
+                        <option value="MCA">Master of Computer Applications (MCA)</option>
+                      </optgroup>
+                    </select>
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Semester (1st till 8th)</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={editFormData.semester}
+                      onChange={(e) => setEditFormData({ ...editFormData, semester: parseInt(e.target.value) || 1 })}
+                    >
+                      <option value={1}>1st Semester (Sem 1)</option>
+                      <option value={2}>2nd Semester (Sem 2)</option>
+                      <option value={3}>3rd Semester (Sem 3)</option>
+                      <option value={4}>4th Semester (Sem 4)</option>
+                      <option value={5}>5th Semester (Sem 5)</option>
+                      <option value={6}>6th Semester (Sem 6)</option>
+                      <option value={7}>7th Semester (Sem 7)</option>
+                      <option value={8}>8th Semester (Sem 8)</option>
+                    </select>
+                  </div>
+
+                  <div className="col-md-4">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Building</label>
                     <input
                       type="text"
                       className="form-control form-control-sm"
-                      value={editFormData.hostel_block}
-                      onChange={(e) => setEditFormData({ ...editFormData, hostel_block: e.target.value })}
+                      placeholder="e.g. Block A"
+                      value={editFormData.building}
+                      onChange={(e) => setEditFormData({ ...editFormData, building: e.target.value, hostel_block: e.target.value })}
                     />
                   </div>
-                  <div className="col-6">
-                    <label className="form-label" style={{ fontSize: '12px' }}>Room Number</label>
+                  <div className="col-md-4">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Floor</label>
                     <input
                       type="text"
                       className="form-control form-control-sm"
+                      placeholder="e.g. 1, 2"
+                      value={editFormData.floor}
+                      onChange={(e) => setEditFormData({ ...editFormData, floor: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Room Number</label>
+                    <input
+                      type="text"
+                      className="form-control form-control-sm font-mono"
+                      placeholder="e.g. A-101"
                       value={editFormData.room_number}
                       onChange={(e) => setEditFormData({ ...editFormData, room_number: e.target.value })}
                     />
                   </div>
-                </div>
-                <div className="row g-2 mb-3">
-                  <div className="col-8">
-                    <label className="form-label" style={{ fontSize: '12px' }}>Course / Program</label>
+
+                  <div className="col-md-6">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>WhatsApp No / Phone</label>
                     <input
-                      type="text"
-                      className="form-control form-control-sm"
-                      value={editFormData.course}
-                      onChange={(e) => setEditFormData({ ...editFormData, course: e.target.value })}
+                      type="tel"
+                      className="form-control form-control-sm font-mono"
+                      placeholder="e.g. +91 9876543210"
+                      value={editFormData.whatsapp_no}
+                      onChange={(e) => setEditFormData({ ...editFormData, whatsapp_no: e.target.value, phone: e.target.value })}
                     />
                   </div>
-                  <div className="col-4">
-                    <label className="form-label" style={{ fontSize: '12px' }}>Semester</label>
+                  <div className="col-md-6">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>E-Mail Address</label>
+                    <input
+                      type="email"
+                      className="form-control form-control-sm"
+                      placeholder="e.g. student@college.edu"
+                      value={editFormData.email}
+                      onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="col-md-4">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Admission Year</label>
                     <input
                       type="number"
                       className="form-control form-control-sm"
-                      value={editFormData.semester}
-                      onChange={(e) => setEditFormData({ ...editFormData, semester: e.target.value })}
+                      value={editFormData.admission_year}
+                      onChange={(e) => setEditFormData({ ...editFormData, admission_year: parseInt(e.target.value) || 2024 })}
                     />
                   </div>
-                </div>
-                <div className="form-check">
-                  <input
-                    type="checkbox"
-                    className="form-check-input"
-                    id="isActiveCheck"
-                    checked={editFormData.is_active}
-                    onChange={(e) => setEditFormData({ ...editFormData, is_active: e.target.checked })}
-                  />
-                  <label className="form-check-label" htmlFor="isActiveCheck" style={{ fontSize: '13px' }}>
-                    Active Student Resident
-                  </label>
+                  <div className="col-md-4">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Remarks</label>
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      placeholder="e.g. Regular, Lateral, Late Admission"
+                      value={editFormData.remarks}
+                      onChange={(e) => setEditFormData({ ...editFormData, remarks: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Date of Entry</label>
+                    <input
+                      type="date"
+                      className="form-control form-control-sm"
+                      value={editFormData.date_of_entry}
+                      onChange={(e) => setEditFormData({ ...editFormData, date_of_entry: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="col-12">
+                    <div className="form-check mt-2">
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        id="isActiveCheck"
+                        checked={editFormData.is_active}
+                        onChange={(e) => setEditFormData({ ...editFormData, is_active: e.target.checked })}
+                      />
+                      <label className="form-check-label" htmlFor="isActiveCheck" style={{ fontSize: '13px' }}>
+                        Active Student Resident
+                      </label>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="modal-footer">
@@ -896,87 +1311,114 @@ export default function StudentRosterManager() {
                 </div>
 
                 <div className="row g-3">
-                  <div className="col-12 col-md-6">
-                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>
-                      Full Name <span className="text-danger">*</span>
-                    </label>
+                  <div className="col-md-3">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Degree / Program <span className="text-danger">*</span></label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={manualFormData.course}
+                      onChange={(e) => {
+                        const c = e.target.value;
+                        const b = c === 'MCA' ? 'MCA' : c === 'M.Tech' ? 'CE-GEO' : 'CSE';
+                        setManualFormData({ ...manualFormData, course: c, branch: b });
+                      }}
+                    >
+                      <option value="B.Tech">B.Tech (Assam Engineering College)</option>
+                      <option value="M.Tech">M.Tech (Assam Engineering College)</option>
+                      <option value="MCA">MCA (Assam Engineering College)</option>
+                    </select>
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>AEC Branch <span className="text-danger">*</span></label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={manualFormData.branch}
+                      onChange={(e) => setManualFormData({ ...manualFormData, branch: e.target.value })}
+                    >
+                      <optgroup label="B.Tech Branches (Assam Engineering College)">
+                        <option value="CSE">Computer Science & Engineering (CSE)</option>
+                        <option value="CE">Civil Engineering (CE)</option>
+                        <option value="ME">Mechanical Engineering (ME)</option>
+                        <option value="EE">Electrical Engineering (EE)</option>
+                        <option value="ETE">Electronics & Telecommunication (ETE)</option>
+                        <option value="ChE">Chemical Engineering (ChE)</option>
+                        <option value="IE">Instrumentation Engineering (IE)</option>
+                        <option value="IPE">Industrial & Production Engineering (IPE)</option>
+                      </optgroup>
+                      <optgroup label="M.Tech Masters Specializations">
+                        <option value="CE-GEO">M.Tech Civil (Geotechnical Engineering)</option>
+                        <option value="CE-WRE">M.Tech Civil (Water Resources Engineering)</option>
+                        <option value="CE-STR">M.Tech Civil (Structural Engineering)</option>
+                        <option value="EE-PS">M.Tech Electrical (Power Systems)</option>
+                        <option value="ME-TFE">M.Tech Mechanical (Thermal & Fluid Engineering)</option>
+                      </optgroup>
+                      <optgroup label="MCA Masters Program">
+                        <option value="MCA">Master of Computer Applications (MCA)</option>
+                      </optgroup>
+                    </select>
+                  </div>
+                  <div className="col-md-2">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Semester <span className="text-danger">*</span></label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={manualFormData.semester}
+                      onChange={(e) => setManualFormData({ ...manualFormData, semester: parseInt(e.target.value) || 1 })}
+                    >
+                      <option value={1}>1st Sem</option>
+                      <option value={2}>2nd Sem</option>
+                      <option value={3}>3rd Sem</option>
+                      <option value={4}>4th Sem</option>
+                      <option value={5}>5th Sem</option>
+                      <option value={6}>6th Sem</option>
+                      <option value={7}>7th Sem</option>
+                      <option value={8}>8th Sem</option>
+                    </select>
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Name (Full Name) <span className="text-danger">*</span></label>
                     <input
                       type="text"
                       required
-                      autoComplete="off"
-                      placeholder="e.g. Vikram Malhotra"
+                      placeholder="e.g. Aditya Sharma"
                       className="form-control form-control-sm"
                       value={manualFormData.full_name}
                       onChange={(e) => setManualFormData({ ...manualFormData, full_name: e.target.value })}
                     />
                   </div>
-
-                  <div className="col-12 col-md-6">
-                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>
-                      Roll / Student Number <span className="text-danger">*</span>
-                    </label>
+                  <div className="col-md-3">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>RollNo <span className="text-danger">*</span></label>
                     <input
                       type="text"
                       required
-                      autoComplete="off"
                       placeholder="e.g. 2024CS01"
                       className="form-control form-control-sm font-mono text-uppercase"
                       value={manualFormData.roll_number}
                       onChange={(e) => setManualFormData({ ...manualFormData, roll_number: e.target.value.toUpperCase() })}
                     />
                   </div>
-
-                  <div className="col-12 col-md-6">
-                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>
-                      <Mail size={13} className="me-1 text-primary" /> Student Email Address <span className="text-danger">*</span>
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      autoComplete="off"
-                      placeholder="e.g. vikram.m@college.edu"
-                      className="form-control form-control-sm"
-                      value={manualFormData.email}
-                      onChange={(e) => setManualFormData({ ...manualFormData, email: e.target.value })}
-                    />
-                    <small className="text-muted d-block" style={{ fontSize: '11px' }}>
-                      Direct recipient for 6-digit Email OTPs and password reset.
-                    </small>
-                    <small className="text-primary fw-semibold" style={{ fontSize: '10.5px' }}>
-                      ℹ Must be unique. Do not use admin or warden email (e.g. admin@hostelguard.local).
-                    </small>
-                  </div>
-
-                  <div className="col-12 col-md-6">
-                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>
-                      <Phone size={13} className="me-1 text-success" /> Mobile Phone Number <span className="text-danger">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      autoComplete="off"
-                      placeholder="e.g. +91 9876543210"
-                      className="form-control form-control-sm font-mono"
-                      value={manualFormData.phone}
-                      onChange={(e) => setManualFormData({ ...manualFormData, phone: e.target.value })}
-                    />
-                    <small className="text-muted" style={{ fontSize: '11px' }}>Used for Phone.email instant SMS/WhatsApp OTP verification.</small>
-                  </div>
-
-                  <div className="col-6 col-md-3">
-                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Hostel Block</label>
+                  <div className="col-md-3">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Building</label>
                     <input
                       type="text"
                       required
                       placeholder="e.g. Block A"
                       className="form-control form-control-sm"
-                      value={manualFormData.hostel_block}
-                      onChange={(e) => setManualFormData({ ...manualFormData, hostel_block: e.target.value })}
+                      value={manualFormData.building}
+                      onChange={(e) => setManualFormData({ ...manualFormData, building: e.target.value, hostel_block: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Floor</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 1, 2"
+                      className="form-control form-control-sm"
+                      value={manualFormData.floor}
+                      onChange={(e) => setManualFormData({ ...manualFormData, floor: e.target.value })}
                     />
                   </div>
 
-                  <div className="col-6 col-md-3">
-                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Room Number</label>
+                  <div className="col-md-3">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>RoomNo <span className="text-danger">*</span></label>
                     <input
                       type="text"
                       required
@@ -986,8 +1428,34 @@ export default function StudentRosterManager() {
                       onChange={(e) => setManualFormData({ ...manualFormData, room_number: e.target.value })}
                     />
                   </div>
+                  <div className="col-md-4">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>
+                      <Phone size={13} className="me-1 text-success" /> WhatsApp No <span className="text-danger">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      placeholder="e.g. +91 9876543210"
+                      className="form-control form-control-sm font-mono"
+                      value={manualFormData.whatsapp_no || manualFormData.phone}
+                      onChange={(e) => setManualFormData({ ...manualFormData, whatsapp_no: e.target.value, phone: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-md-5">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>
+                      <Mail size={13} className="me-1 text-primary" /> E-Mail <span className="text-danger">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="e.g. student@college.edu"
+                      className="form-control form-control-sm"
+                      value={manualFormData.email}
+                      onChange={(e) => setManualFormData({ ...manualFormData, email: e.target.value })}
+                    />
+                  </div>
 
-                  <div className="col-6 col-md-3">
+                  <div className="col-md-4">
                     <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Admission Year</label>
                     <input
                       type="number"
@@ -998,26 +1466,25 @@ export default function StudentRosterManager() {
                       onChange={(e) => setManualFormData({ ...manualFormData, admission_year: parseInt(e.target.value) || new Date().getFullYear() })}
                     />
                   </div>
-
-                  <div className="col-6 col-md-3">
-                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Semester</label>
+                  <div className="col-md-4">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Remarks</label>
                     <select
                       className="form-select form-select-sm"
-                      value={manualFormData.semester}
-                      onChange={(e) => setManualFormData({ ...manualFormData, semester: parseInt(e.target.value) || 1 })}
+                      value={manualFormData.remarks}
+                      onChange={(e) => setManualFormData({ ...manualFormData, remarks: e.target.value })}
                     >
-                      {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>Semester {s}</option>)}
+                      <option value="Regular">Regular</option>
+                      <option value="Lateral">Lateral</option>
+                      <option value="Late Admission">Late Admission</option>
                     </select>
                   </div>
-
-                  <div className="col-12">
-                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Degree / Course Program</label>
+                  <div className="col-md-4">
+                    <label className="form-label fw-bold" style={{ fontSize: '12px' }}>Date of Entry</label>
                     <input
-                      type="text"
-                      placeholder="e.g. B.Tech Computer Science & Engineering"
+                      type="date"
                       className="form-control form-control-sm"
-                      value={manualFormData.course}
-                      onChange={(e) => setManualFormData({ ...manualFormData, course: e.target.value })}
+                      value={manualFormData.date_of_entry}
+                      onChange={(e) => setManualFormData({ ...manualFormData, date_of_entry: e.target.value })}
                     />
                   </div>
                 </div>

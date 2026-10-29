@@ -338,6 +338,7 @@ router.get('/students', async (req, res) => {
       INSERT OR IGNORE INTO students (
         id, user_id, allotment_id, roll_number, full_name, email, phone,
         course, admission_year, semester, room_number, hostel_block,
+        branch, building, floor, remarks, date_of_entry, whatsapp_no,
         device_id, device_model, is_active
       )
       SELECT 
@@ -348,11 +349,17 @@ router.get('/students', async (req, res) => {
         full_name,
         email,
         phone,
-        COALESCE(course, 'B.Tech Computer Science'),
+        COALESCE(course, 'BTech'),
         COALESCE(admission_year, 2026),
         COALESCE(semester, 1),
         COALESCE(room_number, 'A-101'),
         COALESCE(hostel_block, 'Block A'),
+        branch,
+        COALESCE(building, hostel_block, 'Block A'),
+        floor,
+        remarks,
+        date_of_entry,
+        COALESCE(whatsapp_no, phone),
         'DEV-' || LOWER(roll_number),
         'Pending Self-Enrollment & Face Activation',
         1
@@ -439,25 +446,38 @@ router.get('/students/:id', async (req, res) => {
 // Update Student
 router.put('/students/:id', async (req, res) => {
   try {
-    const { course, semester, room_number, hostel_block, phone, email, is_active } = req.body;
+    const {
+      course, semester, room_number, hostel_block, phone, email, is_active,
+      branch, building, floor, remarks, date_of_entry, whatsapp_no
+    } = req.body;
 
     const student = await getQuery(`SELECT * FROM students WHERE id = ?`, [req.params.id]);
     if (!student) {
       return res.status(404).json({ success: false, error: 'Student not found.' });
     }
 
+    const resolvedBlock = building || hostel_block || student.hostel_block;
+    const resolvedPhone = whatsapp_no || phone || student.phone;
+
     await runQuery(`
       UPDATE students
-      SET course = ?, semester = ?, room_number = ?, hostel_block = ?, phone = ?, email = ?, is_active = ?
+      SET course = ?, semester = ?, room_number = ?, hostel_block = ?, phone = ?, email = ?, is_active = ?,
+          branch = ?, building = ?, floor = ?, remarks = ?, date_of_entry = ?, whatsapp_no = ?
       WHERE id = ?
     `, [
       course || student.course,
       semester !== undefined ? parseInt(semester) : student.semester,
       room_number || student.room_number,
-      hostel_block || student.hostel_block,
-      phone || student.phone,
+      resolvedBlock,
+      resolvedPhone,
       email || student.email,
       is_active !== undefined ? (is_active ? 1 : 0) : student.is_active,
+      branch !== undefined ? branch : student.branch,
+      building !== undefined ? building : (student.building || resolvedBlock),
+      floor !== undefined ? floor : student.floor,
+      remarks !== undefined ? remarks : student.remarks,
+      date_of_entry !== undefined ? date_of_entry : student.date_of_entry,
+      whatsapp_no !== undefined ? whatsapp_no : (student.whatsapp_no || resolvedPhone),
       student.id
     ]);
 
@@ -675,18 +695,40 @@ router.post('/allotment/upload-preview', upload.single('file'), async (req, res)
       });
     }
 
-    const parsedRows = records.map((row, idx) => ({
-      index: idx + 1,
-      roll_number: sanitizeFormulaInjection(String(row.roll_number || row.rollNumber || row.RollNo || row['Roll Number'] || row['Roll No'] || row['roll_no'] || row['Roll'] || '').trim().toUpperCase()),
-      full_name: sanitizeFormulaInjection(String(row.full_name || row.fullName || row.Name || row['Student Name'] || row['Student'] || row['Full Name'] || '').trim()),
-      room_number: sanitizeFormulaInjection(String(row.room_number || row.roomNumber || row.Room || row['Room No'] || row['Room'] || 'A-101').trim()),
-      hostel_block: sanitizeFormulaInjection(String(row.hostel_block || row.block || row.Hostel || row['Hostel Block'] || row['Block'] || 'Block A').trim()),
-      email: sanitizeFormulaInjection(String(row.email || row.Email || row['Email ID'] || row['Email Address'] || row['Student Email'] || '').trim().toLowerCase()),
-      phone: sanitizeFormulaInjection(String(row.phone || row.Phone || row['Phone Number'] || row['Mobile'] || row['Mobile No'] || row['Contact'] || '').trim()),
-      course: sanitizeFormulaInjection(String(row.course || row.Course || row['Department'] || row['Branch'] || 'B.Tech Computer Science').trim()),
-      admission_year: parseInt(row.admission_year || row.admissionYear || row.Year || row['Batch'] || new Date().getFullYear()) || new Date().getFullYear(),
-      semester: parseInt(row.semester || row.Semester || row.Sem || 1) || 1
-    }));
+    const parsedRows = records.map((row, idx) => {
+      const course = sanitizeFormulaInjection(String(row.Course || row.course || row.program || row.Department || 'BTech').trim());
+      const semester = parseInt(row.Semester || row.semester || row.Sem || 1) || 1;
+      const full_name = sanitizeFormulaInjection(String(row.Name || row.name || row['Full Name'] || row.full_name || row.fullName || row['Student Name'] || row.Student || '').trim());
+      const branch = sanitizeFormulaInjection(String(row.Branch || row.branch || '').trim());
+      const roll_number = sanitizeFormulaInjection(String(row.RollNo || row.Roll_No || row['Roll No'] || row['Roll Number'] || row.roll_number || row.rollNumber || row['roll_no'] || row.Roll || '').trim().toUpperCase());
+      const building = sanitizeFormulaInjection(String(row.Building || row.building || row['Hostel Block'] || row.hostel_block || row.Block || row.block || 'Block A').trim());
+      const floor = sanitizeFormulaInjection(String(row.Floor || row.floor || '').trim());
+      const room_number = sanitizeFormulaInjection(String(row.RoomNo || row.Room_No || row['Room No'] || row['Room Number'] || row.room_number || row.roomNumber || row.Room || 'A-101').trim());
+      const whatsapp_no = sanitizeFormulaInjection(String(row['WhatsApp No'] || row['WhatsApp'] || row['Whatsapp No'] || row['Whatsapp'] || row.whatsapp_no || row.phone || row.Phone || row['Phone Number'] || row.Mobile || row['Mobile No'] || '').trim());
+      const email = sanitizeFormulaInjection(String(row['E-Mail'] || row['E-mail'] || row.Email || row['Email ID'] || row['Email Address'] || row['Student Email'] || row.email || '').trim().toLowerCase());
+      const admission_year = parseInt(row['Admission Year'] || row.admission_year || row.admissionYear || row.Year || row.Batch || new Date().getFullYear()) || new Date().getFullYear();
+      const remarks = sanitizeFormulaInjection(String(row.Remarks || row.remarks || row.Remark || row.remark || '').trim());
+      const date_of_entry = sanitizeFormulaInjection(String(row['Date of Entry'] || row['Date Of Entry'] || row.date_of_entry || row.dateOfEntry || row['Entry Date'] || '').trim());
+
+      return {
+        index: idx + 1,
+        course,
+        semester,
+        full_name,
+        branch,
+        roll_number,
+        building,
+        floor,
+        room_number,
+        whatsapp_no,
+        phone: whatsapp_no,
+        email,
+        admission_year,
+        remarks,
+        date_of_entry,
+        hostel_block: building
+      };
+    });
 
     const conflicts = [];
     const valid = [];
@@ -774,21 +816,30 @@ router.post('/allotment/upload-commit', async (req, res) => {
         if (!existing) {
           const allotmentId = uuidv4();
           const studentEmail = item.email || `${item.roll_number.toLowerCase()}@student.hostel.local`;
-          const studentPhone = item.phone || '';
+          const studentPhone = item.phone || item.whatsapp_no || '';
           const admYear = item.admission_year || new Date().getFullYear();
           const sem = item.semester || 1;
-          const course = item.course || 'B.Tech Computer Science';
+          const course = item.course || 'BTech';
           const studentId = `HSTL-${admYear}-${item.roll_number.replace(/[^a-zA-Z0-9]/g, '')}`;
+          const branch = item.branch || '';
+          const building = item.building || item.hostel_block || 'Block A';
+          const floor = item.floor || '';
+          const remarks = item.remarks || '';
+          const dateOfEntry = item.date_of_entry || '';
+          const whatsappNo = item.whatsapp_no || studentPhone;
 
           await runQuery(`
             INSERT INTO hostel_allotments (
               id, roll_number, full_name, room_number, hostel_block,
-              email, phone, course, admission_year, semester, is_registered
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              email, phone, course, admission_year, semester,
+              branch, building, floor, remarks, date_of_entry, whatsapp_no,
+              is_registered
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `, [
             allotmentId, item.roll_number, item.full_name,
-            item.room_number || 'A-101', item.hostel_block || 'Block A',
+            item.room_number || 'A-101', building,
             studentEmail, studentPhone, course, admYear, sem,
+            branch, building, floor, remarks, dateOfEntry, whatsappNo,
             preCreateLogins ? 1 : 0
           ]);
 
@@ -812,12 +863,14 @@ router.post('/allotment/upload-commit', async (req, res) => {
               INSERT INTO students (
                 id, user_id, allotment_id, roll_number, full_name, email, phone,
                 course, admission_year, semester, room_number, hostel_block,
+                branch, building, floor, remarks, date_of_entry, whatsapp_no,
                 device_id, device_model, is_active
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             `, [
               studentId, userId, allotmentId, item.roll_number, item.full_name,
               finalEmail, studentPhone, course, admYear, sem,
-              item.room_number || 'A-101', item.hostel_block || 'Block A',
+              item.room_number || 'A-101', building,
+              branch, building, floor, remarks, dateOfEntry, whatsappNo,
               `DEV-${item.roll_number.toLowerCase()}`,
               'Pending Biometric Enrollment'
             ]);
@@ -826,12 +879,14 @@ router.post('/allotment/upload-commit', async (req, res) => {
               INSERT INTO students (
                 id, user_id, allotment_id, roll_number, full_name, email, phone,
                 course, admission_year, semester, room_number, hostel_block,
+                branch, building, floor, remarks, date_of_entry, whatsapp_no,
                 device_id, device_model, is_active
-              ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+              ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             `, [
               studentId, allotmentId, item.roll_number, item.full_name,
               studentEmail, studentPhone, course, admYear, sem,
-              item.room_number || 'A-101', item.hostel_block || 'Block A',
+              item.room_number || 'A-101', building,
+              branch, building, floor, remarks, dateOfEntry, whatsappNo,
               `DEV-${item.roll_number.toLowerCase()}`,
               'Pending Self-Enrollment & Face Activation'
             ]);
@@ -882,12 +937,21 @@ router.post('/students/manual-add', async (req, res) => {
       hostel_block = 'Block A',
       email,
       phone,
-      course = 'B.Tech Computer Science',
+      course = 'BTech',
       admission_year = new Date().getFullYear(),
       semester = 1,
+      branch = '',
+      building = '',
+      floor = '',
+      remarks = '',
+      date_of_entry = '',
+      whatsapp_no = '',
       create_login = true,
       default_password = 'Student@12345'
     } = req.body;
+
+    const resolvedBlock = building.trim() || hostel_block.trim() || 'Block A';
+    const resolvedPhone = whatsapp_no.trim() || phone.trim();
 
     if (!roll_number || !full_name) {
       return res.status(400).json({ success: false, error: 'Roll number and Full Name are required.' });
@@ -946,11 +1010,14 @@ router.post('/students/manual-add', async (req, res) => {
       await runQuery(`
         INSERT INTO hostel_allotments (
           id, roll_number, full_name, room_number, hostel_block,
-          email, phone, course, admission_year, semester, is_registered
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          email, phone, course, admission_year, semester,
+          branch, building, floor, remarks, date_of_entry, whatsapp_no,
+          is_registered
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
-        allotmentId, cleanRoll, cleanName, room_number.trim(), hostel_block.trim(),
-        cleanEmail, cleanPhone, course.trim(), parseInt(admission_year), parseInt(semester),
+        allotmentId, cleanRoll, cleanName, room_number.trim(), resolvedBlock,
+        cleanEmail, resolvedPhone, course.trim(), parseInt(admission_year), parseInt(semester),
+        branch.trim(), resolvedBlock, floor.trim(), remarks.trim(), date_of_entry.trim(), (whatsapp_no.trim() || resolvedPhone),
         create_login ? 1 : 0
       ]);
 
@@ -968,12 +1035,14 @@ router.post('/students/manual-add', async (req, res) => {
           INSERT INTO students (
             id, user_id, allotment_id, roll_number, full_name, email, phone,
             course, admission_year, semester, room_number, hostel_block,
+            branch, building, floor, remarks, date_of_entry, whatsapp_no,
             device_id, device_model, is_active
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         `, [
-          studentId, userId, allotmentId, cleanRoll, cleanName, cleanEmail, cleanPhone,
+          studentId, userId, allotmentId, cleanRoll, cleanName, cleanEmail, resolvedPhone,
           course.trim(), parseInt(admission_year), parseInt(semester),
-          room_number.trim(), hostel_block.trim(),
+          room_number.trim(), resolvedBlock,
+          branch.trim(), resolvedBlock, floor.trim(), remarks.trim(), date_of_entry.trim(), (whatsapp_no.trim() || resolvedPhone),
           `DEV-${cleanRoll.toLowerCase()}`,
           'Pending Biometric Enrollment'
         ]);
@@ -983,12 +1052,14 @@ router.post('/students/manual-add', async (req, res) => {
           INSERT INTO students (
             id, user_id, allotment_id, roll_number, full_name, email, phone,
             course, admission_year, semester, room_number, hostel_block,
+            branch, building, floor, remarks, date_of_entry, whatsapp_no,
             device_id, device_model, is_active
-          ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+          ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         `, [
-          studentId, allotmentId, cleanRoll, cleanName, cleanEmail, cleanPhone,
+          studentId, allotmentId, cleanRoll, cleanName, cleanEmail, resolvedPhone,
           course.trim(), parseInt(admission_year), parseInt(semester),
-          room_number.trim(), hostel_block.trim(),
+          room_number.trim(), resolvedBlock,
+          branch.trim(), resolvedBlock, floor.trim(), remarks.trim(), date_of_entry.trim(), (whatsapp_no.trim() || resolvedPhone),
           `DEV-${cleanRoll.toLowerCase()}`,
           'Pending Self-Enrollment & Face Activation'
         ]);

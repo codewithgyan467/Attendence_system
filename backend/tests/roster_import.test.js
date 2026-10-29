@@ -312,4 +312,63 @@ describe('Roster Upload & Pre-Registration Verification', () => {
     await runQuery(`DELETE FROM hostel_allotments WHERE roll_number = ?`, [testRoll]);
     await runQuery(`DELETE FROM users WHERE username = ?`, [testRoll]);
   });
+
+  test('POST /api/v1/admin/allotment/upload-preview & upload-commit - Supports 13-column Excel format (Course, Semester, Name, Branch, RollNo, Building, Floor, RoomNo, WhatsApp No, E-Mail, Admission Year, Remarks, Date of Entry)', async () => {
+    const newFormatRecords = [
+      {
+        'Course': 'BTech',
+        'Semester': 1,
+        'Name': 'Kavya Sharma',
+        'Branch': 'CSE',
+        'RollNo': '2024CS99',
+        'Building': 'Block A',
+        'Floor': '1',
+        'RoomNo': 'A-109',
+        'WhatsApp No': '+919876543299',
+        'E-Mail': 'kavya.sharma99@student.hostel.local',
+        'Admission Year': 2024,
+        'Remarks': 'Lateral',
+        'Date of Entry': '2024-08-01'
+      }
+    ];
+
+    const previewRes = await request(app)
+      .post('/api/v1/admin/allotment/upload-preview')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ records: newFormatRecords });
+
+    expect(previewRes.status).toBe(200);
+    expect(previewRes.body.success).toBe(true);
+    expect(previewRes.body.validCount).toBe(1);
+    const validRec = previewRes.body.validRecords[0];
+    expect(validRec.roll_number).toBe('2024CS99');
+    expect(validRec.full_name).toBe('Kavya Sharma');
+    expect(validRec.branch).toBe('CSE');
+    expect(validRec.building).toBe('Block A');
+    expect(validRec.floor).toBe('1');
+    expect(validRec.room_number).toBe('A-109');
+    expect(validRec.remarks).toBe('Lateral');
+    expect(validRec.date_of_entry).toBe('2024-08-01');
+
+    const commitRes = await request(app)
+      .post('/api/v1/admin/allotment/upload-commit')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ validRecords: previewRes.body.validRecords, preCreateLogins: true });
+
+    expect(commitRes.status).toBe(200);
+    expect(commitRes.body.committedCount).toBe(1);
+
+    const studentRow = await getQuery(`SELECT * FROM students WHERE roll_number = ?`, ['2024CS99']);
+    expect(studentRow).toBeDefined();
+    expect(studentRow.branch).toBe('CSE');
+    expect(studentRow.building).toBe('Block A');
+    expect(studentRow.floor).toBe('1');
+    expect(studentRow.remarks).toBe('Lateral');
+    expect(studentRow.date_of_entry).toBe('2024-08-01');
+
+    // Clean up
+    await runQuery(`DELETE FROM students WHERE roll_number = '2024CS99'`);
+    await runQuery(`DELETE FROM hostel_allotments WHERE roll_number = '2024CS99'`);
+    await runQuery(`DELETE FROM users WHERE username = '2024CS99'`);
+  });
 });
