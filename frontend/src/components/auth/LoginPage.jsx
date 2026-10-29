@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, CheckCircle2, Download, QrCode, Smartphone, FileText } from 'lucide-react';
+import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, CheckCircle2, Download, QrCode, Smartphone } from 'lucide-react';
 import ForgotPasswordModal from './ForgotPasswordModal';
 import GoogleSignInButton from './GoogleSignInButton';
 import AppDownloadModal from './AppDownloadModal';
-import TechnicalReportsModal from '../common/TechnicalReportsModal';
 
 export default function LoginPage({ onNavigateOnboarding }) {
   const { login, loginWithGoogle } = useAuth();
@@ -15,7 +14,6 @@ export default function LoginPage({ onNavigateOnboarding }) {
   const [successBanner, setSuccessBanner] = useState('');
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
-  const [showReportsModal, setShowReportsModal] = useState(false);
   const [magicLinkToken, setMagicLinkToken] = useState(null);
 
   // Check URL query parameters (e.g. ?mode=reset or ?token=... or ?roll=2023CS01)
@@ -203,19 +201,6 @@ export default function LoginPage({ onNavigateOnboarding }) {
             </button>
           </div>
 
-          {/* Technical Architecture & Camera Verification Report Download */}
-          <div className="text-center mt-2">
-            <button
-              type="button"
-              className="btn btn-outline-primary btn-sm w-100 py-1.5 d-inline-flex align-items-center justify-content-center gap-2 fw-semibold shadow-sm rounded-3"
-              style={{ borderColor: '#3b82f6', color: '#1d4ed8', backgroundColor: '#eff6ff', fontSize: '12.5px' }}
-              onClick={() => setShowReportsModal(true)}
-            >
-              <FileText size={15} className="text-primary" />
-              <span>Download Camera &amp; AI Report (PDF)</span>
-            </button>
-          </div>
-
           {/* Student Onboarding Link */}
           <div className="text-center mt-2 pt-2 border-top">
             <button
@@ -253,12 +238,6 @@ export default function LoginPage({ onNavigateOnboarding }) {
       <AppDownloadModal
         isOpen={showDownloadModal}
         onClose={() => setShowDownloadModal(false)}
-      />
-
-      {/* Technical Architecture & Camera Verification Reports Modal */}
-      <TechnicalReportsModal
-        isOpen={showReportsModal}
-        onClose={() => setShowReportsModal(false)}
       />
     </div>
   );
