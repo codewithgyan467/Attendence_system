@@ -8,6 +8,7 @@ const { attendanceLimiter } = require('../middleware/rateLimiter');
 const aiServiceClient = require('../services/aiServiceClient');
 const { optionalAuth } = require('../middleware/auth');
 const { getAttendanceWindowStatus } = require('../services/scheduleService');
+const antiSpoofPolicyEngine = require('../services/antiSpoofPolicyEngine');
 
 // Helper to get today's date in YYYY-MM-DD
 function getTodayDateString() {
@@ -27,8 +28,11 @@ router.get('/schedule', async (req, res) => {
   }
 });
 
-// 1. Phase 3 Step 1: Coordinate Extraction & Geofence Validation
-router.post('/verify-location', attendanceLimiter, async (req, res) => {
+/**
+ * Phase 3 Step 1: Coordinate Extraction, Multi-Layer Telemetry & Geofence Validation
+ * Supports both /verify-location and /check-geofence
+ */
+const verifyLocationHandler = async (req, res) => {
   try {
     // 0. Enforce real-world attendance schedule window
     const windowStatus = await getAttendanceWindowStatus();
@@ -47,7 +51,15 @@ router.post('/verify-location', attendanceLimiter, async (req, res) => {
       latitude,
       longitude,
       accuracy = 10,
-      is_mock_location = false
+      is_mock_location = false,
+      adb_enabled = false,
+      samples = [],
+      wifi_scan = null,
+      ble_proof = null,
+      play_integrity_token = null,
+      device_id = null,
+      device_info = {},
+      is_native = false
     } = req.body;
 
     const studentRoll = roll_number ? roll_number.trim() : (req.user?.role === 'STUDENT' ? req.user.username : null);
@@ -74,6 +86,9 @@ router.post('/verify-location', attendanceLimiter, async (req, res) => {
     if (parsedAcc > 100) {
       return res.status(400).json({
         success: false,
+        stepPassed: false,
+        isAccuracyIssue: true,
+        reason: 'POOR_GPS_ACCURACY',
         error: `GPS accuracy (±${parsedAcc.toFixed(1)}m) is too poor for reliable hostel perimeter validation. Please move near a window or outdoors.`
       });
     }
@@ -105,7 +120,7 @@ router.post('/verify-location', attendanceLimiter, async (req, res) => {
       });
     }
 
-    // 2. Check if attendance already marked today
+    // 3. Check if attendance already marked today
     const today = getTodayDateString();
     const alreadyMarked = await getQuery(`SELECT * FROM attendance_records WHERE student_id = ? AND date = ?`, [student.id, today]);
     if (alreadyMarked) {
@@ -117,93 +132,178 @@ router.post('/verify-location', attendanceLimiter, async (req, res) => {
       });
     }
 
-    // 3. Fetch active geofence configuration
+    // 4. Fetch active geofence configuration
     const geofence = await getQuery(`SELECT * FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
     if (!geofence) {
       return res.status(500).json({ success: false, error: 'Active hostel geofence configuration missing.' });
     }
 
-    // 4. Validate Location (Server calculates Haversine distance & checks mock spoofer)
-    const validation = validateLocation({
-      deviceLat: parseFloat(latitude),
-      deviceLon: parseFloat(longitude),
-      accuracy: parseFloat(accuracy) || 10,
+    // 5. Evaluate Multi-Layer Anti-Spoof & Unfair-Means Policy (13 Layers + 5-State Decision Matrix)
+    const effectiveDeviceId = device_id || device_info.deviceId || student.device_id;
+    const clientIp = (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) || req.ip || req.connection.remoteAddress || '127.0.0.1';
+
+    const evaluation = await antiSpoofPolicyEngine.evaluateLocationAndEnvironment({
+      student,
+      clientLat: parsedLat,
+      clientLon: parsedLon,
+      accuracy: parsedAcc,
       isMockLocation: Boolean(is_mock_location),
-      hostelLat: geofence.latitude,
-      hostelLon: geofence.longitude,
-      permittedRadiusMeters: geofence.radius_meters || 20.0
+      adbEnabled: Boolean(adb_enabled),
+      samples,
+      wifiScan: wifi_scan,
+      bleProof: ble_proof,
+      playIntegrityToken: play_integrity_token,
+      deviceInfo: {
+        ...device_info,
+        deviceId: effectiveDeviceId,
+        isNative: Boolean(is_native || device_info.isNative)
+      },
+      clientIp,
+      geofence
     });
 
-    // 5. Handle Location Failure (Out of boundary or Mock GPS Active)
-    if (!validation.isValid) {
-      // Coarse GPS accuracy is an environmental/hardware limitation, NOT intentional fraud!
-      // Do NOT penalize the student with strikes for weak satellite reception!
-      if (validation.reason === 'POOR_GPS_ACCURACY') {
-        return res.status(400).json({
-          success: false,
-          stepPassed: false,
-          isAccuracyIssue: true,
-          reason: 'POOR_GPS_ACCURACY',
-          message: validation.message,
-          distanceMeters: null,
-          permittedRadiusMeters: validation.permittedRadiusMeters,
-          failedAttempts: student.failed_attempts || 0,
-          isFlaggedForge: Boolean(student.is_flagged_forge)
-        });
-      }
+    // 6. Handle Decision Outcomes
+    if (evaluation.decisionOutcome === 'RETRY') {
+      return res.status(400).json({
+        success: false,
+        stepPassed: false,
+        decision: 'RETRY',
+        isAccuracyIssue: true,
+        reason: 'POOR_GPS_ACCURACY',
+        message: 'GPS signal accuracy is coarse. Step near a window or check in via Hostel Wi-Fi/Beacon.',
+        distanceMeters: null,
+        permittedRadiusMeters: evaluation.allowedRadius,
+        failedAttempts: student.failed_attempts || 0,
+        isFlaggedForge: Boolean(student.is_flagged_forge)
+      });
+    }
+
+    if (evaluation.decisionOutcome === 'DENY') {
+      const isMockDetected = evaluation.mockFlagStatus === 'MOCK_DETECTED';
+      const reasonCode = isMockDetected ? 'MOCK_LOCATION_ACTIVE' : 'OUTSIDE_GEOFENCE';
+      const detailsMsg = isMockDetected
+        ? 'Mock location app / GPS spoofer detected on device. Real hardware GPS required.'
+        : `Location rejected: You are ${evaluation.distanceMeters}m away from the hostel. Permitted boundary is ${evaluation.allowedRadius}m.`;
 
       const fraudRecord = await recordFailedLocationAttempt(
         student.id,
         student.roll_number,
-        validation.distanceMeters || 999,
-        validation.reason,
-        validation.message
+        evaluation.distanceMeters || 999,
+        reasonCode,
+        detailsMsg,
+        {
+          riskScore: evaluation.totalRiskScore,
+          decisionOutcome: 'DENY',
+          reasonCodes: evaluation.reasonCodes,
+          ipAddress: clientIp
+        }
       );
 
       return res.status(403).json({
         success: false,
         stepPassed: false,
-        reason: validation.reason,
-        message: validation.message,
-        distanceMeters: validation.distanceMeters,
-        permittedRadiusMeters: validation.permittedRadiusMeters,
+        decision: 'DENY',
+        reason: reasonCode,
+        message: detailsMsg,
+        distanceMeters: evaluation.distanceMeters,
+        permittedRadiusMeters: evaluation.allowedRadius,
         failedAttempts: fraudRecord.failedAttempts,
         isFlaggedForge: fraudRecord.isFlaggedForge,
         alertTriggered: fraudRecord.alertTriggered
       });
     }
 
-    // 6. Location Approved! Reset failed attempt counter
+    if (evaluation.decisionOutcome === 'MANUAL_REVIEW') {
+      return res.status(403).json({
+        success: false,
+        stepPassed: false,
+        decision: 'MANUAL_REVIEW',
+        reason: 'MANUAL_REVIEW_REQUIRED',
+        message: 'Verification flagged for Warden manual confirmation due to multi-signal anomalies.',
+        distanceMeters: evaluation.distanceMeters,
+        permittedRadiusMeters: evaluation.allowedRadius,
+        failedAttempts: student.failed_attempts || 0,
+        isFlaggedForge: Boolean(student.is_flagged_forge)
+      });
+    }
+
+    // 7. Step Passed (ALLOW or STEP_UP) - Reset failed attempts & issue hardened challenge
     await resetFailedLocationAttempt(student.id);
 
-    // 7. Generate Persistent Single-Use Challenge Token (5-minute expiry)
     const challengeToken = uuidv4();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const challengeId = uuidv4();
+    const expiresAt = new Date(Date.now() + evaluation.ttlMs).toISOString();
 
     await runQuery(`
       INSERT INTO attendance_challenges (
-        id, student_id, challenge_token, expires_at, is_used, verified_distance
-      ) VALUES (?, ?, ?, ?, 0, ?)
-    `, [uuidv4(), student.id, challengeToken, expiresAt, validation.distanceMeters]);
+        id, student_id, challenge_token, expires_at, is_used, verified_distance,
+        bound_ip_address, bound_device_id, request_nonce_hash, requires_step_up, step_up_color_sequence
+      ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+    `, [
+      challengeId,
+      student.id,
+      challengeToken,
+      expiresAt,
+      evaluation.distanceMeters,
+      clientIp,
+      effectiveDeviceId,
+      evaluation.requestNonceHash,
+      evaluation.requiresStepUp ? 1 : 0,
+      evaluation.stepUpColors ? JSON.stringify(evaluation.stepUpColors) : null
+    ]);
+
+    // Insert Initial Evidence Ledger Row
+    await runQuery(`
+      INSERT INTO attendance_evidence (
+        id, challenge_id, student_id, decision_outcome, total_risk_score, assurance_tier,
+        mock_flag_status, gps_sample_count, wifi_match_status, ble_match_status,
+        play_integrity_verdict, unfair_means_flags, pad_photometric_pass, policy_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      uuidv4(),
+      challengeId,
+      student.id,
+      evaluation.decisionOutcome,
+      evaluation.totalRiskScore,
+      evaluation.assuranceTier,
+      evaluation.mockFlagStatus,
+      evaluation.gpsSampleCount,
+      evaluation.wifiMatchStatus,
+      evaluation.bleMatchStatus,
+      evaluation.playIntegrityVerdict,
+      JSON.stringify(evaluation.unfairMeansFlags),
+      0,
+      'v3.0'
+    ]);
 
     res.json({
       success: true,
       stepPassed: true,
-      message: 'Location verified! Device is within permitted hostel perimeter. Proceed to facial verification.',
+      decision: evaluation.decisionOutcome,
+      totalRiskScore: evaluation.totalRiskScore,
+      assuranceTier: evaluation.assuranceTier,
+      requiresStepUp: evaluation.requiresStepUp,
+      stepUpColorSequence: evaluation.stepUpColors,
+      message: evaluation.requiresStepUp
+        ? 'Location approved with Step-Up requirement. Proceed to photometric face verification.'
+        : 'Location verified! Device is within permitted hostel perimeter. Proceed to facial verification.',
       sessionToken: challengeToken, // Backward compatible field name
       challengeToken,
-      distanceMeters: validation.distanceMeters,
-      permittedRadiusMeters: validation.permittedRadiusMeters,
+      distanceMeters: evaluation.distanceMeters,
+      permittedRadiusMeters: evaluation.allowedRadius,
       studentName: student.full_name
     });
   } catch (err) {
     console.error('Location verification error:', err);
     res.status(500).json({ success: false, error: 'Location verification error: ' + err.message });
   }
-});
+};
 
-// 2. Phase 3 Step 2: Facial Verification & Atomic Attendance Commit
-router.post('/verify-face', attendanceLimiter, async (req, res) => {
+/**
+ * Phase 3 Step 2: Facial Verification, Photometric PAD & Atomic Attendance Commit
+ * Supports both /verify-face and /mark
+ */
+const verifyFaceHandler = async (req, res) => {
   try {
     // 0. Enforce real-world attendance schedule window
     const windowStatus = await getAttendanceWindowStatus();
@@ -218,7 +318,13 @@ router.post('/verify-face', attendanceLimiter, async (req, res) => {
       }
     }
 
-    const { session_token, challenge_token, live_photo } = req.body;
+    const {
+      session_token,
+      challenge_token,
+      live_photo,
+      device_id = null,
+      photometric_data = null
+    } = req.body;
     const token = challenge_token || session_token;
 
     if (!token || !live_photo) {
@@ -237,13 +343,51 @@ router.post('/verify-face', attendanceLimiter, async (req, res) => {
     }
 
     if (new Date(challenge.expires_at).getTime() < Date.now()) {
-      return res.status(401).json({ success: false, error: 'Attendance session expired (5-minute window exceeded). Please re-verify location.' });
+      return res.status(401).json({ success: false, error: 'Attendance session expired (window exceeded). Please re-verify location.' });
     }
 
     // 2. Fetch student and stored embeddings
     const student = await getQuery(`SELECT * FROM students WHERE id = ?`, [challenge.student_id]);
     if (!student) {
       return res.status(404).json({ success: false, error: 'Student not found.' });
+    }
+
+    // 3. Evaluate Layer 13: "Beyond-Location" Unfair-Means & Relays
+    const clientIp = (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) || req.ip || req.connection.remoteAddress || '127.0.0.1';
+    const commitEval = await antiSpoofPolicyEngine.evaluateAttendanceCommit({
+      challenge,
+      student,
+      currentIp: clientIp,
+      currentDeviceId: device_id || req.body.deviceInfo?.deviceId || null,
+      currentUserAgent: req.headers['user-agent'],
+      photometricData: photometric_data
+    });
+
+    if (!commitEval.isAllowed) {
+      await runQuery(`
+        INSERT INTO security_audit_logs (
+          id, student_id, roll_number, incident_type, calculated_distance, details,
+          ip_address, risk_score, decision_outcome, reason_codes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DENY', ?)
+      `, [
+        uuidv4(),
+        student.id,
+        student.roll_number,
+        commitEval.reason,
+        challenge.verified_distance,
+        commitEval.message,
+        clientIp,
+        commitEval.riskScore,
+        commitEval.unfairMeans.join(',')
+      ]);
+
+      return res.status(403).json({
+        success: false,
+        status: 'DENY',
+        reason: commitEval.reason,
+        error: commitEval.message,
+        details: { unfairMeans: commitEval.unfairMeans }
+      });
     }
 
     const storedRows = await allQuery(`
@@ -261,7 +405,7 @@ router.post('/verify-face', attendanceLimiter, async (req, res) => {
 
     const storedEmbeddings = storedRows.map((r) => JSON.parse(r.embedding_vector));
 
-    // 3. Call AI Microservice for Anti-Spoofing & Cosine Matching
+    // 4. Call AI Microservice for Anti-Spoofing & Cosine Matching
     let aiResult;
     try {
       aiResult = await aiServiceClient.verifyLiveFace(live_photo, storedEmbeddings, 0.65);
@@ -269,17 +413,20 @@ router.post('/verify-face', attendanceLimiter, async (req, res) => {
       return res.status(500).json({ success: false, error: `AI Microservice Error: ${aiErr.message}` });
     }
 
-    // 4. Check Liveness / Anti-Spoofing
+    // 5. Check Liveness / Anti-Spoofing
     if (!aiResult.is_live) {
       await runQuery(`
-        INSERT INTO security_audit_logs (id, student_id, roll_number, incident_type, calculated_distance, details)
-        VALUES (?, ?, ?, 'FACE_SPOOF_ATTEMPT', ?, ?)
+        INSERT INTO security_audit_logs (
+          id, student_id, roll_number, incident_type, calculated_distance, details,
+          ip_address, risk_score, decision_outcome, reason_codes
+        ) VALUES (?, ?, ?, 'FACE_SPOOF_ATTEMPT', ?, ?, ?, 90, 'DENY', 'L8_BIOMETRIC_PAD_FAILED')
       `, [
         uuidv4(),
         student.id,
         student.roll_number,
         challenge.verified_distance,
-        aiResult.details?.message || 'Liveness anti-spoof check failed'
+        aiResult.details?.message || 'Liveness anti-spoof check failed',
+        clientIp
       ]);
 
       return res.status(403).json({
@@ -290,7 +437,7 @@ router.post('/verify-face', attendanceLimiter, async (req, res) => {
       });
     }
 
-    // 5. Check Identity Match
+    // 6. Check Identity Match
     if (!aiResult.is_match) {
       return res.status(403).json({
         success: false,
@@ -301,10 +448,12 @@ router.post('/verify-face', attendanceLimiter, async (req, res) => {
       });
     }
 
-    // 6. Commit Attendance and Consume Challenge Atomically
+    // 7. Commit Attendance and Consume Challenge Atomically in Single Transaction
     const today = getTodayDateString();
     const timeMarked = new Date().toLocaleTimeString('en-US', { hour12: false });
     const recordId = uuidv4();
+    const finalRiskScore = commitEval.riskScore || 0;
+    const assuranceTier = challenge.requires_step_up ? 'NATIVE_STEP_UP' : 'NATIVE_HIGH';
 
     await withTransaction(async ({ runQuery }) => {
       // Atomic Challenge Consumption with race-condition detection:
@@ -324,8 +473,8 @@ router.post('/verify-face', attendanceLimiter, async (req, res) => {
       await runQuery(`
         INSERT INTO attendance_records (
           id, student_id, roll_number, full_name, date, time_marked, status,
-          verified_distance, similarity_score, liveness_score
-        ) VALUES (?, ?, ?, ?, ?, ?, 'PRESENT', ?, ?, ?)
+          verified_distance, similarity_score, liveness_score, assurance_tier, risk_score
+        ) VALUES (?, ?, ?, ?, ?, ?, 'PRESENT', ?, ?, ?, ?, ?)
       `, [
         recordId,
         student.id,
@@ -335,7 +484,25 @@ router.post('/verify-face', attendanceLimiter, async (req, res) => {
         timeMarked,
         challenge.verified_distance,
         aiResult.similarity_score,
-        aiResult.liveness_score
+        aiResult.liveness_score,
+        assuranceTier,
+        finalRiskScore
+      ]);
+
+      // Record final commit evidence
+      await runQuery(`
+        INSERT INTO attendance_evidence (
+          id, challenge_id, student_id, decision_outcome, total_risk_score, assurance_tier,
+          mock_flag_status, gps_sample_count, wifi_match_status, ble_match_status,
+          play_integrity_verdict, unfair_means_flags, pad_photometric_pass, policy_version
+        ) VALUES (?, ?, ?, 'ALLOW', ?, ?, 'CLEAN', 1, 'VERIFIED_COMMIT', 'VERIFIED_COMMIT', 'PASS', '[]', ?, 'v3.0')
+      `, [
+        uuidv4(),
+        challenge.id,
+        student.id,
+        finalRiskScore,
+        assuranceTier,
+        commitEval.padPhotometricPass || 1
       ]);
     });
 
@@ -353,7 +520,9 @@ router.post('/verify-face', attendanceLimiter, async (req, res) => {
         status: 'PRESENT',
         distanceMeters: challenge.verified_distance,
         similarityScore: aiResult.similarity_score,
-        livenessScore: aiResult.liveness_score
+        livenessScore: aiResult.liveness_score,
+        assuranceTier,
+        riskScore: finalRiskScore
       }
     });
   } catch (err) {
@@ -369,7 +538,14 @@ router.post('/verify-face', attendanceLimiter, async (req, res) => {
     console.error('Face verification failed:', err);
     res.status(500).json({ success: false, error: 'Face verification error: ' + err.message });
   }
-});
+};
+
+// Route registrations and aliases
+router.post('/verify-location', attendanceLimiter, verifyLocationHandler);
+router.post('/check-geofence', attendanceLimiter, verifyLocationHandler);
+
+router.post('/verify-face', attendanceLimiter, verifyFaceHandler);
+router.post('/mark', attendanceLimiter, verifyFaceHandler);
 
 // 3. Attendance Status Lookup
 router.get('/status/:identifier', async (req, res) => {

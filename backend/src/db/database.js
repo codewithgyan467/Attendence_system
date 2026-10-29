@@ -470,6 +470,60 @@ const initDatabase = async () => {
     )
   `);
 
+  // 19. Site Wi-Fi Access Points (Physical Radio Environmental Verification - v3.0 BCNF)
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS site_wifi_access_points (
+      id TEXT PRIMARY KEY,
+      geofence_id TEXT,
+      bssid TEXT NOT NULL,
+      ssid_label TEXT,
+      block_name TEXT,
+      min_rssi INTEGER DEFAULT -85,
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (geofence_id) REFERENCES geofence_configs(id)
+    )
+  `);
+
+  // 20. Site BLE Beacons (ESP32 Challenge-Response Physical Presence Anchors - v3.0 BCNF)
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS site_ble_beacons (
+      id TEXT PRIMARY KEY,
+      geofence_id TEXT,
+      beacon_public_id TEXT UNIQUE NOT NULL,
+      key_version INTEGER DEFAULT 1,
+      shared_secret_ref TEXT NOT NULL,
+      block_name TEXT,
+      is_active INTEGER DEFAULT 1,
+      last_seen_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (geofence_id) REFERENCES geofence_configs(id)
+    )
+  `);
+
+  // 21. Multi-Layer Attendance Evidence Ledger (Anti-Spoofing & Unfair-Means Audit Trail - v3.0 BCNF)
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS attendance_evidence (
+      id TEXT PRIMARY KEY,
+      challenge_id TEXT,
+      student_id TEXT,
+      decision_outcome TEXT CHECK (decision_outcome IN ('ALLOW','RETRY','STEP_UP','MANUAL_REVIEW','DENY')),
+      total_risk_score INTEGER DEFAULT 0,
+      assurance_tier TEXT CHECK (assurance_tier IN ('NATIVE_HIGH','NATIVE_STEP_UP','PWA_DEGRADED')),
+      mock_flag_status TEXT,
+      gps_sample_count INTEGER,
+      wifi_match_status TEXT,
+      ble_match_status TEXT,
+      play_integrity_verdict TEXT,
+      unfair_means_flags TEXT,
+      pad_photometric_pass INTEGER,
+      policy_version TEXT DEFAULT 'v3.0',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (challenge_id) REFERENCES attendance_challenges(id) ON DELETE CASCADE,
+      FOREIGN KEY (student_id) REFERENCES students(id)
+    )
+  `);
+
   // Automatic Non-Destructive Column Migrations (upgrades existing SQLite db schema)
   const ensureColumns = async (tableName, requiredCols) => {
     try {
@@ -514,7 +568,23 @@ const initDatabase = async () => {
     override_by: 'TEXT',
     distance_meters: 'REAL',
     accuracy: 'REAL',
-    verification_method: 'TEXT'
+    verification_method: 'TEXT',
+    assurance_tier: "TEXT DEFAULT 'NATIVE_HIGH'",
+    risk_score: 'INTEGER DEFAULT 0'
+  });
+
+  await ensureColumns('attendance_challenges', {
+    bound_ip_address: 'TEXT',
+    bound_device_id: 'TEXT',
+    request_nonce_hash: 'TEXT',
+    requires_step_up: 'INTEGER DEFAULT 0',
+    step_up_color_sequence: 'TEXT'
+  });
+
+  await ensureColumns('security_audit_logs', {
+    risk_score: 'INTEGER DEFAULT 0',
+    decision_outcome: 'TEXT',
+    reason_codes: 'TEXT'
   });
 
   await ensureColumns('hostel_allotments', {
@@ -549,6 +619,11 @@ const initDatabase = async () => {
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_registered_devices ON student_registered_devices(student_id, is_active);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_schedule_overrides_date ON attendance_schedule_overrides(override_date);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_evidence_challenge ON attendance_evidence(challenge_id);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_evidence_student ON attendance_evidence(student_id);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_evidence_created ON attendance_evidence(created_at);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_wifi_bssid ON site_wifi_access_points(bssid);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_ble_public ON site_ble_beacons(beacon_public_id);`);
 
   // Verify SQLite database integrity on startup
   if (!useTurso) {
@@ -570,6 +645,7 @@ const initDatabase = async () => {
 
 const clearAllStudentData = async () => {
   return await withTransaction(async ({ runQuery }) => {
+    try { await runQuery('DELETE FROM attendance_evidence'); } catch (_) {}
     await runQuery('DELETE FROM student_face_embeddings');
     await runQuery('DELETE FROM attendance_records');
     await runQuery('DELETE FROM attendance_challenges');
@@ -645,11 +721,32 @@ const seedInitialData = async () => {
 
   // D. Seed Default Geofence if missing
   const existingGeo = await getQuery(`SELECT id FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
+  let activeGeoId = existingGeo ? existingGeo.id : null;
   if (!existingGeo) {
+    activeGeoId = uuidv4();
     await runQuery(`
       INSERT INTO geofence_configs (id, hostel_name, latitude, longitude, radius_meters, is_active, updated_by)
       VALUES (?, 'Hostel Main Campus Facility', 28.545000, 77.192600, 20.0, 1, 'System Bootstrap')
-    `, [uuidv4()]);
+    `, [activeGeoId]);
+  }
+
+  // D2. Seed Default Site Wi-Fi AP and BLE Beacons if missing (v3.0 Zero-Trust Physical Signals)
+  if (activeGeoId) {
+    const existingWifis = await getQuery(`SELECT COUNT(*) as count FROM site_wifi_access_points`);
+    if (existingWifis && existingWifis.count === 0) {
+      await runQuery(`
+        INSERT INTO site_wifi_access_points (id, geofence_id, bssid, ssid_label, block_name, min_rssi, is_active)
+        VALUES (?, ?, '00:14:22:01:23:45', 'HostelGuard-WiFi-Secure', 'Block A', -85, 1)
+      `, [uuidv4(), activeGeoId]);
+    }
+
+    const existingBle = await getQuery(`SELECT COUNT(*) as count FROM site_ble_beacons`);
+    if (existingBle && existingBle.count === 0) {
+      await runQuery(`
+        INSERT INTO site_ble_beacons (id, geofence_id, beacon_public_id, key_version, shared_secret_ref, block_name, is_active)
+        VALUES (?, ?, 'HG-BEACON-BLKA-01', 1, 'SEC_REF_KEY_BLKA_01', 'Block A Ground Floor', 1)
+      `, [uuidv4(), activeGeoId]);
+    }
   }
 
   // E. Seed Default Attendance Schedule (7:00 PM - 7:30 PM / 19:00 - 19:30)

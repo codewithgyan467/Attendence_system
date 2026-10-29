@@ -117,6 +117,32 @@ describe('System Reverification & Desk Contract Tests', () => {
       expect(rec.check_in_time).toBe('21:05:00');
       expect(rec.distance_meters).toBe(14.2);
     });
+
+    it('returns records of absent students who have not given attendance', async () => {
+      const testDate = '2026-10-21';
+      // Query reports for date where test student has not marked attendance
+      const res = await request(app)
+        .get(`/api/v1/admin/reports?date=${testDate}&search=${testRoll}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.records.length).toBeGreaterThan(0);
+      const absentRec = res.body.records.find(r => r.roll_no === testRoll);
+      expect(absentRec).toBeDefined();
+      expect(absentRec.status).toBe('ABSENT');
+      expect(absentRec.check_in_time).toBeNull();
+      expect(absentRec.verification_method).toBe('Not Marked');
+
+      // Also verify when filtering with status=ABSENT
+      const absentOnlyRes = await request(app)
+        .get(`/api/v1/admin/reports?date=${testDate}&status=ABSENT&search=${testRoll}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(absentOnlyRes.status).toBe(200);
+      expect(absentOnlyRes.body.records.length).toBeGreaterThan(0);
+      expect(absentOnlyRes.body.records[0].status).toBe('ABSENT');
+    });
   });
 
   describe('3. Correction Request Desk Contract', () => {

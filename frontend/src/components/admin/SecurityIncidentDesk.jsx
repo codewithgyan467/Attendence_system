@@ -73,7 +73,8 @@ export default function SecurityIncidentDesk() {
         flagged_students: normalizedStudents,
         flaggedStudents: normalizedStudents,
         recent_logs: normalizedLogs,
-        recentAuditLogs: normalizedLogs
+        recentAuditLogs: normalizedLogs,
+        recent_evidence: Array.isArray(data?.recent_evidence) ? data.recent_evidence : []
       });
     } catch (err) {
       setErrorMsg(err.message || 'Failed to fetch security alerts and strike logs');
@@ -175,8 +176,27 @@ export default function SecurityIncidentDesk() {
     }
   };
 
+  const handleApproveManualReview = async (studentId, evidenceId, rollNumber) => {
+    try {
+      setLoading(true);
+      setErrorMsg(null);
+      const res = await api.admin.approveManualReview({
+        student_id: studentId,
+        evidence_id: evidenceId,
+        reason: 'Warden physical presence verification confirmed from Security Exception Desk'
+      });
+      setStatusMsg(res.message || `Manual review approved for student ${rollNumber}.`);
+      fetchAlerts();
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to approve manual review');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const flaggedStudents = alerts.flagged_students || alerts.flaggedStudents || [];
   const recentLogs = alerts.recent_logs || alerts.recentAuditLogs || [];
+  const recentEvidence = alerts.recent_evidence || [];
 
   return (
     <div className="container-fluid px-0">
@@ -423,6 +443,102 @@ export default function SecurityIncidentDesk() {
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* v3.0 Multi-Layer Attendance Evidence Ledger */}
+      <div className="card shadow-sm border-0 rounded-3 mt-4">
+        <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+          <div className="d-flex align-items-center gap-2">
+            <ShieldAlert className="text-primary" size={18} />
+            <h6 className="card-title mb-0 fw-semibold">
+              v3.0 Multi-Layer Anti-Spoof Evidence Ledger ({recentEvidence.length})
+            </h6>
+          </div>
+          <span className="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1">
+            Zero-Trust Policy v3.0
+          </span>
+        </div>
+        <div className="card-body p-0">
+          {recentEvidence.length === 0 ? (
+            <div className="text-center py-4 text-muted small">
+              No anti-spoof evidence telemetry recorded yet.
+            </div>
+          ) : (
+            <div className="table-responsive">
+              <table className="table table-hover align-middle mb-0" style={{ fontSize: '13px' }}>
+                <thead className="table-light text-muted text-uppercase" style={{ fontSize: '11px' }}>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Student</th>
+                    <th>Decision</th>
+                    <th>Risk Score</th>
+                    <th>Assurance Tier</th>
+                    <th>Mock Telemetry</th>
+                    <th>Unfair-Means Flags</th>
+                    <th className="text-end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentEvidence.slice(0, 20).map((ev) => {
+                    const outcomeColor =
+                      ev.decision_outcome === 'ALLOW' ? 'success' :
+                      ev.decision_outcome === 'RETRY' ? 'info' :
+                      ev.decision_outcome === 'STEP_UP' ? 'warning' :
+                      ev.decision_outcome === 'MANUAL_REVIEW' ? 'secondary' : 'danger';
+
+                    return (
+                      <tr key={ev.id}>
+                        <td className="text-muted text-nowrap" style={{ fontSize: '11px' }}>
+                          {new Date(ev.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td>
+                          <div className="fw-semibold text-dark">{ev.full_name || ev.roll_number}</div>
+                          <div className="text-muted" style={{ fontSize: '11px' }}>{ev.roll_number}</div>
+                        </td>
+                        <td>
+                          <span className={`badge bg-${outcomeColor}-subtle text-${outcomeColor} border border-${outcomeColor}-subtle`}>
+                            {ev.decision_outcome}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`fw-bold ${ev.total_risk_score >= 70 ? 'text-danger' : ev.total_risk_score >= 30 ? 'text-warning' : 'text-success'}`}>
+                            {ev.total_risk_score}/100
+                          </span>
+                        </td>
+                        <td>
+                          <span className="badge bg-light text-dark border">
+                            {ev.assurance_tier}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`badge ${ev.mock_flag_status === 'MOCK_DETECTED' ? 'bg-danger text-white' : 'bg-success-subtle text-success'}`}>
+                            {ev.mock_flag_status || 'CLEAN'}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="small text-muted">
+                            {ev.unfair_means_flags && ev.unfair_means_flags !== '[]' ? ev.unfair_means_flags : 'None'}
+                          </span>
+                        </td>
+                        <td className="text-end">
+                          {ev.decision_outcome === 'MANUAL_REVIEW' && (
+                            <button
+                              className="btn btn-xs btn-outline-success py-0 px-2 fw-semibold"
+                              style={{ fontSize: '11px' }}
+                              onClick={() => handleApproveManualReview(ev.student_id, ev.id, ev.roll_number)}
+                            >
+                              Approve
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 

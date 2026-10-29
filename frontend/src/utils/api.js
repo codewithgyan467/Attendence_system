@@ -210,6 +210,7 @@ export const api = {
     deleteSecurityAlert: (id) => request(`/admin/security/alerts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     clearAllSecurityAlerts: () => request('/admin/security/alerts', { method: 'DELETE' }),
     resetStrike: (data) => request('/admin/security/reset-strike', { method: 'POST', body: JSON.stringify(data) }),
+    approveManualReview: (data) => request('/admin/security/approve-manual-review', { method: 'POST', body: JSON.stringify(data) }),
     resetAllStrikes: (data = {}) => request('/admin/security/reset-all-strikes', { method: 'POST', body: JSON.stringify(data) }),
     getAuditLogs: (params = {}) => {
       const q = new URLSearchParams(params).toString();

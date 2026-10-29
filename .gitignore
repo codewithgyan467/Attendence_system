@@ -25,6 +25,9 @@ build/
 *.log
 backend/data/backups/
 *.sqlite
+*.db
+*.db-wal
+*.db-shm
 
 # Uploads and temporary files
 uploads/

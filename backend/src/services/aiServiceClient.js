@@ -65,7 +65,7 @@ class AiServiceClient {
    * Performs liveness anti-spoof check + Cosine similarity comparison.
    * Fail-Closed Security: Simulation fallback is strictly disabled in production.
    */
-  async verifyLiveFace(liveImageBase64, storedEmbeddings, threshold = 0.65, allowSimulation = null) {
+  async verifyLiveFace(liveImageBase64, storedEmbeddings, threshold = 0.65, allowSimulation = null, stepUpOptions = {}) {
     const isProduction = process.env.NODE_ENV === 'production';
     const isTest = process.env.NODE_ENV === 'test';
     const effectiveSimulation = allowSimulation !== null ? allowSimulation : (!isProduction && process.env.AI_ALLOW_SIMULATION !== 'false');
@@ -75,7 +75,10 @@ class AiServiceClient {
         live_image_base64: liveImageBase64,
         stored_embeddings: storedEmbeddings,
         similarity_threshold: threshold,
-        allow_simulation_fallback: effectiveSimulation
+        allow_simulation_fallback: effectiveSimulation,
+        requires_step_up: Boolean(stepUpOptions.requires_step_up),
+        step_up_frames: stepUpOptions.step_up_frames || null,
+        step_up_colors: stepUpOptions.step_up_colors || null
       };
 
       const resp = await this.client.post('/api/v1/faces/verify-live', payload);

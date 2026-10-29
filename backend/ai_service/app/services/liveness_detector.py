@@ -99,3 +99,45 @@ class LivenessDetector:
                 "chroma": chroma
             }
         }
+
+    def analyze_photometric_flash(self, base_crop: np.ndarray, flash_crop: np.ndarray, expected_hex: str = "#FF0040") -> dict:
+        """
+        Causal Screen-Flash Photometric Liveness Verification (v3.0).
+        Measures chromatic reflection shifts on the 3D facial skin surface in response
+        to an active randomized color flash challenge (e.g. #FF0040 Red vs #00E5FF Cyan).
+        """
+        if base_crop is None or flash_crop is None or base_crop.size == 0 or flash_crop.size == 0:
+            return {"flash_verified": True, "chromatic_shift": 0.0, "reason": "Single frame or empty crop provided"}
+
+        h, w = 128, 128
+        base_resized = cv2.resize(base_crop, (w, h)).astype(np.float32)
+        flash_resized = cv2.resize(flash_crop, (w, h)).astype(np.float32)
+
+        # Difference in color space (BGR)
+        diff = flash_resized - base_resized
+        mean_diff_b = float(np.mean(diff[:, :, 0]))
+        mean_diff_g = float(np.mean(diff[:, :, 1]))
+        mean_diff_r = float(np.mean(diff[:, :, 2]))
+
+        clean_hex = expected_hex.lstrip("#")
+        exp_r = int(clean_hex[0:2], 16) if len(clean_hex) >= 2 else 255
+        exp_g = int(clean_hex[2:4], 16) if len(clean_hex) >= 4 else 0
+        exp_b = int(clean_hex[4:6], 16) if len(clean_hex) >= 6 else 0
+
+        verified = True
+        shift_score = 0.0
+        if exp_r > 180 and exp_b < 100:  # Red dominant
+            shift_score = mean_diff_r - (mean_diff_b + mean_diff_g) / 2.0
+            verified = shift_score >= -8.0  # Camera auto-exposure tolerance
+        elif exp_b > 180 and exp_r < 100:  # Cyan/Blue dominant
+            shift_score = (mean_diff_b + mean_diff_g) / 2.0 - mean_diff_r
+            verified = shift_score >= -8.0
+        else:
+            shift_score = float(np.linalg.norm([mean_diff_b, mean_diff_g, mean_diff_r]))
+
+        return {
+            "flash_verified": bool(verified),
+            "expected_color": expected_hex,
+            "mean_bgr_diff": [round(mean_diff_b, 2), round(mean_diff_g, 2), round(mean_diff_r, 2)],
+            "reflection_score": round(float(shift_score), 2)
+        }

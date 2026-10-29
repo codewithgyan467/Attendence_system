@@ -1147,57 +1147,166 @@ router.post('/geofence', requireRole('ADMIN'), async (req, res) => {
 });
 
 // 5. Attendance Reports & Export
+// 5. Attendance Reports & Export (includes recorded attendances and absent students without records)
 router.get('/reports', async (req, res) => {
   try {
     const { date, block, status, search } = req.query;
     const targetDate = date || new Date().toISOString().split('T')[0];
+    const upperStatus = status ? status.trim().toUpperCase() : '';
 
-    let conditions = ['a.date = ?'];
-    let params = [targetDate];
+    let recordedAttendances = [];
 
-    if (status) {
-      conditions.push('a.status = ?');
-      params.push(status);
+    // 1. Query attendance_records (for specific status or all recorded entries)
+    if (upperStatus !== 'ABSENT') {
+      let conditions = ['a.date = ?'];
+      let params = [targetDate];
+
+      if (upperStatus) {
+        if (upperStatus === 'OVERRIDDEN') {
+          conditions.push('(a.is_override = 1 OR a.status = ?)');
+          params.push(upperStatus);
+        } else {
+          conditions.push('a.status = ?');
+          params.push(upperStatus);
+        }
+      }
+
+      if (block) {
+        conditions.push('s.hostel_block = ?');
+        params.push(block);
+      }
+
+      if (search) {
+        conditions.push('(a.roll_number LIKE ? OR a.full_name LIKE ?)');
+        params.push(`%${search.trim()}%`, `%${search.trim()}%`);
+      }
+
+      recordedAttendances = await allQuery(`
+        SELECT
+          a.*,
+          a.id AS attendance_id,
+          a.roll_number AS roll_no,
+          a.time_marked AS check_in_time,
+          a.verified_distance AS distance_meters,
+          s.course,
+          s.semester,
+          s.room_number,
+          COALESCE(s.hostel_block, 'Block A') AS hostel_block,
+          COALESCE(s.hostel_block, 'Block A') AS block_name
+        FROM attendance_records a
+        LEFT JOIN students s ON a.student_id = s.id
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY a.time_marked DESC
+      `, params);
+    } else {
+      // If filtering explicitly by ABSENT, check for records explicitly saved with status = 'ABSENT'
+      let conditions = ['a.date = ?', "a.status = 'ABSENT'"];
+      let params = [targetDate];
+
+      if (block) {
+        conditions.push('s.hostel_block = ?');
+        params.push(block);
+      }
+
+      if (search) {
+        conditions.push('(a.roll_number LIKE ? OR a.full_name LIKE ?)');
+        params.push(`%${search.trim()}%`, `%${search.trim()}%`);
+      }
+
+      recordedAttendances = await allQuery(`
+        SELECT
+          a.*,
+          a.id AS attendance_id,
+          a.roll_number AS roll_no,
+          a.time_marked AS check_in_time,
+          a.verified_distance AS distance_meters,
+          s.course,
+          s.semester,
+          s.room_number,
+          COALESCE(s.hostel_block, 'Block A') AS hostel_block,
+          COALESCE(s.hostel_block, 'Block A') AS block_name
+        FROM attendance_records a
+        LEFT JOIN students s ON a.student_id = s.id
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY a.time_marked DESC
+      `, params);
     }
 
-    if (block) {
-      conditions.push('s.hostel_block = ?');
-      params.push(block);
+    // 2. Query active students who have NOT marked attendance on targetDate
+    // This applies when status is empty ("All Statuses"), "ALL", or "ABSENT"
+    let absentStudents = [];
+    if (!upperStatus || upperStatus === 'ABSENT' || upperStatus === 'ALL') {
+      let absentConditions = [
+        's.is_active = 1',
+        `NOT EXISTS (
+          SELECT 1 FROM attendance_records a
+          WHERE (a.student_id = s.id OR a.roll_number = s.roll_number)
+            AND a.date = ?
+        )`
+      ];
+      let absentParams = [targetDate];
+
+      if (block) {
+        absentConditions.push('s.hostel_block = ?');
+        absentParams.push(block);
+      }
+
+      if (search) {
+        absentConditions.push('(s.roll_number LIKE ? OR s.full_name LIKE ?)');
+        absentParams.push(`%${search.trim()}%`, `%${search.trim()}%`);
+      }
+
+      const rawAbsent = await allQuery(`
+        SELECT
+          NULL AS id,
+          NULL AS attendance_id,
+          s.id AS student_id,
+          s.roll_number,
+          s.roll_number AS roll_no,
+          s.full_name,
+          ? AS date,
+          NULL AS time_marked,
+          NULL AS check_in_time,
+          'ABSENT' AS status,
+          NULL AS verified_distance,
+          NULL AS distance_meters,
+          'Not Marked' AS verification_method,
+          0 AS is_override,
+          NULL AS override_reason,
+          NULL AS override_by,
+          s.course,
+          s.semester,
+          s.room_number,
+          COALESCE(s.hostel_block, 'Block A') AS hostel_block,
+          COALESCE(s.hostel_block, 'Block A') AS block_name,
+          s.phone,
+          s.email
+        FROM students s
+        WHERE ${absentConditions.join(' AND ')}
+        ORDER BY s.hostel_block ASC, s.room_number ASC, s.full_name ASC
+      `, [targetDate, ...absentParams]);
+
+      absentStudents = rawAbsent;
     }
 
-    if (search) {
-      conditions.push('(a.roll_number LIKE ? OR a.full_name LIKE ?)');
-      params.push(`%${search.trim()}%`, `%${search.trim()}%`);
-    }
+    // Combine records: present/recorded attendances first, followed by un-marked absent students
+    const records = [...recordedAttendances, ...absentStudents];
 
-    const records = await allQuery(`
-      SELECT
-        a.*,
-        a.id AS attendance_id,
-        a.roll_number AS roll_no,
-        a.time_marked AS check_in_time,
-        a.verified_distance AS distance_meters,
-        s.course,
-        s.semester,
-        s.room_number,
-        s.hostel_block,
-        s.hostel_block AS block_name
-      FROM attendance_records a
-      LEFT JOIN students s ON a.student_id = s.id
-      WHERE ${conditions.join(' AND ')}
-      ORDER BY a.time_marked DESC
-    `, params);
-
+    // Compute global summary statistics for the targetDate
     const totalStudents = await getQuery(`SELECT COUNT(*) as count FROM students WHERE is_active = 1`);
-    const presentToday = await getQuery(`SELECT COUNT(*) as count FROM attendance_records WHERE date = ? AND status = 'PRESENT'`, [targetDate]);
+    const presentToday = await getQuery(`SELECT COUNT(*) as count FROM attendance_records WHERE date = ? AND status IN ('PRESENT', 'LATE')`, [targetDate]);
+
+    const totalCount = totalStudents?.count || 0;
+    const presentCount = presentToday?.count || 0;
+    const absentCount = Math.max(0, totalCount - presentCount);
 
     res.json({
       success: true,
       date: targetDate,
       summary: {
-        totalRegistered: totalStudents?.count || 0,
-        present: presentToday?.count || 0,
-        absent: Math.max(0, (totalStudents?.count || 0) - (presentToday?.count || 0))
+        totalRegistered: totalCount,
+        present: presentCount,
+        absent: absentCount
       },
       records
     });
@@ -1456,8 +1565,54 @@ router.get('/security/alerts', async (req, res) => {
       flaggedStudents: formattedStudents,
       flagged_students: formattedStudents,
       recentAuditLogs: formattedLogs,
-      recent_logs: formattedLogs
+      recent_logs: formattedLogs,
+      recent_evidence: await allQuery(`
+        SELECT 
+          e.id, e.challenge_id, e.student_id, e.decision_outcome, e.total_risk_score,
+          e.assurance_tier, e.mock_flag_status, e.gps_sample_count, e.wifi_match_status,
+          e.ble_match_status, e.play_integrity_verdict, e.unfair_means_flags,
+          e.pad_photometric_pass, e.policy_version, e.created_at,
+          s.roll_number, s.full_name
+        FROM attendance_evidence e
+        LEFT JOIN students s ON e.student_id = s.id
+        ORDER BY e.created_at DESC LIMIT 100
+      `),
     });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 1-Click Approve / Override Manual Review from Security Desk (v3.0)
+router.post('/security/approve-manual-review', async (req, res) => {
+  try {
+    const { student_id, studentId, roll_number, rollNumber, evidence_id, reason = 'Warden verified legitimate hostel presence' } = req.body;
+    const identifier = student_id || studentId || roll_number || rollNumber;
+    if (!identifier) {
+      return res.status(400).json({ success: false, error: 'Student identifier is required.' });
+    }
+
+    const student = await getQuery('SELECT * FROM students WHERE id = ? OR roll_number = ?', [identifier, identifier]);
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Student not found.' });
+    }
+
+    if (evidence_id) {
+      await runQuery('UPDATE attendance_evidence SET decision_outcome = ? WHERE id = ?', ['ALLOW', evidence_id]);
+    }
+
+    await clearForgeFlag(student.id);
+    await recordAuditEvent(
+      req.user.id,
+      req.user.username,
+      'MANUAL_REVIEW_APPROVED',
+      'STUDENT',
+      student.id,
+      'Manual review approved for ' + student.roll_number + ': ' + reason,
+      req
+    );
+
+    res.json({ success: true, message: 'Manual review verified and approved for student ' + student.full_name + '. Strikes cleared and account active.' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

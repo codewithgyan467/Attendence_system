@@ -62,6 +62,9 @@ class VerifyLiveRequest(BaseModel):
     stored_embeddings: List[List[float]] = Field(..., description="Previously registered 128D vectors for this student")
     similarity_threshold: Optional[float] = 0.65
     allow_simulation_fallback: Optional[bool] = False
+    requires_step_up: Optional[bool] = False
+    step_up_frames: Optional[List[str]] = None
+    step_up_colors: Optional[List[str]] = None
 
 class VerifyLiveResponse(BaseModel):
     is_match: bool
@@ -195,6 +198,18 @@ def verify_live(req: VerifyLiveRequest):
     else:
         liveness = {"is_live": True, "liveness_score": 1.0, "reason": "Simulation mode"}
 
+    # 2b. Optional Step-Up Photometric Screen-Flash Check
+    photometric_result = {"flash_verified": True}
+    if req.requires_step_up and req.step_up_frames and len(req.step_up_frames) > 0:
+        try:
+            flash_img = face_engine.decode_image(req.step_up_frames[0])
+            _, flash_aligned, _ = face_engine.detect_and_align_face(flash_img)
+            color_target = req.step_up_colors[0] if (req.step_up_colors and len(req.step_up_colors) > 0) else "#FF0040"
+            if flash_aligned is not None:
+                photometric_result = liveness_detector.analyze_photometric_flash(aligned_face, flash_aligned, color_target)
+        except Exception as p_err:
+            logger.warning(f"Photometric evaluation non-fatal notice: {p_err}")
+
     # 3. Compute Cosine Similarity against stored embeddings
     best_similarity = -1.0
     for stored_vec in req.stored_embeddings:
@@ -218,6 +233,7 @@ def verify_live(req: VerifyLiveRequest):
             "message": details_msg,
             "best_similarity": best_similarity,
             "threshold_used": req.similarity_threshold,
-            "face_confidence": round(conf, 3)
+            "face_confidence": round(conf, 3),
+            "photometric": photometric_result
         }
     )

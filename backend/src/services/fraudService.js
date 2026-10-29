@@ -7,7 +7,14 @@ const MAX_FAILED_ATTEMPTS = 3;
  * Handles consecutive failed location attempts, flags student if 3 attempts reached,
  * and records security audit trail.
  */
-async function recordFailedLocationAttempt(studentId, rollNumber, calculatedDistance, incidentType = 'OUTSIDE_GEOFENCE', details = '') {
+async function recordFailedLocationAttempt(
+  studentId,
+  rollNumber,
+  calculatedDistance,
+  incidentType = 'OUTSIDE_GEOFENCE',
+  details = '',
+  extra = {}
+) {
   // 1. Fetch current student record
   const student = await getQuery(`SELECT * FROM students WHERE id = ? OR roll_number = ?`, [studentId, rollNumber]);
   if (!student) {
@@ -24,18 +31,30 @@ async function recordFailedLocationAttempt(studentId, rollNumber, calculatedDist
     WHERE id = ?
   `, [newFailedCount, isNowFlagged ? 1 : student.is_flagged_forge, student.id]);
 
-  // 3. Log security incident
+  // 3. Log security incident with v3.0 risk scoring & decision outcome
   const logId = uuidv4();
+  const riskScore = extra.riskScore || (isNowFlagged ? 100 : 85);
+  const decisionOutcome = extra.decisionOutcome || 'DENY';
+  const reasonCodes = Array.isArray(extra.reasonCodes) ? extra.reasonCodes.join(',') : (extra.reasonCodes || incidentType);
+  const ipAddress = extra.ipAddress || null;
+
   await runQuery(`
-    INSERT INTO security_audit_logs (id, student_id, roll_number, incident_type, calculated_distance, details)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO security_audit_logs (
+      id, student_id, roll_number, incident_type, calculated_distance, details,
+      ip_address, risk_score, decision_outcome, reason_codes
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     logId,
     student.id,
     student.roll_number,
     isNowFlagged ? 'FORGE_LOCATION_FLAGGED' : incidentType,
     calculatedDistance,
-    details || `Failed location check #${newFailedCount}/${MAX_FAILED_ATTEMPTS}. Distance: ${calculatedDistance}m`
+    details || `Failed location check #${newFailedCount}/${MAX_FAILED_ATTEMPTS}. Distance: ${calculatedDistance}m`,
+    ipAddress,
+    riskScore,
+    decisionOutcome,
+    reasonCodes
   ]);
 
   return {

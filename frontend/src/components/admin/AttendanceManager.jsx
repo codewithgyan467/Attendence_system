@@ -40,6 +40,7 @@ const formatDisplayTime12h = (timeVal) => {
 
 export default function AttendanceManager() {
   const [records, setRecords] = useState([]);
+  const [summary, setSummary] = useState({ totalRegistered: 0, present: 0, absent: 0 });
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
   const [statusMsg, setStatusMsg] = useState(null);
@@ -92,6 +93,9 @@ export default function AttendanceManager() {
 
       const data = await api.admin.getReports(params);
       setRecords(data.records || []);
+      if (data.summary) {
+        setSummary(data.summary);
+      }
     } catch (err) {
       setErrorMsg(err.message || 'Failed to fetch attendance records');
     } finally {
@@ -354,10 +358,38 @@ export default function AttendanceManager() {
 
       {/* Records Table Card */}
       <div className="card shadow-sm border-0 rounded-3">
-        <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
-          <h6 className="card-title mb-0 fw-semibold">
-            Attendance Log for <span className="text-primary">{selectedDate}</span> ({records.length} records)
-          </h6>
+        <div className="card-header bg-white border-bottom py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <h6 className="card-title mb-0 fw-semibold">
+              Attendance Log for <span className="text-primary">{selectedDate}</span> ({records.length} records)
+            </h6>
+            <div className="d-flex align-items-center gap-1 ms-md-2">
+              <span
+                className={`badge ${!selectedStatus ? 'bg-primary text-white' : 'bg-light text-dark border'}`}
+                style={{ cursor: 'pointer' }}
+                onClick={() => setSelectedStatus('')}
+                title="View All Students"
+              >
+                All: <strong>{summary.totalRegistered || records.length}</strong>
+              </span>
+              <span
+                className={`badge ${selectedStatus === 'PRESENT' ? 'bg-success text-white' : 'bg-success-subtle text-success border border-success-subtle'}`}
+                style={{ cursor: 'pointer' }}
+                onClick={() => setSelectedStatus(selectedStatus === 'PRESENT' ? '' : 'PRESENT')}
+                title="Filter Present Students"
+              >
+                <CheckCircle2 size={11} className="me-1 inline" /> Present: <strong>{summary.present}</strong>
+              </span>
+              <span
+                className={`badge ${selectedStatus === 'ABSENT' ? 'bg-danger text-white' : 'bg-danger-subtle text-danger border border-danger-subtle'}`}
+                style={{ cursor: 'pointer' }}
+                onClick={() => setSelectedStatus(selectedStatus === 'ABSENT' ? '' : 'ABSENT')}
+                title="Filter Absent Students"
+              >
+                <XCircle size={11} className="me-1 inline" /> Absent: <strong>{summary.absent}</strong>
+              </span>
+            </div>
+          </div>
         </div>
         <div className="card-body p-0">
           {loading ? (
@@ -406,7 +438,7 @@ export default function AttendanceManager() {
                       </td>
                       <td>
                         <small className="text-muted">
-                          {r.verification_method || (r.status === 'PRESENT' ? 'Face Match' : 'Pending')}
+                          {r.verification_method || (r.status === 'PRESENT' ? 'Face Match' : (r.status === 'ABSENT' ? 'Not Marked' : 'Pending'))}
                         </small>
                       </td>
                       <td>
