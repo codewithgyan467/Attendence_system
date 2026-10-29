@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, User, Shield, Menu } from 'lucide-react';
+import { LogOut, User, Shield, Menu, FileText, Download } from 'lucide-react';
+import TechnicalReportsModal from './TechnicalReportsModal';
 
 export default function Navbar({ onToggleSidebar }) {
   const { user, logout } = useAuth();
+  const [showReportsModal, setShowReportsModal] = useState(false);
 
   const getRoleBadgeClass = (role) => {
     switch (role) {
@@ -15,55 +17,75 @@ export default function Navbar({ onToggleSidebar }) {
   };
 
   return (
-    <header className="hg-navbar">
-      <div className="d-flex align-items-center gap-3">
-        <button
-          className="btn btn-sm btn-light d-lg-none"
-          onClick={onToggleSidebar}
-          aria-label="Toggle Navigation"
-        >
-          <Menu size={20} />
-        </button>
-        <div className="d-flex align-items-center gap-2">
-          <img
-            src="/icon-192.png"
-            alt="HostelGuard Mascot"
-            className="rounded-2 shadow-sm"
-            style={{ width: '32px', height: '32px', objectFit: 'cover' }}
-          />
-          <span className="fw-bold d-none d-sm-inline" style={{ fontSize: '16px', color: 'var(--hg-text-main)' }}>
-            HostelGuard <span className="text-primary">Enterprise</span>
-          </span>
+    <>
+      <header className="hg-navbar">
+        <div className="d-flex align-items-center gap-3">
+          <button
+            className="btn btn-sm btn-light d-lg-none"
+            onClick={onToggleSidebar}
+            aria-label="Toggle Navigation"
+          >
+            <Menu size={20} />
+          </button>
+          <div className="d-flex align-items-center gap-2">
+            <img
+              src="/icon-192.png"
+              alt="HostelGuard Mascot"
+              className="rounded-2 shadow-sm"
+              style={{ width: '32px', height: '32px', objectFit: 'cover' }}
+            />
+            <span className="fw-bold d-none d-sm-inline" style={{ fontSize: '16px', color: 'var(--hg-text-main)' }}>
+              HostelGuard <span className="text-primary">Enterprise</span>
+            </span>
+          </div>
         </div>
-      </div>
 
-      <div className="d-flex align-items-center gap-3">
-        {user ? (
-          <>
-            <div className="d-flex align-items-center gap-2">
-              <span className={`badge ${getRoleBadgeClass(user.role)}`}>
-                <Shield size={12} className="me-1" />
-                {user.role}
-              </span>
-              <div className="d-none d-md-block text-end">
-                <div className="fw-semibold" style={{ fontSize: '13px' }}>{user.username}</div>
-                <div className="text-muted" style={{ fontSize: '11px' }}>{user.email || 'Online'}</div>
+        <div className="d-flex align-items-center gap-2.5">
+          {/* Quick Technical Reports & Specs Download Button */}
+          <button
+            type="button"
+            onClick={() => setShowReportsModal(true)}
+            className="btn btn-sm btn-outline-primary d-flex align-items-center gap-1.5 fw-semibold shadow-sm"
+            style={{ fontSize: '12px', padding: '5px 11px', backgroundColor: '#eff6ff', borderColor: '#bfdbfe' }}
+            title="Download Technical Reports & Camera Architecture Specifications"
+          >
+            <FileText size={14} className="text-primary" />
+            <span className="d-none d-sm-inline">Reports &amp; Specs</span>
+          </button>
+
+          {user ? (
+            <>
+              <div className="d-flex align-items-center gap-2 ms-1">
+                <span className={`badge ${getRoleBadgeClass(user.role)}`}>
+                  <Shield size={12} className="me-1" />
+                  {user.role}
+                </span>
+                <div className="d-none d-md-block text-end">
+                  <div className="fw-semibold" style={{ fontSize: '13px' }}>{user.username}</div>
+                  <div className="text-muted" style={{ fontSize: '11px' }}>{user.email || 'Online'}</div>
+                </div>
               </div>
-            </div>
 
-            <button
-              onClick={logout}
-              className="btn btn-sm btn-outline-danger d-flex align-items-center gap-1"
-              style={{ fontSize: '12px', padding: '6px 12px' }}
-            >
-              <LogOut size={14} />
-              <span className="d-none d-sm-inline">Sign Out</span>
-            </button>
-          </>
-        ) : (
-          <div className="text-muted" style={{ fontSize: '13px' }}>Guest Session</div>
-        )}
-      </div>
-    </header>
+              <button
+                onClick={logout}
+                className="btn btn-sm btn-outline-danger d-flex align-items-center gap-1 ms-1"
+                style={{ fontSize: '12px', padding: '6px 12px' }}
+              >
+                <LogOut size={14} />
+                <span className="d-none d-sm-inline">Sign Out</span>
+              </button>
+            </>
+          ) : (
+            <div className="text-muted" style={{ fontSize: '13px' }}>Guest Session</div>
+          )}
+        </div>
+      </header>
+
+      {/* Technical Architecture & Camera Verification Reports Modal */}
+      <TechnicalReportsModal
+        isOpen={showReportsModal}
+        onClose={() => setShowReportsModal(false)}
+      />
+    </>
   );
 }
