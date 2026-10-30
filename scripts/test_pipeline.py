@@ -12,7 +12,10 @@ def run_tests():
 
     # Clean previous test run records for 2023CS01 to ensure deterministic execution
     try:
-        con = sqlite3.connect('backend/data/hostel_attendance.sqlite')
+        import os
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        db_path = os.path.abspath(os.path.join(script_dir, '..', 'backend', 'data', 'hostel_attendance.sqlite'))
+        con = sqlite3.connect(db_path)
         cur = con.cursor()
         cur.execute("DELETE FROM attendance_records WHERE roll_number = '2023CS01'")
         cur.execute("DELETE FROM attendance_challenges WHERE student_id IN (SELECT id FROM students WHERE roll_number = '2023CS01')")

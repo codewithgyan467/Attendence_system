@@ -85,15 +85,19 @@ Time:        8.085 s
 
 ## 📚 Certified Release Documentation
 
-* **System Architecture**: [docs/CURRENT_SYSTEM_ARCHITECTURE.md](docs/CURRENT_SYSTEM_ARCHITECTURE.md)
-* **Final Production Certification Audit (24-Point Scorecard)**: [docs/FINAL_PRODUCTION_AUDIT.md](docs/FINAL_PRODUCTION_AUDIT.md)
-* **Biometric Calibration & Technology Evaluation Report**: [docs/BIOMETRIC_CALIBRATION_REPORT.md](docs/BIOMETRIC_CALIBRATION_REPORT.md)
-* **Pre-Change Release Baseline Snapshot**: [docs/RELEASE_BASELINE.md](docs/RELEASE_BASELINE.md)
-* **Official Release Notes**: [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md)
-* **Security & Threat Model Guide**: [docs/SECURITY.md](docs/SECURITY.md)
-* **Student & Warden Guide**: [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
-* **Administrator Guide**: [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)
-* **Production Deployment Guide**: [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
+* **System Architecture**: [docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md](docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md)
+* **21 BCNF Database Schema**: [docs/architecture/DATABASE_SCHEMA.md](docs/architecture/DATABASE_SCHEMA.md)
+* **Master Presentation & Engineering Report (v3.0)**: [docs/reports/hostelguard_presentation_and_engineering_report.md](docs/reports/hostelguard_presentation_and_engineering_report.md)
+* **Camera & Facial Verification Specification**: [docs/reports/CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.md](docs/reports/CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.md)
+* **GPS & Zero-Cloud Geofencing Specification**: [docs/reports/GPS_GEOFENCE_ANTI_SPOOFING_WORKFLOW_REPORT.md](docs/reports/GPS_GEOFENCE_ANTI_SPOOFING_WORKFLOW_REPORT.md)
+* **Final Production Certification Audit (24-Point Scorecard)**: [docs/reports/FINAL_PRODUCTION_AUDIT.md](docs/reports/FINAL_PRODUCTION_AUDIT.md)
+* **Biometric Calibration & Technology Evaluation Report**: [docs/reports/BIOMETRIC_CALIBRATION_REPORT.md](docs/reports/BIOMETRIC_CALIBRATION_REPORT.md)
+* **Pre-Change Release Baseline Snapshot**: [docs/reports/RELEASE_BASELINE.md](docs/reports/RELEASE_BASELINE.md)
+* **Official Release Notes**: [docs/reports/RELEASE_NOTES.md](docs/reports/RELEASE_NOTES.md)
+* **Security & Threat Model Guide**: [docs/architecture/SECURITY.md](docs/architecture/SECURITY.md)
+* **Student & Warden Guide**: [docs/guides/USER_GUIDE.md](docs/guides/USER_GUIDE.md)
+* **Administrator Guide**: [docs/guides/ADMIN_GUIDE.md](docs/guides/ADMIN_GUIDE.md)
+* **Production Deployment Guide**: [docs/guides/DEPLOYMENT_GUIDE.md](docs/guides/DEPLOYMENT_GUIDE.md)
 
 ---
 

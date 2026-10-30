@@ -658,10 +658,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 """
 
 def generate_reports():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    md_path = os.path.join(base_dir, "CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.md")
-    html_path = os.path.join(base_dir, "CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.html")
-    pdf_path = os.path.join(base_dir, "CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.pdf")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    reports_dir = os.path.join(project_root, "docs", "reports")
+    os.makedirs(reports_dir, exist_ok=True)
+
+    md_path = os.path.join(reports_dir, "CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.md")
+    html_path = os.path.join(reports_dir, "CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.html")
+    pdf_path = os.path.join(reports_dir, "CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.pdf")
 
     # 1. Write Markdown file
     with open(md_path, "w", encoding="utf-8") as f:
@@ -920,14 +924,7 @@ def generate_reports():
         f.write(html_page)
     print(f"Generated HTML: {html_path}")
 
-    # 3. Copy to frontend/public/reports/ so Vite serves it statically
-    public_reports_dir = os.path.join(base_dir, "frontend", "public", "reports")
-    os.makedirs(public_reports_dir, exist_ok=True)
-    shutil.copy(md_path, os.path.join(public_reports_dir, "CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.md"))
-    shutil.copy(html_path, os.path.join(public_reports_dir, "CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.html"))
-    print(f"Copied reports to frontend/public/reports/ for direct web access.")
-
-    # 4. Generate PDF using Edge or Chrome Headless
+    # 3. Generate PDF using Edge or Chrome Headless
     browser_exe = None
     edge_paths = [
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
@@ -957,7 +954,6 @@ def generate_reports():
             subprocess.run(cmd, check=True, timeout=30)
             if os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 1000:
                 print(f"Successfully generated PDF: {pdf_path} ({os.path.getsize(pdf_path)} bytes)")
-                shutil.copy(pdf_path, os.path.join(public_reports_dir, "CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.pdf"))
         except Exception as e:
             print(f"Notice during headless PDF generation: {e}")
 

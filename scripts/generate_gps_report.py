@@ -8,10 +8,14 @@ import os
 import subprocess
 
 def generate_pdf():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    md_path = os.path.join(base_dir, "GPS_GEOFENCE_ANTI_SPOOFING_WORKFLOW_REPORT.md")
-    html_path = os.path.join(base_dir, "GPS_GEOFENCE_ANTI_SPOOFING_WORKFLOW_REPORT.html")
-    pdf_path = os.path.join(base_dir, "GPS_GEOFENCE_ANTI_SPOOFING_WORKFLOW_REPORT.pdf")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    reports_dir = os.path.join(project_root, "docs", "reports")
+    os.makedirs(reports_dir, exist_ok=True)
+
+    md_path = os.path.join(reports_dir, "GPS_GEOFENCE_ANTI_SPOOFING_WORKFLOW_REPORT.md")
+    html_path = os.path.join(reports_dir, "GPS_GEOFENCE_ANTI_SPOOFING_WORKFLOW_REPORT.html")
+    pdf_path = os.path.join(reports_dir, "GPS_GEOFENCE_ANTI_SPOOFING_WORKFLOW_REPORT.pdf")
 
     if not os.path.exists(md_path):
         print(f"Error: {md_path} not found.")

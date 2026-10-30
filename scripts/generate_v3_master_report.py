@@ -1110,7 +1110,10 @@ HostelGuard Enterprise v3.0 establishes a new paradigm in collegiate residential
 6. **Sinnott, R. W. (1984):** *Virtues of the Haversine.* Sky and Telescope, 68(2), 159.
 """
 
-output_path = r"e:\attendence_Hostel_system\hostelguard_presentation_and_engineering_report.md"
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+reports_dir = os.path.join(base_dir, "docs", "reports")
+os.makedirs(reports_dir, exist_ok=True)
+output_path = os.path.join(reports_dir, "hostelguard_presentation_and_engineering_report.md")
 with open(output_path, "w", encoding="utf-8") as f:
     f.write(report_content)
 
