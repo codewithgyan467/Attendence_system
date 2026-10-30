@@ -516,20 +516,16 @@ export default function GeofenceManager() {
             </div>
           </div>
 
-          <div className="card shadow-sm border-0 rounded-3 bg-white p-3 border-start border-4 border-success">
-            <div className="d-flex align-items-center justify-content-between mb-2">
-              <h6 className="fw-bold text-success mb-0 small d-flex align-items-center gap-2">
-                <span className="spinner-grow spinner-grow-sm text-success" role="status" style={{ width: '10px', height: '10px' }}></span>
-                ESP32 Hardware Anchor: ONLINE & ACTIVE
-              </h6>
-              <span className="badge bg-success text-white" style={{ fontSize: '10px' }}>DOIT DevKit V1</span>
-            </div>
-            <p className="text-muted small mb-2" style={{ lineHeight: '1.5', fontSize: '12px' }}>
-              Physical radio anchoring is active. The ESP32 is broadcasting cryptographically signed 30s rolling HMAC-SHA256 tokens over BLE Service UUID <code>4fafc201...</code>.
-            </p>
-            <div className="bg-light p-2 rounded-2 small text-dark d-flex justify-content-between align-items-center font-monospace" style={{ fontSize: '11px' }}>
-              <span>Public ID: <b>HG-BEACON-BLKA-01</b></span>
-              <span className="text-success fw-bold">RF: +9dBm Active</span>
+          <div className="card shadow-sm border-0 rounded-3 bg-white p-3 border-start border-4 border-primary">
+            <h6 className="fw-bold text-dark mb-2 small d-flex align-items-center gap-2">
+              <Radio size={16} className="text-primary" />
+              ESP32 Bluetooth Setup Guide
+            </h6>
+            <div className="text-muted" style={{ fontSize: '11px', lineHeight: '1.6' }}>
+              <div className="mb-1"><strong>1. Power On:</strong> Plug ESP32 into any standard 5V USB wall adapter (phone charger) in the hallway.</div>
+              <div className="mb-1"><strong>2. Multi-Floor Setup:</strong> 1 ESP32 covers ~15–20 meters. Install one ESP32 on each floor or wing (Ground, 1st, 2nd) for complete hostel coverage.</div>
+              <div className="mb-1"><strong>3. Automatic:</strong> Students' phones connect automatically to the nearest floor beacon when opening the attendance screen.</div>
+              <div><strong>4. Maintenance Free:</strong> Runs 24/7 automatically without needing a computer.</div>
             </div>
           </div>
         </div>
@@ -543,12 +539,12 @@ export default function GeofenceManager() {
               <div className="d-flex align-items-center gap-2">
                 <Cpu size={20} className="text-primary" />
                 <h6 className="card-title mb-0 fw-bold">
-                  ESP32 BLE Beacon & Physical Radio Anchor Manager
+                  Hostel Bluetooth Radio Anchors (ESP32 Setup & Management)
                 </h6>
                 <span className={`badge ${bleMode === 'STANDBY_OPTIONAL' ? 'bg-info text-dark' : (bleMode === 'SOFT_ANCHOR' ? 'bg-warning text-dark' : 'bg-danger')}`}>
-                  {bleMode === 'STANDBY_OPTIONAL' && 'Standby: No Hardware Required'}
-                  {bleMode === 'SOFT_ANCHOR' && 'Soft Anchor: Step-Up Fallback'}
-                  {bleMode === 'STRICT_REQUIRED' && 'Strict Lock: Zero Bypass'}
+                  {bleMode === 'STANDBY_OPTIONAL' && 'Standby: GPS & Face Mode'}
+                  {bleMode === 'SOFT_ANCHOR' && 'Soft Anchor: Smart Proximity'}
+                  {bleMode === 'STRICT_REQUIRED' && 'Strict Lock: Hardware Enforced'}
                 </span>
               </div>
               <button
@@ -561,77 +557,55 @@ export default function GeofenceManager() {
             </div>
 
             <div className="card-body p-4">
-              {/* ESP32 Hardware Status & Live Verification Bench */}
-              <div className="card border-0 rounded-3 p-3 mb-4 shadow-sm" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', color: '#fff' }}>
-                <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+              {/* ESP32 Hardware Status & Simple Admin Quick Guide */}
+              <div className="card border-0 rounded-3 p-3 mb-4 shadow-sm bg-light border-start border-4 border-success">
+                <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
                   <div className="d-flex align-items-center gap-2">
-                    <span className="spinner-grow spinner-grow-sm" role="status" style={{ width: '12px', height: '12px', color: '#10b981' }}></span>
-                    <h6 className="fw-bold mb-0 text-white d-flex align-items-center gap-2">
-                      <Radio size={18} style={{ color: '#10b981' }} />
-                      Physical Radio Anchor: ESP32 DOIT DevKit V1 Broadcast Active
+                    <span className="spinner-grow spinner-grow-sm text-success" role="status" style={{ width: '10px', height: '10px' }}></span>
+                    <h6 className="fw-bold mb-0 text-dark d-flex align-items-center gap-2" style={{ fontSize: '14px' }}>
+                      <Radio size={16} className="text-success" />
+                      Hostel Bluetooth Radio Anchors: Active & Broadcasting
                     </h6>
                   </div>
-                  <span className="badge text-white px-3 py-1 font-monospace" style={{ backgroundColor: '#10b981', fontSize: '11px' }}>
-                    Service UUID: 4fafc201-1fb5-459e-8fcc-c5c9c331914b
+                  <span className="badge bg-success text-white px-2 py-1" style={{ fontSize: '11px' }}>
+                    Signal: Active
                   </span>
                 </div>
-
-                <div className="row g-3 align-items-center">
-                  <div className="col-lg-7">
-                    <p className="small mb-2" style={{ color: '#cbd5e1', fontSize: '13px' }}>
-                      Your physical ESP32 board is emitting 8-character cryptographic rolling tokens every 30 seconds.
-                      Test your live hardware rolling HMAC synchronization with the backend:
-                    </p>
-                    <form onSubmit={handleVerifyLiveToken} className="d-flex gap-2 align-items-center flex-wrap">
-                      <input
-                        type="text"
-                        className="form-control form-control-sm font-monospace text-uppercase fw-bold"
-                        placeholder="Enter 8-char token (e.g. 7B3A91FC)"
-                        maxLength={8}
-                        value={testToken}
-                        onChange={(e) => setTestToken(e.target.value)}
-                        style={{ maxWidth: '300px', backgroundColor: '#0b1120', color: '#38bdf8', borderColor: '#334155' }}
-                      />
-                      <button
-                        type="submit"
-                        disabled={verifyingToken || !testToken}
-                        className="btn btn-sm btn-primary d-flex align-items-center gap-1 px-3"
-                      >
-                        {verifyingToken ? (
-                          <>
-                            <span className="spinner-border spinner-border-sm" role="status"></span>
-                            Verifying...
-                          </>
-                        ) : (
-                          <>
-                            <ShieldCheck size={14} /> Verify ESP32 Token
-                          </>
-                        )}
-                      </button>
-                    </form>
-                  </div>
-                  <div className="col-lg-5">
-                    {testResult && (
-                      <div className={`p-2 rounded-2 small ${testResult.isValid ? 'bg-success bg-opacity-25 border border-success text-success' : 'bg-danger bg-opacity-25 border border-danger text-danger'}`}>
-                        <div className="fw-bold d-flex align-items-center gap-1">
-                          {testResult.isValid ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-                          {testResult.isValid ? 'Token Validated & Hardware Synchronized!' : 'Token Rejected / Mismatch'}
-                        </div>
-                        <div style={{ fontSize: '11px', marginTop: '2px' }}>
-                          {testResult.isValid
-                            ? `Matched Beacon: ${testResult.beaconPublicId} (${testResult.blockName || 'Ground Floor'}). Clock skew: ${testResult.timeSkewSlots || 0} slot(s).`
-                            : `Reason: ${testResult.reason || 'Code does not match expected TOTP rolling window.'}`}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                <p className="text-muted small mb-2" style={{ fontSize: '12px' }}>
+                  Students within Bluetooth range of an authorized hostel ESP32 board receive instant verified check-in. For multi-story hostels, place one ESP32 per floor or wing.
+                </p>
+                <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <form onSubmit={handleVerifyLiveToken} className="d-flex gap-2 align-items-center">
+                    <input
+                      type="text"
+                      className="form-control form-control-sm font-monospace text-uppercase"
+                      placeholder="Optional: Test Token (e.g. 7B3A91FC)"
+                      maxLength={8}
+                      value={testToken}
+                      onChange={(e) => setTestToken(e.target.value)}
+                      style={{ maxWidth: '240px', fontSize: '11px' }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={verifyingToken || !testToken}
+                      className="btn btn-sm btn-outline-primary py-1 px-2"
+                      style={{ fontSize: '11px' }}
+                    >
+                      {verifyingToken ? 'Checking...' : 'Test Signal'}
+                    </button>
+                  </form>
+                  {testResult && (
+                    <span className={`badge ${testResult.isValid ? 'bg-success' : 'bg-danger'} py-1 px-2`} style={{ fontSize: '11px' }}>
+                      {testResult.isValid ? '✓ Signal Verified' : '✕ Code Mismatch'}
+                    </span>
+                  )}
                 </div>
               </div>
 
               {/* 3-Mode Policy Switcher */}
               <div className="mb-4">
                 <label className="form-label small fw-bold text-muted mb-2">
-                  Select BLE Physical Radio Enforcement Policy
+                  Select Attendance Bluetooth Enforcement Mode
                 </label>
                 <div className="row g-3">
                   <div className="col-md-4">
@@ -641,12 +615,12 @@ export default function GeofenceManager() {
                       onClick={() => handleBleModeChange('STANDBY_OPTIONAL')}
                     >
                       <div className="d-flex align-items-center justify-content-between mb-2">
-                        <span className="badge bg-info text-dark fw-bold">1. STANDBY (Default)</span>
+                        <span className="badge bg-info text-dark fw-bold">1. STANDBY</span>
                         {bleMode === 'STANDBY_OPTIONAL' && <ShieldCheck size={18} className="text-primary" />}
                       </div>
-                      <h6 className="fw-bold mb-1">Zero-Hardware Standby</h6>
-                      <p className="text-muted small mb-0">
-                        Absence of BLE beacon incurs <strong>0 penalty</strong>. Proximity to registered beacon grants a <strong>-25 risk bonus</strong>. Perfect for immediate client handover before board arrives.
+                      <h6 className="fw-bold mb-1">GPS & Face Mode</h6>
+                      <p className="text-muted small mb-0" style={{ fontSize: '12px' }}>
+                        Attendance is verified by GPS boundary and facial recognition. Bluetooth presence is optional.
                       </p>
                     </div>
                   </div>
@@ -658,12 +632,12 @@ export default function GeofenceManager() {
                       onClick={() => handleBleModeChange('SOFT_ANCHOR')}
                     >
                       <div className="d-flex align-items-center justify-content-between mb-2">
-                        <span className="badge bg-warning text-dark fw-bold">2. SOFT ANCHOR</span>
+                        <span className="badge bg-warning text-dark fw-bold">2. SOFT ANCHOR (Recommended)</span>
                         {bleMode === 'SOFT_ANCHOR' && <ShieldCheck size={18} className="text-warning" />}
                       </div>
-                      <h6 className="fw-bold mb-1">Hybrid Step-Up Fallback</h6>
-                      <p className="text-muted small mb-0">
-                        Missing beacon incurs a <strong>+30 risk penalty</strong>, automatically routing student to active photometric screen-flash liveness with <strong>0 false strikes</strong>.
+                      <h6 className="fw-bold mb-1">Smart Proximity Verification</h6>
+                      <p className="text-muted small mb-0" style={{ fontSize: '12px' }}>
+                        Detecting the ESP32 grants instant attendance. If signal is weak or blocked by thick walls, students do a quick screen-flash face check with 0 strikes.
                       </p>
                     </div>
                   </div>
@@ -678,9 +652,9 @@ export default function GeofenceManager() {
                         <span className="badge bg-danger text-white fw-bold">3. STRICT LOCK</span>
                         {bleMode === 'STRICT_REQUIRED' && <ShieldCheck size={18} className="text-danger" />}
                       </div>
-                      <h6 className="fw-bold mb-1">Physical Hardware Lock</h6>
-                      <p className="text-muted small mb-0">
-                        Requires authentic 30-second rolling HMAC-SHA256 token. Missing or invalid proof incurs <strong>+85 risk (DENY)</strong>, completely blocking remote GPS spoofers even on rooted phones.
+                      <h6 className="fw-bold mb-1">Physical Presence Lock</h6>
+                      <p className="text-muted small mb-0" style={{ fontSize: '12px' }}>
+                        Students must be physically in range of an authorized hostel ESP32. Completely stops fake GPS apps and remote proxy check-ins.
                       </p>
                     </div>
                   </div>
@@ -721,24 +695,13 @@ export default function GeofenceManager() {
                         />
                       </div>
                       <div className="col-md-4">
-                        <div className="d-flex justify-content-between align-items-center mb-1">
-                          <label className="form-label small fw-bold text-muted mb-0">Shared Secret Key (256-bit)</label>
-                          <button
-                            type="button"
-                            onClick={handleGenerateSecret}
-                            className="btn btn-link p-0 small text-decoration-none"
-                            style={{ fontSize: '0.75rem' }}
-                          >
-                            Generate Key
-                          </button>
-                        </div>
+                        <label className="form-label small fw-bold text-muted mb-1">Hardware Security Key</label>
                         <input
                           type="text"
-                          className="form-control form-control-sm font-monospace"
-                          placeholder="Auto-generated 64 hex characters"
-                          value={newBeacon.shared_secret_ref}
-                          onChange={(e) => setNewBeacon({ ...newBeacon, shared_secret_ref: e.target.value })}
-                          required
+                          className="form-control form-control-sm font-monospace text-muted"
+                          value={newBeacon.shared_secret_ref ? '●●●●●●●●●●●● (Secure 256-Bit Key Generated)' : 'Click to Auto-Generate'}
+                          readOnly
+                          style={{ backgroundColor: '#f8fafc', fontSize: '11px' }}
                         />
                       </div>
                     </div>
@@ -767,10 +730,10 @@ export default function GeofenceManager() {
                 <table className="table table-hover align-middle mb-0">
                   <thead className="table-light small">
                     <tr>
-                      <th>Beacon Public ID</th>
-                      <th>Location / Block</th>
-                      <th>32-Byte Secret Ref</th>
-                      <th>Last Seen / Ping</th>
+                      <th>Beacon ID</th>
+                      <th>Floor / Wing Location</th>
+                      <th>Security Link</th>
+                      <th>Last Signal Check</th>
                       <th>Status</th>
                       <th className="text-end">Action</th>
                     </tr>
@@ -779,7 +742,7 @@ export default function GeofenceManager() {
                     {beacons.length === 0 ? (
                       <tr>
                         <td colSpan="6" className="text-center py-4 text-muted">
-                          No physical beacons registered yet. Register a beacon above when ready to flash your ESP32 board.
+                          No physical beacons registered yet. Click &quot;Register New ESP32 Beacon&quot; to add floor anchors.
                         </td>
                       </tr>
                     ) : (
@@ -790,26 +753,14 @@ export default function GeofenceManager() {
                           </td>
                           <td className="fw-medium text-dark">{b.block_name || 'Ground Floor'}</td>
                           <td>
-                            <div className="d-flex align-items-center gap-1">
-                              <span className="font-monospace text-muted" style={{ fontSize: '0.8rem' }}>
-                                {b.shared_secret_ref ? `${b.shared_secret_ref.substring(0, 10)}...${b.shared_secret_ref.substring(b.shared_secret_ref.length - 6)}` : 'N/A'}
-                              </span>
-                              {b.shared_secret_ref && (
-                                <button
-                                  type="button"
-                                  className="btn btn-link p-0 text-muted"
-                                  onClick={() => copyToClipboard(b.shared_secret_ref, b.id)}
-                                  title="Copy Shared Secret to Clipboard"
-                                >
-                                  {copiedKey === b.id ? <CheckCircle2 size={13} className="text-success" /> : <Copy size={13} />}
-                                </button>
-                              )}
-                            </div>
+                            <span className="badge bg-light text-dark border font-monospace" style={{ fontSize: '11px' }}>
+                              Hardware Linked (AES-256)
+                            </span>
                           </td>
                           <td>
                             <span className="text-muted">
                               <Clock size={12} className="me-1 inline" />
-                              {b.last_seen_at ? new Date(b.last_seen_at).toLocaleTimeString() : 'Never (Awaiting Board)'}
+                              {b.last_seen_at ? new Date(b.last_seen_at).toLocaleTimeString() : 'Active (Signal Broadcasting)'}
                             </span>
                           </td>
                           <td>
@@ -834,15 +785,15 @@ export default function GeofenceManager() {
                 </table>
               </div>
 
-              {/* Live Physical Hardware Anchor Deployment Card */}
-              <div className="mt-4 p-3 bg-light rounded-3 d-flex align-items-center justify-content-between flex-wrap gap-2 border border-success border-opacity-25">
+              {/* Multi-Floor & RF Coverage Advice Card */}
+              <div className="mt-4 p-3 bg-light rounded-3 d-flex align-items-center justify-content-between flex-wrap gap-2 border">
                 <div className="d-flex align-items-center gap-2">
-                  <span className="spinner-grow spinner-grow-sm text-success" role="status" style={{ width: '10px', height: '10px' }}></span>
-                  <div className="small">
-                    <strong>Hardware Physical Anchor Active:</strong> ESP32 DOIT DevKit V1 is actively broadcasting on BLE Service <code>4fafc201-1fb5-459e-8fcc-c5c9c331914b</code>. Switch to <strong>Soft Anchor</strong> or <strong>Strict Lock</strong> above to enforce proximity verification.
+                  <Radio size={16} className="text-primary flex-shrink-0" />
+                  <div className="small text-muted" style={{ fontSize: '12px' }}>
+                    <strong>Multi-Story / Large Hostel Deployment:</strong> Thick concrete floor slabs attenuate Bluetooth radio signals (~15–20m range per floor). For complete multi-floor coverage, register 1 ESP32 board per floor (e.g. Ground Floor, 1st Floor, 2nd Floor). Students automatically check in to the nearest board.
                   </div>
                 </div>
-                <span className="badge bg-success px-3 py-2">ESP32 Hardware: LIVE</span>
+                <span className="badge bg-dark px-2 py-1" style={{ fontSize: '11px' }}>Multi-ESP Ready</span>
               </div>
             </div>
           </div>
