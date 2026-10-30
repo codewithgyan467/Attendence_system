@@ -200,6 +200,7 @@ export const api = {
     generateBleSecret: () => request('/admin/ble/generate-secret', { method: 'POST' }),
     saveBleBeacon: (data) => request('/admin/ble/beacons', { method: 'POST', body: JSON.stringify(data) }),
     deleteBleBeacon: (id) => request(`/admin/ble/beacons/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    verifyBleToken: (data) => request('/admin/ble/verify-token', { method: 'POST', body: JSON.stringify(data) }),
     getReports: (params = {}) => {
       const q = new URLSearchParams(params).toString();
       return request(`/admin/reports${q ? '?' + q : ''}`);

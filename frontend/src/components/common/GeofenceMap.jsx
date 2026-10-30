@@ -33,13 +33,16 @@ const createStudentIcon = (isInside) =>
   });
 
 export default function GeofenceMap({
-  centerLat = 28.5355,
-  centerLng = 77.3910,
+  centerLat = null,
+  centerLng = null,
+  latitude = null,
+  longitude = null,
   radius = 20,
   studentLat = null,
   studentLng = null,
   gpsAccuracy = null,
-  locationName = 'Hostel Campus Boundary',
+  locationName = null,
+  facilityName = null,
   interactive = false,
   onLocationChange = null,
   height = '360px',
@@ -54,8 +57,14 @@ export default function GeofenceMap({
   const accuracyCircleRef = useRef(null);
   const polylineRef = useRef(null);
 
-  const validCenterLat = Number.isFinite(Number(centerLat)) ? Number(centerLat) : 28.5355;
-  const validCenterLng = Number.isFinite(Number(centerLng)) ? Number(centerLng) : 77.3910;
+  // Robust prop fallback: accept both centerLat/centerLng and latitude/longitude
+  const rawLat = centerLat !== null && centerLat !== undefined ? centerLat : latitude;
+  const rawLng = centerLng !== null && centerLng !== undefined ? centerLng : longitude;
+  const resolvedName = locationName || facilityName || 'Hostel Campus Boundary';
+
+  // Default to AEC Guwahati anchor (26.140462, 91.656606) instead of generic Noida
+  const validCenterLat = Number.isFinite(Number(rawLat)) ? Number(rawLat) : 26.140462;
+  const validCenterLng = Number.isFinite(Number(rawLng)) ? Number(rawLng) : 91.656606;
   const validRadius = Math.max(5, Number(radius) || 20);
 
   const hasStudentPos =
@@ -122,12 +131,23 @@ export default function GeofenceMap({
       dashArray: '5, 6',
     }).addTo(map);
 
-    // Initial center marker
+    // Initial center marker (draggable in interactive admin mode)
     const centerMarker = L.marker([validCenterLat, validCenterLng], {
-      icon: createCenterIcon(locationName),
+      icon: createCenterIcon(resolvedName),
+      draggable: Boolean(interactive),
     })
       .addTo(map)
-      .bindPopup(`<strong>${locationName}</strong><br/>Permitted Radius: ${validRadius}m`);
+      .bindPopup(`<strong>${resolvedName}</strong><br/>Permitted Radius: ${validRadius}m`);
+
+    if (interactive && onLocationChange) {
+      centerMarker.on('dragend', (e) => {
+        const pos = e.target.getLatLng();
+        onLocationChange({
+          latitude: parseFloat(pos.lat.toFixed(6)),
+          longitude: parseFloat(pos.lng.toFixed(6)),
+        });
+      });
+    }
 
     mapRef.current = map;
     geofenceCircleRef.current = circle;
@@ -186,7 +206,7 @@ export default function GeofenceMap({
     if (centerMarkerRef.current) {
       centerMarkerRef.current.setLatLng(centerLatLng);
       centerMarkerRef.current.setPopupContent(
-        `<strong>${locationName}</strong><br/>Permitted Radius: <b>${validRadius}m</b>`
+        `<strong>${resolvedName}</strong><br/>Permitted Radius: <b>${validRadius}m</b>`
       );
     }
 
@@ -198,7 +218,7 @@ export default function GeofenceMap({
     if (!hasStudentPos) {
       map.setView(centerLatLng, map.getZoom() || 17, { animate: true });
     }
-  }, [validCenterLat, validCenterLng, validRadius, locationName, hasStudentPos]);
+  }, [validCenterLat, validCenterLng, validRadius, resolvedName, hasStudentPos]);
 
   // 4. Update student position, GPS accuracy, and connecting guide polyline
   useEffect(() => {

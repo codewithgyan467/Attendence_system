@@ -1258,6 +1258,20 @@ router.post('/ble/generate-secret', requireRole('ADMIN'), async (req, res) => {
   }
 });
 
+router.post('/ble/verify-token', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const { beacon_public_id, rolling_code, slot } = req.body;
+    const result = await bleBeaconService.verifyBleBeaconProof({
+      beaconPublicId: beacon_public_id,
+      rollingCode: rolling_code,
+      timestampSlot: slot ? Number(slot) : null
+    });
+    res.json({ success: true, verification: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.post('/ble/beacons', requireRole('ADMIN'), async (req, res) => {
   try {
     const { id, beacon_public_id, block_name, shared_secret_ref, is_active = 1 } = req.body;

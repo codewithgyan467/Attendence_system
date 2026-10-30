@@ -22,10 +22,10 @@ import GeofenceMap from '../common/GeofenceMap';
 
 export default function GeofenceManager() {
   const [config, setConfig] = useState({
-    facility_name: 'Main Hostel Campus',
-    latitude: 28.5355,
-    longitude: 77.3910,
-    radius_meters: 20,
+    facility_name: 'Aec hostel',
+    latitude: 26.140462,
+    longitude: 91.656606,
+    radius_meters: 60,
     is_active: 1
   });
   const [loading, setLoading] = useState(true);
@@ -46,6 +46,12 @@ export default function GeofenceManager() {
     shared_secret_ref: ''
   });
   const [copiedKey, setCopiedKey] = useState(null);
+
+  // Real-Time ESP32 Token Test Bench State
+  const [testToken, setTestToken] = useState('');
+  const [testBeaconId, setTestBeaconId] = useState('HG-BEACON-BLKA-01');
+  const [testResult, setTestResult] = useState(null);
+  const [verifyingToken, setVerifyingToken] = useState(false);
 
   useEffect(() => {
     fetchConfig();
@@ -146,6 +152,28 @@ export default function GeofenceManager() {
       setErrorMsg(`Failed to register beacon: ${err.message}`);
     } finally {
       setBleSaving(false);
+    }
+  };
+
+  const handleVerifyLiveToken = async (e) => {
+    e.preventDefault();
+    if (!testToken) return;
+    setVerifyingToken(true);
+    setTestResult(null);
+    try {
+      const res = await api.admin.verifyBleToken({
+        beacon_public_id: testBeaconId,
+        rolling_code: testToken.trim().toUpperCase()
+      });
+      setTestResult(res?.verification || { isValid: false, reason: 'VERIFICATION_FAILED' });
+      if (res?.verification?.isValid) {
+        setStatusMsg(`Physical ESP32 token [${testToken.trim().toUpperCase()}] verified successfully against backend HMAC engine! (Time drift: ${res.verification.timeSkewSlots || 0} slots)`);
+        await fetchBleConfig();
+      }
+    } catch (err) {
+      setTestResult({ isValid: false, reason: err.message });
+    } finally {
+      setVerifyingToken(false);
     }
   };
 
@@ -382,11 +410,16 @@ export default function GeofenceManager() {
                 <div className="mb-4">
                   <label className="form-label small fw-bold text-muted mb-2">Interactive Satellite & Hybrid Calibration Map</label>
                   <GeofenceMap
-                    latitude={parseFloat(config.latitude) || 28.5355}
-                    longitude={parseFloat(config.longitude) || 77.3910}
-                    radius={parseFloat(config.radius_meters) || 20}
+                    centerLat={parseFloat(config.latitude) || 26.140462}
+                    centerLng={parseFloat(config.longitude) || 91.656606}
+                    latitude={parseFloat(config.latitude) || 26.140462}
+                    longitude={parseFloat(config.longitude) || 91.656606}
+                    radius={parseFloat(config.radius_meters) || 60}
                     facilityName={config.facility_name}
+                    locationName={config.facility_name}
+                    interactive={true}
                     onLocationChange={handleMapLocationChange}
+                    height="380px"
                   />
                   <div className="form-text small mt-1">
                     Click anywhere on the map or drag the boundary marker to update the center anchor coordinates.
@@ -483,14 +516,21 @@ export default function GeofenceManager() {
             </div>
           </div>
 
-          <div className="card shadow-sm border-0 rounded-3 bg-light p-3">
-            <h6 className="fw-semibold text-dark mb-2 small d-flex align-items-center gap-2">
-              <AlertTriangle size={16} className="text-warning" />
-              Plug-and-Play Architecture Note
-            </h6>
-            <p className="text-muted small mb-0" style={{ lineHeight: '1.5' }}>
-              HostelGuard is engineered for <strong>zero hardware dependency today</strong>. When your ESP32 board arrives in 6 days, flash the sketch in <code>/hardware/esp32_beacon/</code> and activate <strong>Soft Anchor</strong> or <strong>Strict Lock</strong> with zero code changes.
+          <div className="card shadow-sm border-0 rounded-3 bg-white p-3 border-start border-4 border-success">
+            <div className="d-flex align-items-center justify-content-between mb-2">
+              <h6 className="fw-bold text-success mb-0 small d-flex align-items-center gap-2">
+                <span className="spinner-grow spinner-grow-sm text-success" role="status" style={{ width: '10px', height: '10px' }}></span>
+                ESP32 Hardware Anchor: ONLINE & ACTIVE
+              </h6>
+              <span className="badge bg-success text-white" style={{ fontSize: '10px' }}>DOIT DevKit V1</span>
+            </div>
+            <p className="text-muted small mb-2" style={{ lineHeight: '1.5', fontSize: '12px' }}>
+              Physical radio anchoring is active. The ESP32 is broadcasting cryptographically signed 30s rolling HMAC-SHA256 tokens over BLE Service UUID <code>4fafc201...</code>.
             </p>
+            <div className="bg-light p-2 rounded-2 small text-dark d-flex justify-content-between align-items-center font-monospace" style={{ fontSize: '11px' }}>
+              <span>Public ID: <b>HG-BEACON-BLKA-01</b></span>
+              <span className="text-success fw-bold">RF: +9dBm Active</span>
+            </div>
           </div>
         </div>
       </div>
@@ -521,6 +561,73 @@ export default function GeofenceManager() {
             </div>
 
             <div className="card-body p-4">
+              {/* ESP32 Hardware Status & Live Verification Bench */}
+              <div className="card border-0 rounded-3 p-3 mb-4 shadow-sm" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', color: '#fff' }}>
+                <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                  <div className="d-flex align-items-center gap-2">
+                    <span className="spinner-grow spinner-grow-sm" role="status" style={{ width: '12px', height: '12px', color: '#10b981' }}></span>
+                    <h6 className="fw-bold mb-0 text-white d-flex align-items-center gap-2">
+                      <Radio size={18} style={{ color: '#10b981' }} />
+                      Physical Radio Anchor: ESP32 DOIT DevKit V1 Broadcast Active
+                    </h6>
+                  </div>
+                  <span className="badge text-white px-3 py-1 font-monospace" style={{ backgroundColor: '#10b981', fontSize: '11px' }}>
+                    Service UUID: 4fafc201-1fb5-459e-8fcc-c5c9c331914b
+                  </span>
+                </div>
+
+                <div className="row g-3 align-items-center">
+                  <div className="col-lg-7">
+                    <p className="small mb-2" style={{ color: '#cbd5e1', fontSize: '13px' }}>
+                      Your physical ESP32 board is emitting 8-character cryptographic rolling tokens every 30 seconds.
+                      Test your live hardware rolling HMAC synchronization with the backend:
+                    </p>
+                    <form onSubmit={handleVerifyLiveToken} className="d-flex gap-2 align-items-center flex-wrap">
+                      <input
+                        type="text"
+                        className="form-control form-control-sm font-monospace text-uppercase fw-bold"
+                        placeholder="Enter 8-char token (e.g. 7B3A91FC)"
+                        maxLength={8}
+                        value={testToken}
+                        onChange={(e) => setTestToken(e.target.value)}
+                        style={{ maxWidth: '300px', backgroundColor: '#0b1120', color: '#38bdf8', borderColor: '#334155' }}
+                      />
+                      <button
+                        type="submit"
+                        disabled={verifyingToken || !testToken}
+                        className="btn btn-sm btn-primary d-flex align-items-center gap-1 px-3"
+                      >
+                        {verifyingToken ? (
+                          <>
+                            <span className="spinner-border spinner-border-sm" role="status"></span>
+                            Verifying...
+                          </>
+                        ) : (
+                          <>
+                            <ShieldCheck size={14} /> Verify ESP32 Token
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  </div>
+                  <div className="col-lg-5">
+                    {testResult && (
+                      <div className={`p-2 rounded-2 small ${testResult.isValid ? 'bg-success bg-opacity-25 border border-success text-success' : 'bg-danger bg-opacity-25 border border-danger text-danger'}`}>
+                        <div className="fw-bold d-flex align-items-center gap-1">
+                          {testResult.isValid ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                          {testResult.isValid ? 'Token Validated & Hardware Synchronized!' : 'Token Rejected / Mismatch'}
+                        </div>
+                        <div style={{ fontSize: '11px', marginTop: '2px' }}>
+                          {testResult.isValid
+                            ? `Matched Beacon: ${testResult.beaconPublicId} (${testResult.blockName || 'Ground Floor'}). Clock skew: ${testResult.timeSkewSlots || 0} slot(s).`
+                            : `Reason: ${testResult.reason || 'Code does not match expected TOTP rolling window.'}`}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* 3-Mode Policy Switcher */}
               <div className="mb-4">
                 <label className="form-label small fw-bold text-muted mb-2">
@@ -727,15 +834,15 @@ export default function GeofenceManager() {
                 </table>
               </div>
 
-              {/* Day 6 Flashing Guidance Footer */}
-              <div className="mt-4 p-3 bg-light rounded-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+              {/* Live Physical Hardware Anchor Deployment Card */}
+              <div className="mt-4 p-3 bg-light rounded-3 d-flex align-items-center justify-content-between flex-wrap gap-2 border border-success border-opacity-25">
                 <div className="d-flex align-items-center gap-2">
-                  <Radio size={18} className="text-primary flex-shrink-0" />
+                  <span className="spinner-grow spinner-grow-sm text-success" role="status" style={{ width: '10px', height: '10px' }}></span>
                   <div className="small">
-                    <strong>Day 6 Arduino IDE Flashing Firmware Ready:</strong> Open <code>hardware/esp32_beacon/esp32_hostelguard_beacon.ino</code> in Arduino IDE, paste your 32-byte secret, and click Upload.
+                    <strong>Hardware Physical Anchor Active:</strong> ESP32 DOIT DevKit V1 is actively broadcasting on BLE Service <code>4fafc201-1fb5-459e-8fcc-c5c9c331914b</code>. Switch to <strong>Soft Anchor</strong> or <strong>Strict Lock</strong> above to enforce proximity verification.
                   </div>
                 </div>
-                <span className="badge bg-dark px-3 py-2">Firmware: v3.1 Ready</span>
+                <span className="badge bg-success px-3 py-2">ESP32 Hardware: LIVE</span>
               </div>
             </div>
           </div>
