@@ -783,7 +783,7 @@ const seedInitialData = async () => {
     if (existingBle && existingBle.count === 0) {
       await runQuery(`
         INSERT INTO site_ble_beacons (id, geofence_id, beacon_public_id, key_version, shared_secret_ref, block_name, is_active)
-        VALUES (?, ?, 'HG-BEACON-BLKA-01', 1, 'SEC_REF_KEY_BLKA_01', 'Block A Ground Floor', 1)
+        VALUES (?, ?, 'HG-BEACON-BLKA-01', 1, '4a8f9c1b2e3d4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a', 'Block A Ground Floor', 1)
       `, [uuidv4(), activeGeoId]);
     }
   }

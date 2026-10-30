@@ -25,8 +25,9 @@
 // ----------------------------------------------------------------------------
 // 1. CONFIGURATION PARAMETERS (Paste from HostelGuard Admin Dashboard)
 // ----------------------------------------------------------------------------
-const char* WIFI_SSID     = "YOUR_HOSTEL_WIFI_SSID";     // Local Wi-Fi for NTP Time Sync
-const char* WIFI_PASSWORD = "YOUR_HOSTEL_WIFI_PASSWORD"; // Wi-Fi Password
+const char* WIFI_SSID        = "iPhone ";     // Primary Wi-Fi SSID
+const char* WIFI_SSID_ALT    = "iPhone";      // Alternative SSID without trailing space
+const char* WIFI_PASSWORD    = "paword123";  // Wi-Fi Password
 
 // Public Beacon Identifier (Must match ID in Admin Dashboard)
 const char* BEACON_PUBLIC_ID = "HG-BEACON-BLKA-01";
@@ -116,20 +117,34 @@ class ServerCallbacks: public BLEServerCallbacks {
 // 5. SETUP & INITIALIZATION
 // ----------------------------------------------------------------------------
 void setup() {
-  Serial.begin(115200);
+  // Use 9600 baud to match Arduino IDE Serial Monitor default perfectly
+  Serial.begin(9600);
   delay(1000);
   Serial.println("\n=======================================================");
   Serial.println("  HOSTELGUARD ENTERPRISE v3.1: ESP32 BLE BEACON FIRMWARE");
   Serial.println("=======================================================");
 
   // Connect to Wi-Fi for initial NTP time synchronization
-  Serial.printf("Connecting to Wi-Fi SSID '%s' for NTP Time Sync...\n", WIFI_SSID);
+  Serial.printf("Connecting to Wi-Fi SSID '%s'...\n", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   int retry = 0;
-  while (WiFi.status() != WL_CONNECTED && retry < 20) {
+  while (WiFi.status() != WL_CONNECTED && retry < 16) {
     delay(500);
     Serial.print(".");
     retry++;
+  }
+
+  // If failed with trailing space, try alternative without space
+  if (WiFi.status() != WL_CONNECTED && strlen(WIFI_SSID_ALT) > 0) {
+    Serial.printf("\nRetrying with alternative SSID '%s'...\n", WIFI_SSID_ALT);
+    WiFi.disconnect();
+    WiFi.begin(WIFI_SSID_ALT, WIFI_PASSWORD);
+    retry = 0;
+    while (WiFi.status() != WL_CONNECTED && retry < 16) {
+      delay(500);
+      Serial.print(".");
+      retry++;
+    }
   }
 
   if (WiFi.status() == WL_CONNECTED) {
@@ -140,8 +155,12 @@ void setup() {
       Serial.printf("RTC Clock Synchronized! Current Time: %02d:%02d:%02d\n",
                     timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
     }
+    // Shut down Wi-Fi radio once time is synced to dedicate 100% RF power to BLE
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    Serial.println("[Wi-Fi Closed] 100% RF Transceiver dedicated to BLE Proximity Broadcasting.");
   } else {
-    Serial.println("\n[Warning] Wi-Fi connection timed out. Falling back to monotonic RTC epoch counter.");
+    Serial.println("\n[Notice] Wi-Fi offline or timed out. Monotonic counter active.");
   }
 
   // Initialize BLE Stack
@@ -163,9 +182,19 @@ void setup() {
   pCharacteristic->addDescriptor(new BLE2902());
   pService->start();
 
-  // Configure BLE Advertising
+  // Configure BLE Advertising with explicit Device Name for iOS CoreBluetooth / LightBlue
   BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
+
+  BLEAdvertisementData advData;
+  advData.setName(BEACON_PUBLIC_ID);
+  advData.setCompleteServices(BLEUUID(SERVICE_UUID));
+  pAdvertising->setAdvertisementData(advData);
+
+  BLEAdvertisementData scanData;
+  scanData.setName(BEACON_PUBLIC_ID);
+  pAdvertising->setScanResponseData(scanData);
+
   pAdvertising->setScanResponse(true);
   pAdvertising->setMinPreferred(0x06); // iPhone connection helper
   pAdvertising->setMinPreferred(0x12);
