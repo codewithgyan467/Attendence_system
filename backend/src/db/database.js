@@ -765,7 +765,7 @@ const seedInitialData = async () => {
     activeGeoId = uuidv4();
     await runQuery(`
       INSERT INTO geofence_configs (id, hostel_name, latitude, longitude, radius_meters, is_active, updated_by)
-      VALUES (?, 'Hostel Main Campus Facility', 28.545000, 77.192600, 20.0, 1, 'System Bootstrap')
+      VALUES (?, 'Aec hostel', 26.140462, 91.656606, 60.0, 1, 'System Bootstrap')
     `, [activeGeoId]);
   }
 

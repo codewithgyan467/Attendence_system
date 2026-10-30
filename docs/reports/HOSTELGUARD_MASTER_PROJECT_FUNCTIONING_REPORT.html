@@ -314,20 +314,20 @@ If $d > r_{\text{permitted}}$ (default $20.0\text{ m}$), the check-in is rejecte
 
 ---
 
-## 5. Plug-and-Play ESP32 BLE Hardware Architecture (6-Day Horizon)
+## 5. Physical ESP32 Hardware Radio Architecture, Multi-Floor Scaling & Anti-Theft Protection
 
-HostelGuard Enterprise features a hot-swappable radio anchor architecture:
+HostelGuard Enterprise employs a zero-trust physical radio anchor architecture featuring commodity ESP32 hardware boards:
 
 \`\`\`mermaid
 graph LR
-    subgraph Mode 1 ["STANDBY_OPTIONAL (Today)"]
-        M1["Zero Hardware Required"]
-        M1 --> P1["Missing BLE Proof: 0 Penalty"]
+    subgraph Mode 1 ["STANDBY_OPTIONAL (Standard)"]
+        M1["GPS & Facial Mode"]
+        M1 --> P1["BLE Presence: Optional"]
         M1 --> B1["Valid BLE Proof: -25 Risk Bonus"]
     end
 
-    subgraph Mode 2 ["SOFT_ANCHOR (Hybrid)"]
-        M2["Step-Up Fallback"]
+    subgraph Mode 2 ["SOFT_ANCHOR (Recommended)"]
+        M2["Smart Proximity Verification"]
         M2 --> P2["Missing BLE: +30 Risk (Routes to Flash PAD)"]
         M2 --> B2["0 False Strikes"]
     end
@@ -339,17 +339,29 @@ graph LR
     end
 \`\`\`
 
-### 30-Second Rolling TOTP Token Verification
+### 5.1 30-Second Rolling TOTP Token Verification
 The ESP32 broadcasts a rolling 8-character token computed using \`HMAC-SHA256\`:
 $$\text{Token} = \text{Truncate}_8\Big(\text{HMAC-SHA256}\big(K_{\text{shared}}, \text{BeaconID} \mathbin{\Vert} \text{Slot}_{30\text{s}}\big)\Big)$$
 
 Server-side \`bleBeaconService.js\` evaluates candidates across $[\text{Slot} - 1, \text{Slot}, \text{Slot} + 1]$, accommodating $\pm 30\text{ s}$ hardware clock drift.
 
-### Day 6 Deployment Checklist
-1. Open \`hardware/esp32_beacon/esp32_hostelguard_beacon.ino\` in Arduino IDE.
-2. Paste Wi-Fi SSID and 32-byte secret generated from the Admin Web App.
-3. Click Upload. The ESP32 immediately begins advertising the HostelGuard service.
-4. In Admin Dashboard, toggle BLE Mode from **Standby** to **Soft Anchor** or **Strict Lock**.
+### 5.2 Multi-Floor RF Propagation & Hardware Deployment
+1. **3D Spherical Coverage:** The ESP32 meandered inverted-F PCB antenna radiates in an omnidirectional 3D spherical pattern.
+2. **Reinforced Concrete Floor Slabs (RCC):** Standard hostel ceiling/floor slabs (120–150mm thick with steel rebar) attenuate signals by $15\text{--}20\text{ dB}$. Ground floor students will not receive a reliable signal from upper-floor ESP32 boards.
+3. **Multi-ESP Scaling:** Large hostels deploy 1 ESP32 per floor corridor (\`Ground Floor\`, \`1st Floor\`, \`2nd Floor\`). Students' devices automatically discover and bind to the nearest floor beacon with zero manual pairing.
+4. **Passive Bluetooth Operation:** Students never connect to the ESP32's Wi-Fi. The board connects to Wi-Fi for 5 seconds at boot to synchronize NTP time, then shuts down Wi-Fi to dedicate 100% antenna power to BLE broadcasting.
+
+### 5.3 Physical Anti-Theft & Hardware Tamper Protection
+If an unauthorized student steals an ESP32 board and relocates it off-campus:
+1. **Dual-Anchor Enforcement:** Attendance strictly requires $\text{GPS Distance} \le 60\text{m} \land \text{Valid BLE Token}$. A stolen board operated off-campus triggers an immediate out-of-bounds Geofence rejection.
+2. **Wi-Fi NTP Clock-Drift Trap:** Off-campus boot fails to find the designated hostel Wi-Fi, desynchronizing the board's internal RTC and causing rolling tokens to fail server-side HMAC validation.
+3. **Ambient BSSID & Cell Telemetry:** Ambient Wi-Fi scanning detects mismatched commercial BSSIDs, flagging spoofing attempts even if GPS is mocked.
+4. **Instant Admin Kill-Switch:** Administrators can revoke or deactivate any compromised beacon with 1 click in the dashboard.
+
+### 5.4 Cloud Edge + Local Air-Anchor Architecture
+* **Cloud 24/7 Server:** Hosts the API and database on resilient cloud infrastructure, eliminating fragile on-premise PCs, human oversight, and power cut vulnerabilities.
+* **Low-Power Wall Anchors:** ESP32 boards draw only $0.5\text{ W}$, allowing continuous 3–5 day operation via standard ₹500 USB power banks during campus blackouts.
+* **Offline Store-and-Forward:** In mobile network dead-zones, client devices store hardware-signed tokens in local storage (\`IndexedDB\`) and upload them automatically upon network reconnection.
 
 ---
 

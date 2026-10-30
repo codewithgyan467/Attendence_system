@@ -1143,10 +1143,10 @@ router.get('/geofence', async (req, res) => {
   try {
     const config = await getQuery(`SELECT * FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
     const activeConfig = config || {
-      hostel_name: 'Main Campus Facility',
-      latitude: 28.5450,
-      longitude: 77.1926,
-      radius_meters: 20.0
+      hostel_name: 'Aec hostel',
+      latitude: 26.140462,
+      longitude: 91.656606,
+      radius_meters: 60.0
     };
     res.json({
       success: true,
