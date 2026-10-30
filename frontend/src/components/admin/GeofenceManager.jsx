@@ -672,34 +672,33 @@ export default function GeofenceManager() {
                   </div>
                   <form onSubmit={handleSaveBeacon}>
                     <div className="row g-3">
-                      <div className="col-md-4">
-                        <label className="form-label small fw-bold text-muted">Beacon Public ID</label>
-                        <input
-                          type="text"
-                          className="form-control form-control-sm font-monospace"
-                          placeholder="e.g. HG-BEACON-BLKA-01"
-                          value={newBeacon.beacon_public_id}
-                          onChange={(e) => setNewBeacon({ ...newBeacon, beacon_public_id: e.target.value.toUpperCase() })}
-                          required
-                        />
-                      </div>
-                      <div className="col-md-4">
-                        <label className="form-label small fw-bold text-muted">Block / Wing Location</label>
+                      <div className="col-md-7">
+                        <label className="form-label small fw-bold text-muted">Floor / Placement Name</label>
                         <input
                           type="text"
                           className="form-control form-control-sm"
-                          placeholder="e.g. Block A - Ground Floor Foyer"
+                          placeholder="e.g. Ground Floor, 1st Floor, 2nd Floor, Mess Hall"
                           value={newBeacon.block_name}
-                          onChange={(e) => setNewBeacon({ ...newBeacon, block_name: e.target.value })}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setNewBeacon({
+                              ...newBeacon,
+                              block_name: val,
+                              beacon_public_id: val.trim()
+                            });
+                          }}
                           required
                         />
+                        <div className="form-text small" style={{ fontSize: '11px' }}>
+                          Simply enter the floor name (e.g. &quot;1st Floor&quot;). This will be used in both the dashboard and the ESP32 code.
+                        </div>
                       </div>
-                      <div className="col-md-4">
+                      <div className="col-md-5">
                         <label className="form-label small fw-bold text-muted mb-1">Hardware Security Key</label>
                         <input
                           type="text"
                           className="form-control form-control-sm font-monospace text-muted"
-                          value={newBeacon.shared_secret_ref ? '●●●●●●●●●●●● (Secure 256-Bit Key Generated)' : 'Click to Auto-Generate'}
+                          value={newBeacon.shared_secret_ref ? '●●●●●●●● (Auto-Configured AES-256)' : 'Click to Auto-Generate'}
                           readOnly
                           style={{ backgroundColor: '#f8fafc', fontSize: '11px' }}
                         />
