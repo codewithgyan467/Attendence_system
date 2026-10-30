@@ -392,7 +392,8 @@ Measured on a standard Quad-Core Intel i5 / AMD Ryzen 5 CPU without GPU accelera
 | **6. Deep Feature Extraction** | OpenCV SFace ONNX 128D Embedding | 3.51 ms | 38.6 MB (Model) |
 | **7. Metric Vector Matching** | Cosine Dot Product across 4 Enrolled Angles | 0.04 ms | < 0.1 MB |
 | **8. Atomic Database Commit** | SQLite3 WAL Mode Transaction (3 Tables) | 1.9 ms | Shared Cache |
-| **Total End-to-End Latency** | **Camera shutter to attendance confirmation** | **45.8 ms** | **~85 MB Total** |
+| **Warm Core Server Compute Latency** | **YuNet + SFace + PAD + SQLite WAL Write** | **45.8 ms** | **~85 MB Total** |
+| **Full End-to-End Wall-Clock UX Time** | **Camera shutter, image encode, network RTT & UI render** | **380–450 ms** | **Client Browser** |
 
 ### Key Architectural Strengths
 1. **Zero Cloud Dependencies:** Entire AI pipeline runs locally inside the hostel boundary; no AWS Rekognition, Azure Face, or Google Cloud Vision API bills.
@@ -880,7 +881,7 @@ def generate_reports():
 </footer>
 
 <script>
-  const rawMarkdown = `{encoded_md}`;
+  const rawMarkdown = String.raw`{encoded_md}`;
   
   // Custom renderer to output mermaid tags
   const renderer = new marked.Renderer();
@@ -905,10 +906,11 @@ def generate_reports():
     renderMathInElement(document.getElementById('report-content'), {{
       delimiters: [
         {{left: '$$', right: '$$', display: true}},
+        {{left: '\\\\[', right: '\\\\]', display: true}},
         {{left: '$', right: '$', display: false}},
-        {{left: '\\\\(', right: '\\\\)', display: false}},
-        {{left: '\\\\[', right: '\\\\]', display: true}}
-      ]
+        {{left: '\\\\(', right: '\\\\)', display: false}}
+      ],
+      throwOnError: false
     }});
   }}
 

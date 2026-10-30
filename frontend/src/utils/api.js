@@ -195,6 +195,11 @@ export const api = {
     clearAllStudents: () => request('/admin/students/clear-all', { method: 'POST' }),
     getGeofence: () => request('/admin/geofence'),
     updateGeofence: (config) => request('/admin/geofence', { method: 'POST', body: JSON.stringify(config) }),
+    getBleConfig: () => request('/admin/ble/config'),
+    updateBleMode: (ble_mode) => request('/admin/ble/mode', { method: 'POST', body: JSON.stringify({ ble_mode }) }),
+    generateBleSecret: () => request('/admin/ble/generate-secret', { method: 'POST' }),
+    saveBleBeacon: (data) => request('/admin/ble/beacons', { method: 'POST', body: JSON.stringify(data) }),
+    deleteBleBeacon: (id) => request(`/admin/ble/beacons/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     getReports: (params = {}) => {
       const q = new URLSearchParams(params).toString();
       return request(`/admin/reports${q ? '?' + q : ''}`);

@@ -136,7 +136,7 @@
 </div>
 
 <script>
-  const rawMarkdown = `# Technical Specification Report: GPS Tracking, Zero-Cloud Geofencing & Multi-Layer Anti-Spoofing Architecture
+  const rawMarkdown = String.raw`# Technical Specification Report: GPS Tracking, Zero-Cloud Geofencing & Multi-Layer Anti-Spoofing Architecture
 
 **HostelGuard Enterprise v3.0 (Zero-Trust Anti-Spoof Edition)**  
 **Subsystem:** GPS Telemetry, Geofencing, Physical Radio Anchoring & Anti-Spoofing Engine  
@@ -663,10 +663,11 @@ Measured across 1,000 automated test evaluations on commodity hardware:
     renderMathInElement(document.getElementById('report-content'), {
       delimiters: [
         {left: '$$', right: '$$', display: true},
+        {left: '\\[', right: '\\]', display: true},
         {left: '$', right: '$', display: false},
-        {left: '\\(', right: '\\)', display: false},
-        {left: '\\[', right: '\\]', display: true}
-      ]
+        {left: '\\(', right: '\\)', display: false}
+      ],
+      throwOnError: false
     });
   }
 

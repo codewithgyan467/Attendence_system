@@ -42,6 +42,7 @@ const openSqliteConnection = () => {
           sqliteDb.run('PRAGMA foreign_keys = ON;');
           sqliteDb.run('PRAGMA busy_timeout = 5000;');
           sqliteDb.run('PRAGMA synchronous = NORMAL;');
+          sqliteDb.run('PRAGMA mmap_size = 268435456;'); // 256 MB memory-mapped I/O
         });
         resolve(sqliteDb);
       }
@@ -625,6 +626,16 @@ const initDatabase = async () => {
     liveness_score: 'REAL DEFAULT 1.0'
   });
 
+  await ensureColumns('geofence_configs', {
+    ble_mode: "TEXT DEFAULT 'STANDBY_OPTIONAL'"
+  });
+
+  await ensureColumns('site_ble_beacons', {
+    block_name: 'TEXT',
+    last_seen_at: 'DATETIME',
+    updated_at: 'DATETIME'
+  });
+
   // 16. Performance & Security Indexes
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_records(date);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_attendance_date_status ON attendance_records(date, status);`);
@@ -668,6 +679,10 @@ const initDatabase = async () => {
 };
 
 const clearAllStudentData = async () => {
+  try {
+    const embeddingCache = require('../services/embeddingCache');
+    embeddingCache.invalidate();
+  } catch (_) {}
   return await withTransaction(async ({ runQuery }) => {
     try { await runQuery('DELETE FROM attendance_evidence'); } catch (_) {}
     await runQuery('DELETE FROM student_face_embeddings');

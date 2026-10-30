@@ -164,7 +164,7 @@ def generate_pdf():
 </div>
 
 <script>
-  const rawMarkdown = `{encoded_md}`;
+  const rawMarkdown = String.raw`{encoded_md}`;
   
   const renderer = new marked.Renderer();
   const origCode = renderer.code.bind(renderer);
@@ -187,10 +187,11 @@ def generate_pdf():
     renderMathInElement(document.getElementById('report-content'), {{
       delimiters: [
         {{left: '$$', right: '$$', display: true}},
+        {{left: '\\\\[', right: '\\\\]', display: true}},
         {{left: '$', right: '$', display: false}},
-        {{left: '\\\\(', right: '\\\\)', display: false}},
-        {{left: '\\\\[', right: '\\\\]', display: true}}
-      ]
+        {{left: '\\\\(', right: '\\\\)', display: false}}
+      ],
+      throwOnError: false
     }});
   }}
 

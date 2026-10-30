@@ -15,6 +15,8 @@ const backupService = require('../services/backupService');
 const aiServiceClient = require('../services/aiServiceClient');
 const { getAttendanceWindowStatus, formatTime12h } = require('../services/scheduleService');
 const { createMasterRecoveryKey, getActiveRecoveryKeyMetadata } = require('../services/recoveryService');
+const embeddingCache = require('../services/embeddingCache');
+const bleBeaconService = require('../services/bleBeaconService');
 
 // Security Hardened Multer Configuration: 10MB limit and strict file format filter
 const uploadDir = path.join(__dirname, '../../uploads');
@@ -1212,6 +1214,86 @@ router.post('/geofence', requireRole('ADMIN'), async (req, res) => {
       ...updated,
       facility_name: updated?.hostel_name
     });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4b. ESP32 BLE Beacon & Physical Radio Anchor Configuration
+router.get('/ble/config', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const geo = await getQuery(`SELECT id, ble_mode FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
+    const beacons = await allQuery(`SELECT id, beacon_public_id, block_name, shared_secret_ref, is_active, last_seen_at, created_at, updated_at FROM site_ble_beacons ORDER BY block_name ASC`);
+    res.json({
+      success: true,
+      ble_mode: geo?.ble_mode || 'STANDBY_OPTIONAL',
+      beacons: beacons || []
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/ble/mode', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const { ble_mode } = req.body;
+    const allowed = ['STANDBY_OPTIONAL', 'SOFT_ANCHOR', 'STRICT_REQUIRED'];
+    if (!allowed.includes(ble_mode)) {
+      return res.status(400).json({ success: false, error: `Invalid ble_mode. Must be one of: ${allowed.join(', ')}` });
+    }
+    await runQuery(`UPDATE geofence_configs SET ble_mode = ?, updated_at = CURRENT_TIMESTAMP WHERE is_active = 1`, [ble_mode]);
+    await recordAuditEvent(req.user.id, req.user.username, 'UPDATE_BLE_MODE', 'GEOFENCE', 'BLE_CONFIG', `Changed ESP32 BLE mode to ${ble_mode}`, req);
+    res.json({ success: true, ble_mode, message: `BLE Radio Anchor mode switched to ${ble_mode}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/ble/generate-secret', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const secret = bleBeaconService.generateBeaconSecret();
+    res.json({ success: true, secret });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/ble/beacons', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const { id, beacon_public_id, block_name, shared_secret_ref, is_active = 1 } = req.body;
+    if (!beacon_public_id || !block_name) {
+      return res.status(400).json({ success: false, error: 'beacon_public_id and block_name are required' });
+    }
+    const secret = shared_secret_ref || bleBeaconService.generateBeaconSecret();
+    const geo = await getQuery(`SELECT id FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
+    const geofenceId = geo?.id || null;
+
+    if (id) {
+      await runQuery(`
+        UPDATE site_ble_beacons
+        SET beacon_public_id = ?, block_name = ?, shared_secret_ref = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `, [beacon_public_id, block_name, secret, is_active ? 1 : 0, id]);
+      await recordAuditEvent(req.user.id, req.user.username, 'UPDATE_BLE_BEACON', 'BEACON', id, `Updated beacon ${beacon_public_id} (${block_name})`, req);
+    } else {
+      const newId = uuidv4();
+      await runQuery(`
+        INSERT INTO site_ble_beacons (id, geofence_id, beacon_public_id, shared_secret_ref, block_name, is_active)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `, [newId, geofenceId, beacon_public_id, secret, block_name, is_active ? 1 : 0]);
+      await recordAuditEvent(req.user.id, req.user.username, 'CREATE_BLE_BEACON', 'BEACON', newId, `Registered new beacon ${beacon_public_id} (${block_name})`, req);
+    }
+    res.json({ success: true, message: 'Beacon saved successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/ble/beacons/:id', requireRole('ADMIN'), async (req, res) => {
+  try {
+    await runQuery(`DELETE FROM site_ble_beacons WHERE id = ?`, [req.params.id]);
+    await recordAuditEvent(req.user.id, req.user.username, 'DELETE_BLE_BEACON', 'BEACON', req.params.id, `Deleted beacon ${req.params.id}`, req);
+    res.json({ success: true, message: 'Beacon deleted successfully' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

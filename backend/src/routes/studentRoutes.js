@@ -9,6 +9,7 @@ const { generateToken, requireAuth, requireRole, recordAuditEvent, JWT_SECRET } 
 const { sendEmailOtp, sendSmsOtp, maskEmail, maskPhone } = require('../services/notificationService');
 const { authLimiter } = require('../middleware/rateLimiter');
 const aiServiceClient = require('../services/aiServiceClient');
+const embeddingCache = require('../services/embeddingCache');
 
 // 1. Privacy-First Deprecation: Public scraping of all student records is disabled to protect student privacy
 router.get('/allotment-list', async (req, res) => {
@@ -529,6 +530,8 @@ router.post('/onboard', async (req, res) => {
       `, [userEmail, userPhone, allotment.id]);
     });
 
+    embeddingCache.invalidate(studentId);
+
     const userObj = { id: userId, username: targetRoll, role: 'STUDENT', student_id: studentId };
     const token = generateToken(userObj);
 
@@ -793,6 +796,8 @@ router.post('/register-face', async (req, res) => {
         ]);
       }
     });
+
+    embeddingCache.invalidate(student.id);
 
     await recordAuditEvent(req.user.id, req.user.username, 'REGISTER_FACE', 'STUDENT', student.id, `Enrolled ${aiResponse.embeddings.length} biometric facial vectors`, req);
 

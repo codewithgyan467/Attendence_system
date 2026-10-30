@@ -9,6 +9,7 @@ const aiServiceClient = require('../services/aiServiceClient');
 const { optionalAuth } = require('../middleware/auth');
 const { getAttendanceWindowStatus } = require('../services/scheduleService');
 const antiSpoofPolicyEngine = require('../services/antiSpoofPolicyEngine');
+const embeddingCache = require('../services/embeddingCache');
 
 // Helper to get today's date in YYYY-MM-DD
 function getTodayDateString() {
@@ -276,6 +277,12 @@ const verifyLocationHandler = async (req, res) => {
       'v3.0'
     ]);
 
+    const clientSessionProof = antiSpoofPolicyEngine.generateClientSessionProof(
+      challengeToken,
+      effectiveDeviceId,
+      evaluation.requestNonceHash
+    );
+
     res.json({
       success: true,
       stepPassed: true,
@@ -289,6 +296,8 @@ const verifyLocationHandler = async (req, res) => {
         : 'Location verified! Device is within permitted hostel perimeter. Proceed to facial verification.',
       sessionToken: challengeToken, // Backward compatible field name
       challengeToken,
+      clientSessionProof,
+      client_session_proof: clientSessionProof,
       distanceMeters: evaluation.distanceMeters,
       permittedRadiusMeters: evaluation.allowedRadius,
       studentName: student.full_name
@@ -360,6 +369,8 @@ const verifyFaceHandler = async (req, res) => {
       currentIp: clientIp,
       currentDeviceId: device_id || req.body.deviceInfo?.deviceId || null,
       currentUserAgent: req.headers['user-agent'],
+      requestNonceHash: req.body.request_nonce_hash || req.body.requestNonceHash || null,
+      clientSessionProof: req.body.client_session_proof || req.body.clientSessionProof || null,
       photometricData: photometric_data
     });
 
@@ -390,20 +401,25 @@ const verifyFaceHandler = async (req, res) => {
       });
     }
 
-    const storedRows = await allQuery(`
-      SELECT embedding_vector FROM student_face_embeddings
-      WHERE student_id = ?
-    `, [student.id]);
+    // 3b. Fast In-Memory Face Embedding Retrieval with Cache
+    let storedEmbeddings = embeddingCache.get(student.id);
+    if (!storedEmbeddings) {
+      const storedRows = await allQuery(`
+        SELECT embedding_vector FROM student_face_embeddings
+        WHERE student_id = ?
+      `, [student.id]);
 
-    if (!storedRows || storedRows.length === 0) {
-      return res.status(400).json({
-        success: false,
-        needsFaceEnrollment: true,
-        error: 'No facial embeddings registered for this student. Please complete onboarding.'
-      });
+      if (!storedRows || storedRows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          needsFaceEnrollment: true,
+          error: 'No facial embeddings registered for this student. Please complete onboarding.'
+        });
+      }
+
+      storedEmbeddings = storedRows.map((r) => JSON.parse(r.embedding_vector));
+      embeddingCache.set(student.id, storedEmbeddings);
     }
-
-    const storedEmbeddings = storedRows.map((r) => JSON.parse(r.embedding_vector));
 
     // 4. Call AI Microservice for Anti-Spoofing & Cosine Matching
     let aiResult;
