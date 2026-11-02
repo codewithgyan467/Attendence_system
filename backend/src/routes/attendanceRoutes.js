@@ -198,10 +198,13 @@ const verifyLocationHandler = async (req, res) => {
 
     if (evaluation.decisionOutcome === 'DENY') {
       const isMockDetected = evaluation.mockFlagStatus === 'MOCK_DETECTED';
-      const reasonCode = isMockDetected ? 'MOCK_LOCATION_ACTIVE' : 'OUTSIDE_GEOFENCE';
+      const isStrictBleFailed = evaluation.reasonCodes?.includes('L3_BLE_STRICT_REJECTED') || evaluation.unfairMeansFlags?.includes('STRICT_BLE_ANCHOR_FAILED');
+      const reasonCode = isMockDetected ? 'MOCK_LOCATION_ACTIVE' : (isStrictBleFailed ? 'STRICT_BLE_ANCHOR_FAILED' : 'OUTSIDE_GEOFENCE');
       const detailsMsg = isMockDetected
         ? 'Mock location app / GPS spoofer detected on device. Real hardware GPS required.'
-        : `Location rejected: You are ${evaluation.distanceMeters}m away from the hostel. Permitted boundary is ${evaluation.allowedRadius}m.`;
+        : (isStrictBleFailed
+            ? 'Hardware Bluetooth Beacon token missing. Strict Hardware Lock is active, but your mobile browser did not provide a verified ESP32 radio token. Switch to Soft Anchor in Admin or enable Bluetooth.'
+            : `Location rejected: You are ${evaluation.distanceMeters}m away from the hostel. Permitted boundary is ${evaluation.allowedRadius}m.`);
 
       const fraudRecord = await recordFailedLocationAttempt(
         student.id,
