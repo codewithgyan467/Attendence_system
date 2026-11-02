@@ -78,7 +78,8 @@ router.get('/bundle.zip', (req, res) => {
  * or immediately redirects to the raw GitHub release binary asset.
  */
 const APK_PATH = path.join(OTA_DIR, 'HostelGuard.apk');
-const GITHUB_DIRECT_APK_URL = 'https://github.com/codewithgyan467/Attendence_system/releases/latest/download/app-release.apk';
+const PRODUCTION_FRONTEND_URL = process.env.FRONTEND_URL || 'https://hostelguard-frontend.onrender.com';
+const WEBSITE_DIRECT_APK_URL = `${PRODUCTION_FRONTEND_URL}/downloads/hostelguard.apk`;
 
 router.get('/download-apk', (req, res) => {
   if (fs.existsSync(APK_PATH)) {
@@ -86,8 +87,8 @@ router.get('/download-apk', (req, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename="HostelGuard.apk"');
     return fs.createReadStream(APK_PATH).pipe(res);
   }
-  // Seamlessly redirect to the direct binary download (starts file download immediately)
-  res.redirect(GITHUB_DIRECT_APK_URL);
+  // Seamlessly redirect to the direct website CDN binary download
+  res.redirect(WEBSITE_DIRECT_APK_URL);
 });
 
 /**
