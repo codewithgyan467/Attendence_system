@@ -304,7 +304,39 @@ stateDiagram-v2
 
 ---
 
-## 10. Automated Test Suite Verification
+## 10. Residential Attendance Philosophy, Month-to-Date (MTD) Progress & Defaulter Safety Architecture
+
+### 10.1 Elimination of Academic Course Percentages in Residential Hostels
+Academic lecture halls evaluate attendance via percentage thresholds (e.g. 75% eligibility for semester examinations). When applied to residential hostels, this paradigm leads to catastrophic accounting errors: a student enrolled at the beginning of a semester with 0 present days and 0 absent days mathematically rendered as "100% Attendance". Furthermore, curfew attendance in a residential hostel is fundamentally binary: the institution is legally and parentally accountable for verifying whether a student is physically asleep in their assigned room on any given calendar night.
+
+HostelGuard Enterprise v3.2 replaces course percentages with a pure **Day-Count Ledger**:
+* **Days Present (In Hostel):** Verified by cryptographic BLE challenge and on-device facial neural embedding.
+* **Approved Leave (Gate Pass):** Authorized night-out or home departure granted by the hostel warden.
+* **Unauthorized Missed (Defaulter):** Unaccounted missed roll call check-in requiring immediate disciplinary or welfare inquiry.
+
+### 10.2 Month-to-Date (MTD) Progress vs. Denominator Clarity
+To prevent artificial panic during the opening days of any calendar month (e.g. a student attending on Day 3 previously observing `3 / 30 Days`), HostelGuard dynamically evaluates **Month-to-Date (MTD) Progress**:
+$$\text{Days Elapsed} = \min(\text{Current Day of Month}, \text{Total Days in Month})$$
+$$\text{Days Remaining} = \max(0, \text{Total Days in Month} - \text{Days Elapsed})$$
+The student and warden dashboards display real-time contextual progress: `3 of 3 Days Passed · 27 Days Remaining · 100% On-Track (0 Absences)`.
+
+### 10.3 Automated Consecutive Missed Nights Safety Alerts ($\ge 2$ Nights)
+A single missed roll call in a university hostel frequently arises from benign causes (sleeping in a peer's room or phone battery exhaustion). However, **two or more consecutive unexcused missed nights** represents an acute institutional risk (unauthorized travel, medical emergency, or runaway incident).
+
+The `attendanceStatsService` executes an automated in-memory streak scanner across all active students:
+* Scans the preceding 14 calendar dates backwards from the last completed curfew.
+* Ignores official hostel holidays recorded in `attendance_schedule_overrides`.
+* Stops at the student's admission date or the most recent `PRESENT`, `LATE`, or `EXCUSED` check-in.
+* If $\text{Streak} \ge 2$, flags the student as an urgent **Welfare Defaulter Alert** across Warden and Admin desks, rendering a direct clickable telephone bridge (`tel:...`) to dial the student and dispatch an emergency welfare check to their designated room.
+
+### 10.4 Session Annual Roll Call Ledger & Official Holiday Exclusion
+Annual residency presence is evaluated against net active hostel operating days:
+$$\text{Net Active Days} = \text{Total Calendar Days in Year} - \sum \text{Scheduled Official Holidays}$$
+Students and wardens access a full 12-month breakdown (January to December) and can export authoritative CSV roll call ledgers for university accreditation and state audit compliance.
+
+---
+
+## 11. Automated Test Suite Verification
 
 HostelGuard Enterprise maintains **100% test coverage** across **12 test suites and 111 individual tests**:
 
@@ -330,7 +362,7 @@ Time:        11.554 s
 
 ---
 
-## 11. Academic Research Bibliography & Reference Papers
+## 12. Academic Research Bibliography & Reference Papers
 
 The following 14 foundational peer-reviewed research papers provide the theoretical, algorithmic, and mathematical underpinnings of HostelGuard Enterprise v3.2. Direct open-access PDF download links are provided for institutional study:
 
