@@ -611,24 +611,34 @@ router.get('/dashboard', async (req, res) => {
         record: todayRecord || null
       },
       stats: {
-        // Core Hostel Day-Count Metrics (Days Present & Days Absent)
+        // Core Hostel Day-Count Metrics (3-Tier & Month-to-Date Progress)
         monthlyPresent: summary.currentMonth.daysPresent,
+        monthlyLeave: summary.currentMonth.daysLeave,
         monthlyAbsent: summary.currentMonth.daysAbsent,
         daysInMonth: summary.currentMonth.daysInMonth,
+        daysElapsed: summary.currentMonth.daysElapsed,
+        daysRemaining: summary.currentMonth.daysRemaining,
+        isOnTrack: summary.currentMonth.isOnTrack,
+        mtdText: summary.currentMonth.mtdText,
         monthlyHolidays: summary.currentMonth.holidaysExcluded,
         monthlyActiveDays: summary.currentMonth.activeDays,
         currentMonthName: summary.currentMonth.monthName,
 
         yearlyPresent: summary.yearlySummary.daysPresent,
+        yearlyLeave: summary.yearlySummary.daysLeave,
         yearlyAbsent: summary.yearlySummary.daysAbsent,
         daysInYear: summary.yearlySummary.daysInYear,
+        dayOfYear: summary.yearlySummary.dayOfYear,
+        daysRemainingInYear: summary.yearlySummary.daysRemainingInYear,
         yearlyHolidays: summary.yearlySummary.holidaysExcluded,
         yearlyActiveDays: summary.yearlySummary.activeDays,
         currentYear: summary.yearlySummary.year,
 
         presentDays: summary.lifetime.totalPresent,
+        leaveDays: summary.lifetime.totalLeave,
         absentDays: summary.lifetime.totalAbsent,
         totalDaysRecorded: summary.lifetime.totalRecorded,
+        safetyAlert: summary.safetyAlert,
 
         failedStrikes: student.failed_attempts || 0,
         isFlaggedForge: Boolean(student.is_flagged_forge),

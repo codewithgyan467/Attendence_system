@@ -3,7 +3,7 @@ const router = express.Router();
 const { getQuery, allQuery, withTransaction, runQuery } = require('../db/database');
 const { requireAuth, requireRole, recordAuditEvent } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
-const { getAllStudentsAttendanceSummary, getStudentAttendanceSummary } = require('../services/attendanceStatsService');
+const { getAllStudentsAttendanceSummary, getStudentAttendanceSummary, getConsecutiveAbsenceAlerts } = require('../services/attendanceStatsService');
 
 // Scoped access for Wardens and Admins
 router.use(requireAuth, requireRole('WARDEN', 'ADMIN'));
@@ -27,16 +27,23 @@ router.get('/overview', async (req, res) => {
     const pendingCorrections = await getQuery(`SELECT COUNT(*) as count FROM attendance_corrections WHERE status = 'PENDING'`);
     const openTickets = await getQuery(`SELECT COUNT(*) as count FROM feedback_tickets WHERE status = 'OPEN'`);
 
+    const todayLeaveRow = await getQuery(`SELECT COUNT(*) as count FROM attendance_records WHERE date = ? AND status = 'EXCUSED'`, [today]);
+    const totalLeave = todayLeaveRow?.count || 0;
+    const consecutiveAlerts = await getConsecutiveAbsenceAlerts();
+
     res.json({
       success: true,
       summary: {
         totalResidents,
         presentToday: totalPresent,
-        absentToday: totalAbsent,
+        leaveToday: totalLeave,
+        absentToday: Math.max(0, totalResidents - totalPresent - totalLeave),
+        consecutiveAlertCount: consecutiveAlerts.length,
         pendingCorrections: pendingCorrections?.count || 0,
         openTickets: openTickets?.count || 0,
         date: today
       },
+      consecutiveAlerts,
       blocks
     });
   } catch (err) {
@@ -67,10 +74,14 @@ router.get('/exceptions', async (req, res) => {
       ORDER BY s.hostel_block, s.room_number
     `, [today]);
 
+    const consecutiveAlerts = await getConsecutiveAbsenceAlerts();
+
     res.json({
       success: true,
       flaggedCount: flaggedStudents.length,
       absentCount: absentStudents.length,
+      consecutiveAlertCount: consecutiveAlerts.length,
+      consecutiveAlerts,
       flaggedStudents,
       absentStudents
     });

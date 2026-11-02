@@ -545,21 +545,31 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const totalDays = stats.totalDaysRecorded || 0;
   const presentDays = stats.presentDays || 0;
   const absentDays = Math.max(0, totalDays - presentDays);
-  // Hostel Day-Count Metrics (Pure day counts: Days Present & Days Absent; no course percentages!)
+  // Hostel Day-Count Metrics (Month-to-Date Progress & 3-Tier State: Present vs Approved Leave vs Absent)
   const monthlyPresent = stats.monthlyPresent !== undefined ? stats.monthlyPresent : (stats.presentDays || 0);
+  const monthlyLeave = stats.monthlyLeave !== undefined ? stats.monthlyLeave : 0;
   const monthlyAbsent = stats.monthlyAbsent !== undefined ? stats.monthlyAbsent : 0;
   const daysInMonth = stats.daysInMonth || new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+  const daysElapsed = stats.daysElapsed || new Date().getDate();
+  const daysRemaining = stats.daysRemaining !== undefined ? stats.daysRemaining : Math.max(0, daysInMonth - daysElapsed);
+  const isOnTrack = stats.isOnTrack !== undefined ? stats.isOnTrack : (monthlyAbsent === 0);
   const currentMonthName = stats.currentMonthName || new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+  const currentMonthShort = currentMonthName.split(' ')[0];
   const monthlyHolidays = stats.monthlyHolidays || 0;
 
   const yearlyPresent = stats.yearlyPresent !== undefined ? stats.yearlyPresent : (stats.presentDays || 0);
+  const yearlyLeave = stats.yearlyLeave !== undefined ? stats.yearlyLeave : 0;
+  const yearlyAbsent = stats.yearlyAbsent !== undefined ? stats.yearlyAbsent : 0;
   const yearlyActiveDays = stats.yearlyActiveDays || (stats.daysInYear || 365) - (stats.yearlyHolidays || 0);
   const currentYear = stats.currentYear || new Date().getFullYear();
+  const dayOfYear = stats.dayOfYear || 1;
+  const daysInYear = stats.daysInYear || 365;
   const yearlyHolidays = stats.yearlyHolidays || 0;
-  const yearlyAbsent = stats.yearlyAbsent !== undefined ? stats.yearlyAbsent : 0;
 
   const totalPresentDays = stats.presentDays || 0;
+  const totalLeaveDays = stats.leaveDays || 0;
   const totalAbsentDays = stats.absentDays !== undefined ? stats.absentDays : Math.max(0, (stats.totalDaysRecorded || 0) - totalPresentDays);
+  const safetyAlert = stats.safetyAlert || dashboard?.safetyAlert || { consecutiveMissedNights: 0, isSafetyAlert: false };
   const monthlyBreakdown = dashboard?.monthlyBreakdown || [];
   const yearlySummary = dashboard?.yearlySummary || {};
 
@@ -629,36 +639,65 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         </div>
       </div>
 
-      {/* 4 Attendance Summary Metric Cards (Requirement #7) */}
+      {/* Consecutive Absence Safety Alert Banner */}
+      {safetyAlert && safetyAlert.isSafetyAlert && (
+        <div className="alert alert-danger d-flex align-items-center gap-2 mb-4 rounded-4 shadow-sm" role="alert">
+          <AlertTriangle size={22} className="flex-shrink-0 text-danger" />
+          <div>
+            <strong>Hostel Welfare Alert:</strong> You have missed <strong>{safetyAlert.consecutiveMissedNights} consecutive roll calls</strong> without an approved gate pass or leave slip. Please meet your hostel warden or submit an attendance appeal to regularize your roll call status.
+          </div>
+        </div>
+      )}
+
+      {/* 4 Attendance Summary Metric Cards (MTD Progress & 3-Tier State) */}
       <div className="row g-3 mb-4">
         <div className="col-6 col-md-3">
           <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-            <div className="text-muted small fw-medium">This Month's Presence</div>
-            <div className="fw-bold fs-4 text-primary mt-1">{monthlyPresent} / {daysInMonth} Days</div>
-            <div className="text-muted small" style={{ fontSize: '11px' }}>{currentMonthName} ({monthlyHolidays} holidays excl.)</div>
+            <div className="d-flex justify-content-between align-items-center mb-1">
+              <span className="text-muted small fw-medium">This Month's Presence</span>
+              {isOnTrack ? (
+                <span className="badge bg-success bg-opacity-10 text-success fw-bold" style={{ fontSize: '10px' }}>✓ On-Track</span>
+              ) : (
+                <span className="badge bg-danger bg-opacity-10 text-danger fw-bold" style={{ fontSize: '10px' }}>{monthlyAbsent} Missed</span>
+              )}
+            </div>
+            <div className="fw-bold fs-4 text-primary mt-1">{monthlyPresent} Days Present</div>
+            <div className="text-muted small" style={{ fontSize: '11px' }}>
+              {monthlyPresent} of {daysElapsed} days passed · {daysRemaining} days remaining in {currentMonthShort}
+            </div>
           </div>
         </div>
         <div className="col-6 col-md-3">
           <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
             <div className="text-muted small fw-medium">Yearly Presence</div>
             <div className="fw-bold fs-4 text-success mt-1">{yearlyPresent} / {yearlyActiveDays} Active Days</div>
-            <div className="text-muted small" style={{ fontSize: '11px' }}>Session {currentYear} ({yearlyHolidays} holidays excl.)</div>
-          </div>
-        </div>
-        <div className="col-6 col-md-3">
-          <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-            <div className="text-muted small fw-medium">Total Days Present</div>
-            <div className="fw-bold fs-4 text-success mt-1">{totalPresentDays}</div>
-            <div className="text-muted small" style={{ fontSize: '11px' }}>Verified hostel roll calls</div>
-          </div>
-        </div>
-        <div className="col-6 col-md-3">
-          <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-            <div className="text-muted small fw-medium">Total Days Absent</div>
-            <div className="fw-bold fs-4 text-danger mt-1">
-              {totalAbsentDays}
+            <div className="text-muted small" style={{ fontSize: '11px' }}>
+              Day {dayOfYear} of {daysInYear} (Session {currentYear}) · {yearlyHolidays} holidays excl.
             </div>
-            <div className="text-muted small" style={{ fontSize: '11px' }}>Missed hostel roll calls</div>
+          </div>
+        </div>
+        <div className="col-6 col-md-3">
+          <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+            <div className="text-muted small fw-medium">Approved Leaves / Passes</div>
+            <div className="fw-bold fs-4 text-warning mt-1">{monthlyLeave} Days ({currentMonthShort})</div>
+            <div className="text-muted small" style={{ fontSize: '11px' }}>
+              {totalLeaveDays} total lifetime official gate &amp; night-out passes
+            </div>
+          </div>
+        </div>
+        <div className="col-6 col-md-3">
+          <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+            <div className="text-muted small fw-medium">Unauthorized Missed</div>
+            <div className={'fw-bold fs-4 mt-1 ' + (monthlyAbsent > 0 ? 'text-danger' : 'text-secondary')}>
+              {monthlyAbsent} Days ({currentMonthShort})
+            </div>
+            <div className="text-muted small" style={{ fontSize: '11px' }}>
+              {safetyAlert && safetyAlert.isSafetyAlert ? (
+                <span className="text-danger fw-bold">⚠️ {safetyAlert.consecutiveMissedNights} consecutive nights missed!</span>
+              ) : (
+                totalAbsentDays + ' total lifetime missed check-ins'
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1356,10 +1395,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     <tr className="small text-muted">
                       <th className="ps-3">Month</th>
                       <th>Total Days in Month</th>
+                      <th>Days Passed / Remaining</th>
                       <th>Holidays Excluded</th>
                       <th>Net Active Days</th>
-                      <th>Days Present</th>
-                      <th>Days Absent</th>
+                      <th>Present (In Hostel)</th>
+                      <th>Approved Leave (Pass)</th>
+                      <th>Unauthorized Absent</th>
                       <th className="pe-3">Monthly Presence Summary</th>
                     </tr>
                   </thead>
@@ -1369,6 +1410,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                         <tr key={m.month}>
                           <td className="ps-3 fw-semibold text-dark">{m.monthName}</td>
                           <td>{m.daysInMonth} days</td>
+                          <td>
+                            <span className="text-dark small">
+                              {m.daysElapsed || m.daysInMonth} passed
+                              {m.daysRemaining > 0 ? ' (' + m.daysRemaining + ' left)' : ''}
+                            </span>
+                          </td>
                           <td>{m.holidaysExcluded > 0 ? (m.holidaysExcluded + ' days') : '0 days'}</td>
                           <td><span className="fw-medium text-dark">{m.activeDays} days</span></td>
                           <td>
@@ -1377,8 +1424,13 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                             </span>
                           </td>
                           <td>
+                            <span className="badge bg-warning bg-opacity-15 text-warning-emphasis fw-semibold px-2 py-1">
+                              🏖️ {m.daysLeave || 0} Leave
+                            </span>
+                          </td>
+                          <td>
                             <span className={'badge ' + (m.daysAbsent > 0 ? 'bg-danger bg-opacity-10 text-danger' : 'bg-light text-muted') + ' fw-semibold px-2 py-1'}>
-                              {m.daysAbsent} Absent
+                              {m.daysAbsent > 0 ? ('🚨 ' + m.daysAbsent + ' Absent') : '0 Absent'}
                             </span>
                           </td>
                           <td className="pe-3">
@@ -1395,9 +1447,11 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                       <tr>
                         <td className="ps-3 fw-semibold text-dark">{currentMonthName}</td>
                         <td>{daysInMonth} days</td>
+                        <td><span className="text-dark small">{daysElapsed} passed ({daysRemaining} left)</span></td>
                         <td>{monthlyHolidays} days</td>
                         <td>{Math.max(0, daysInMonth - monthlyHolidays)} days</td>
                         <td><span className="badge bg-success bg-opacity-10 text-success fw-bold px-2 py-1">✓ {monthlyPresent} Present</span></td>
+                        <td><span className="badge bg-warning bg-opacity-15 text-warning-emphasis fw-semibold px-2 py-1">🏖️ {monthlyLeave} Leave</span></td>
                         <td><span className="badge bg-danger bg-opacity-10 text-danger fw-semibold px-2 py-1">{monthlyAbsent} Absent</span></td>
                         <td className="pe-3"><span className="fw-bold text-primary">{monthlyPresent} / {daysInMonth} Days</span></td>
                       </tr>

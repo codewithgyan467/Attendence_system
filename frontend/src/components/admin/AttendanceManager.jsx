@@ -269,12 +269,16 @@ export default function AttendanceManager() {
       'Course',
       'Phone',
       `Month Present (${ledgerData.monthName})`,
-      `Month Absent (${ledgerData.monthName})`,
+      `Month Approved Leave (${ledgerData.monthName})`,
+      `Month Unauthorized Missed (${ledgerData.monthName})`,
+      'Consecutive Nights Missed',
+      'Safety Alert Status',
       'Total Calendar Days in Month',
       'Month Holidays Excluded',
       'Month Net Active Days',
       `Session Present (${ledgerData.year})`,
-      `Session Absent (${ledgerData.year})`,
+      `Session Approved Leave (${ledgerData.year})`,
+      `Session Unauthorized Missed (${ledgerData.year})`,
       'Total Calendar Days in Year',
       'Session Holidays Excluded',
       'Session Net Active Days'
@@ -288,11 +292,15 @@ export default function AttendanceManager() {
       `"${s.course || ''}"`,
       `"${s.phone || ''}"`,
       s.monthly_present || 0,
+      s.monthly_leave || 0,
       s.monthly_absent || 0,
+      s.consecutive_absent_nights || 0,
+      s.is_safety_alert ? 'CRITICAL_SAFETY_ALERT' : 'NORMAL',
       ledgerData.daysInMonth || 30,
       ledgerData.monthlyHolidays || 0,
       ledgerData.monthlyActiveDays || 30,
       s.yearly_present || 0,
+      s.yearly_leave || 0,
       s.yearly_absent || 0,
       ledgerData.daysInYear || 365,
       ledgerData.yearlyHolidays || 0,
@@ -714,7 +722,25 @@ export default function AttendanceManager() {
             </div>
           </div>
 
-          {/* KPI Summary Banner */}
+          {/* Critical Safety Alert Banner if any resident missed >= 2 consecutive nights */}
+          {ledgerData && ledgerData.safetyAlertCount > 0 && (
+            <div className="alert alert-danger d-flex align-items-center justify-content-between p-3 rounded-4 shadow-sm border-danger border-opacity-50">
+              <div className="d-flex align-items-center gap-2">
+                <AlertTriangle size={24} className="text-danger flex-shrink-0" />
+                <div>
+                  <strong className="text-danger fs-6">🚨 Critical Defaulter Safety Alert:</strong>
+                  <div className="small text-danger opacity-90">
+                    <strong>{ledgerData.safetyAlertCount} resident student{ledgerData.safetyAlertCount > 1 ? 's' : ''}</strong> have missed <strong>2 or more consecutive roll calls</strong> without an approved gate pass or excused leave.
+                  </div>
+                </div>
+              </div>
+              <span className="badge bg-danger text-white px-3 py-2 fw-bold">
+                {ledgerData.safetyAlertCount} At-Risk
+              </span>
+            </div>
+          )}
+
+          {/* KPI Summary Banner (Month-to-Date & 3-Tier State) */}
           {ledgerData && (
             <div className="row g-3">
               <div className="col-12 col-sm-6 col-lg-3">
@@ -722,7 +748,7 @@ export default function AttendanceManager() {
                   <div className="text-muted small fw-medium">Active Ledger Period</div>
                   <div className="fw-bold fs-5 text-primary mt-1">{ledgerData.monthName}</div>
                   <div className="text-muted small" style={{ fontSize: '11px' }}>
-                    {ledgerData.daysInMonth} Total Calendar Days
+                    {ledgerData.daysElapsed || ledgerData.daysInMonth} of {ledgerData.daysInMonth} days passed ({ledgerData.daysRemaining || 0} left)
                   </div>
                 </div>
               </div>
@@ -746,10 +772,12 @@ export default function AttendanceManager() {
               </div>
               <div className="col-12 col-sm-6 col-lg-3">
                 <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-                  <div className="text-muted small fw-medium">Total Hostel Residents</div>
-                  <div className="fw-bold fs-5 text-dark mt-1">{ledgerData.students?.length || 0} Residents</div>
+                  <div className="text-muted small fw-medium">Safety Defaulters (&ge;2 Nights)</div>
+                  <div className={`fw-bold fs-5 mt-1 ${(ledgerData.safetyAlertCount || 0) > 0 ? 'text-danger' : 'text-success'}`}>
+                    {ledgerData.safetyAlertCount || 0} Residents
+                  </div>
                   <div className="text-muted small" style={{ fontSize: '11px' }}>
-                    Showing {filteredLedgerStudents.length} after filters
+                    {(ledgerData.safetyAlertCount || 0) === 0 ? '✓ All residents verified safely' : 'Requires immediate welfare check'}
                   </div>
                 </div>
               </div>
@@ -789,10 +817,11 @@ export default function AttendanceManager() {
                         <th className="ps-3">Resident Student</th>
                         <th>Roll Number</th>
                         <th>Block & Room</th>
-                        <th>This Month's Presence</th>
-                        <th>This Month's Missed</th>
+                        <th>Present (In Hostel)</th>
+                        <th>Approved Leave (Pass)</th>
+                        <th>Unauthorized Missed</th>
                         <th>Session {ledgerYear} Presence</th>
-                        <th className="pe-3">Session Missed</th>
+                        <th className="pe-3">Safety Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -812,16 +841,24 @@ export default function AttendanceManager() {
                             <small className="text-muted">Room: {st.room_number || '—'}</small>
                           </td>
                           <td>
-                            <span className="fw-bold text-primary">
-                              {st.monthly_present} / {ledgerData?.daysInMonth || 30} Days
+                            <span className="badge bg-success bg-opacity-10 text-success fw-bold px-2 py-1">
+                              ✓ {st.monthly_present} Present
                             </span>
-                            <div className="text-muted small" style={{ fontSize: '11px' }}>
-                              ({st.monthly_present} / {ledgerData?.monthlyActiveDays || 30} active)
+                            <div className="text-muted small mt-1" style={{ fontSize: '11px' }}>
+                              out of {ledgerData?.daysInMonth || 30} days
+                            </div>
+                          </td>
+                          <td>
+                            <span className="badge bg-warning bg-opacity-15 text-warning-emphasis fw-semibold px-2 py-1">
+                              🏖️ {st.monthly_leave || 0} Leave
+                            </span>
+                            <div className="text-muted small mt-1" style={{ fontSize: '11px' }}>
+                              Approved gate/night passes
                             </div>
                           </td>
                           <td>
                             <span className={`badge ${st.monthly_absent > 0 ? 'bg-danger bg-opacity-10 text-danger' : 'bg-light text-muted'} fw-semibold px-2 py-1`}>
-                              {st.monthly_absent} Days Absent
+                              {st.monthly_absent > 0 ? `${st.monthly_absent} Days Missed` : '0 Absent'}
                             </span>
                           </td>
                           <td>
@@ -833,9 +870,15 @@ export default function AttendanceManager() {
                             </div>
                           </td>
                           <td className="pe-3">
-                            <span className={`badge ${st.yearly_absent > 0 ? 'bg-danger bg-opacity-10 text-danger' : 'bg-light text-muted'} fw-semibold px-2 py-1`}>
-                              {st.yearly_absent} Days Absent
-                            </span>
+                            {st.is_safety_alert ? (
+                              <span className="badge bg-danger text-white fw-bold px-2 py-1 shadow-sm">
+                                🚨 {st.consecutive_absent_nights} Nights Missing
+                              </span>
+                            ) : (
+                              <span className="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                                ✓ Normal
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}

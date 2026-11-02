@@ -151,7 +151,7 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
         </div>
       )}
 
-      {/* KPI Cards */}
+      {/* KPI Cards (3-Tier & Safety Defaulter Metrics) */}
       <div className="row g-3 mb-4">
         <div className="col-12 col-sm-6 col-xl-3">
           <KpiCard
@@ -166,27 +166,27 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
           <KpiCard
             title="Present Today"
             value={s.presentToday || 0}
-            subtitle="Biometrically verified"
+            subtitle="Biometrically verified inside hostel"
             icon={CheckCircle2}
             color="success"
           />
         </div>
         <div className="col-12 col-sm-6 col-xl-3">
           <KpiCard
-            title="Absent Today"
-            value={s.absentToday || 0}
-            subtitle="Pending roll call check"
-            icon={XCircle}
-            color="danger"
+            title="On Approved Leave"
+            value={s.leaveToday || 0}
+            subtitle="Authorized gate / night passes"
+            icon={FileCheck2}
+            color="warning"
           />
         </div>
         <div className="col-12 col-sm-6 col-xl-3">
           <KpiCard
-            title="Pending Requests"
-            value={s.pendingCorrections || 0}
-            subtitle={`${s.openTickets || 0} open tickets`}
-            icon={FileCheck2}
-            color="warning"
+            title="Defaulters (≥2 Nights)"
+            value={s.consecutiveAlertCount || 0}
+            subtitle={(s.consecutiveAlertCount || 0) > 0 ? "Requires welfare check" : "All residents accounted for"}
+            icon={ShieldAlert}
+            color={(s.consecutiveAlertCount || 0) > 0 ? "danger" : "success"}
           />
         </div>
       </div>
@@ -252,8 +252,92 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
       )}
 
       {(subTab === 'warden_exceptions' || subTab === 'warden_overview') && (
-        /* Exceptions & Absent Table */
-        <div className="card shadow-sm border-0 rounded-3 mb-4">
+        <>
+          {/* Consecutive Night Defaulter Safety Alerts */}
+          {((exceptions?.consecutiveAlerts || overview?.consecutiveAlerts || []).length > 0) && (
+            <div className="card shadow-sm border-danger border-opacity-50 rounded-4 mb-4 overflow-hidden">
+              <div className="card-header bg-danger bg-opacity-10 border-bottom border-danger border-opacity-25 py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div className="d-flex align-items-center gap-2">
+                  <ShieldAlert size={20} className="text-danger" />
+                  <div>
+                    <h6 className="card-title mb-0 fw-bold text-danger">
+                      🚨 Consecutive Night Defaulter Alerts ({(exceptions?.consecutiveAlerts || overview?.consecutiveAlerts || []).length} Residents)
+                    </h6>
+                    <small className="text-danger opacity-75">
+                      Residents who missed 2 or more consecutive roll calls without an approved gate pass or leave slip.
+                    </small>
+                  </div>
+                </div>
+                <span className="badge bg-danger text-white px-2 py-1">
+                  High Priority Safety Desk
+                </span>
+              </div>
+              <div className="card-body p-0">
+                <div className="table-responsive">
+                  <table className="table table-hover align-middle mb-0">
+                    <thead className="table-danger table-opacity-10">
+                      <tr className="small text-danger fw-bold">
+                        <th className="ps-3">Resident Student</th>
+                        <th>Roll No</th>
+                        <th>Block &amp; Room</th>
+                        <th>Consecutive Nights Missed</th>
+                        <th>Contact Phone</th>
+                        <th className="pe-3 text-end">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(exceptions?.consecutiveAlerts || overview?.consecutiveAlerts || []).map((st) => (
+                        <tr key={st.student_id || st.roll_number}>
+                          <td className="ps-3">
+                            <div className="fw-bold text-dark">{st.full_name}</div>
+                            <small className="text-muted">{st.course || 'Resident'}</small>
+                          </td>
+                          <td><code>{st.roll_number}</code></td>
+                          <td>
+                            <span className="badge bg-light text-dark border me-1">{st.hostel_block}</span>
+                            <small className="text-muted">Rm {st.room_number || 'N/A'}</small>
+                          </td>
+                          <td>
+                            <span className="badge bg-danger text-white fw-bold px-2 py-1">
+                              ⚠️ {st.consecutive_nights_missed} Nights Missing
+                            </span>
+                            {st.last_seen_date && (
+                              <div className="text-muted small mt-1" style={{ fontSize: '11px' }}>
+                                Last verified: {st.last_seen_date}
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            {st.phone ? (
+                              <a href={'tel:' + st.phone} className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1">
+                                <Phone size={12} /> {st.phone}
+                              </a>
+                            ) : (
+                              <span className="text-muted small">No phone listed</span>
+                            )}
+                          </td>
+                          <td className="pe-3 text-end">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => {
+                                alert('Dispatching welfare verification check for ' + st.full_name + ' (' + st.roll_number + ') missing for ' + st.consecutive_nights_missed + ' nights.');
+                              }}
+                            >
+                              Dispatch Welfare Check
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Exceptions & Absent Table */}
+          <div className="card shadow-sm border-0 rounded-3 mb-4">
           <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
             <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
               <ShieldAlert size={18} className="text-danger" />
@@ -314,6 +398,7 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
             )}
           </div>
         </div>
+        </>
       )}
 
       {(subTab === 'warden_corrections' || subTab === 'warden_overview') && (
