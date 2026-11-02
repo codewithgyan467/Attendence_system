@@ -132,3 +132,4 @@ class BeaconCache {
 }
 
 module.exports = new BeaconCache();
+

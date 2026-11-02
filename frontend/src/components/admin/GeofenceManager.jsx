@@ -170,16 +170,24 @@ export default function GeofenceManager() {
 
   const handleSaveBeacon = async (e) => {
     e.preventDefault();
-    if (!newBeacon.beacon_public_id || !newBeacon.block_name) {
-      setErrorMsg('Beacon Public ID and Block Name are required.');
+    const floorName = newBeacon.block_name ? newBeacon.block_name.trim() : '';
+    if (!floorName && !newBeacon.beacon_public_id) {
+      setErrorMsg('Floor / Placement Name is required (e.g. Ground Floor, 1st Floor).');
       return;
     }
+    const resolvedPublicId = newBeacon.beacon_public_id?.trim() || floorName;
+    const resolvedBlockName = floorName || resolvedPublicId;
+
     setBleSaving(true);
     setErrorMsg(null);
     try {
-      const res = await api.admin.saveBleBeacon(newBeacon);
+      const res = await api.admin.saveBleBeacon({
+        ...newBeacon,
+        beacon_public_id: resolvedPublicId,
+        block_name: resolvedBlockName
+      });
       if (res?.success) {
-        setStatusMsg(`ESP32 Beacon ${newBeacon.beacon_public_id} registered successfully.`);
+        setStatusMsg(`ESP32 Beacon "${resolvedBlockName}" registered successfully!`);
         setShowAddBeacon(false);
         setNewBeacon({ beacon_public_id: '', block_name: '', shared_secret_ref: '' });
         await fetchBleConfig();
@@ -380,6 +388,69 @@ export default function GeofenceManager() {
               </button>
             </div>
             <div className="card-body p-4">
+              {/* Add Beacon Form Modal/Card */}
+              {showAddBeacon && (
+                <div id="beaconRegistrationCard" className="card border border-primary shadow-sm rounded-3 p-3 mb-4 bg-light">
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <h6 className="fw-bold text-primary mb-0 d-flex align-items-center gap-2">
+                      <Zap size={16} /> Register New ESP32 Physical Beacon
+                    </h6>
+                    <button type="button" className="btn-close btn-sm" onClick={() => setShowAddBeacon(false)}></button>
+                  </div>
+                  <form onSubmit={handleSaveBeacon}>
+                    <div className="row g-3">
+                      <div className="col-md-7">
+                        <label className="form-label small fw-bold text-muted">Floor / Placement Name</label>
+                        <input
+                          type="text"
+                          className="form-control form-control-sm"
+                          placeholder="e.g. Ground Floor, 1st Floor, 2nd Floor, Mess Hall"
+                          value={newBeacon.block_name}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setNewBeacon({
+                              ...newBeacon,
+                              block_name: val,
+                              beacon_public_id: val.trim()
+                            });
+                          }}
+                          autoFocus
+                          required
+                        />
+                        <div className="form-text small" style={{ fontSize: '11px' }}>
+                          Simply enter the floor name (e.g. &quot;1st Floor&quot;). This will be used in both the dashboard and the ESP32 code.
+                        </div>
+                      </div>
+                      <div className="col-md-5">
+                        <label className="form-label small fw-bold text-muted mb-1">Hardware Security Key</label>
+                        <input
+                          type="text"
+                          className="form-control form-control-sm font-monospace text-muted"
+                          value={newBeacon.shared_secret_ref ? '●●●●●●●● (Auto-Configured AES-256)' : 'Click to Auto-Generate'}
+                          readOnly
+                          style={{ backgroundColor: '#f8fafc', fontSize: '11px' }}
+                        />
+                      </div>
+                    </div>
+                    <div className="d-flex justify-content-end gap-2 mt-3">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary"
+                        onClick={() => setShowAddBeacon(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={bleSaving}
+                        className="btn btn-sm btn-primary d-flex align-items-center gap-1 px-3"
+                      >
+                        <Save size={14} /> {bleSaving ? 'Saving...' : 'Save & Register Beacon'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
               <form onSubmit={handleSave}>
                 <div className="mb-3">
                   <label className="form-label small fw-bold text-muted">Facility / Hostel Block Name</label>
@@ -585,8 +656,14 @@ export default function GeofenceManager() {
               </div>
               <button
                 type="button"
-                onClick={() => { setShowAddBeacon(true); handleGenerateSecret(); }}
-                className="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                onClick={() => {
+                  setShowAddBeacon(prev => !prev);
+                  handleGenerateSecret();
+                  setTimeout(() => {
+                    document.getElementById('beaconRegistrationCard')?.scrollIntoView({ behavior: 'smooth' });
+                  }, 50);
+                }}
+                className="btn btn-sm btn-primary d-flex align-items-center gap-1 shadow-sm"
               >
                 <Plus size={14} /> Register New ESP32 Beacon
               </button>
@@ -696,69 +773,6 @@ export default function GeofenceManager() {
                   </div>
                 </div>
               </div>
-
-              {/* Add Beacon Form Modal/Card */}
-              {showAddBeacon && (
-                <div className="card border border-primary rounded-3 p-3 mb-4 bg-light">
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <h6 className="fw-bold text-primary mb-0 d-flex align-items-center gap-2">
-                      <Zap size={16} /> Register New ESP32 Physical Beacon
-                    </h6>
-                    <button type="button" className="btn-close btn-sm" onClick={() => setShowAddBeacon(false)}></button>
-                  </div>
-                  <form onSubmit={handleSaveBeacon}>
-                    <div className="row g-3">
-                      <div className="col-md-7">
-                        <label className="form-label small fw-bold text-muted">Floor / Placement Name</label>
-                        <input
-                          type="text"
-                          className="form-control form-control-sm"
-                          placeholder="e.g. Ground Floor, 1st Floor, 2nd Floor, Mess Hall"
-                          value={newBeacon.block_name}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setNewBeacon({
-                              ...newBeacon,
-                              block_name: val,
-                              beacon_public_id: val.trim()
-                            });
-                          }}
-                          required
-                        />
-                        <div className="form-text small" style={{ fontSize: '11px' }}>
-                          Simply enter the floor name (e.g. &quot;1st Floor&quot;). This will be used in both the dashboard and the ESP32 code.
-                        </div>
-                      </div>
-                      <div className="col-md-5">
-                        <label className="form-label small fw-bold text-muted mb-1">Hardware Security Key</label>
-                        <input
-                          type="text"
-                          className="form-control form-control-sm font-monospace text-muted"
-                          value={newBeacon.shared_secret_ref ? '●●●●●●●● (Auto-Configured AES-256)' : 'Click to Auto-Generate'}
-                          readOnly
-                          style={{ backgroundColor: '#f8fafc', fontSize: '11px' }}
-                        />
-                      </div>
-                    </div>
-                    <div className="d-flex justify-content-end gap-2 mt-3">
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-outline-secondary"
-                        onClick={() => setShowAddBeacon(false)}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={bleSaving}
-                        className="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                      >
-                        <Save size={14} /> Save Beacon
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              )}
 
               {/* Table of Registered Beacons */}
               <div className="table-responsive">
