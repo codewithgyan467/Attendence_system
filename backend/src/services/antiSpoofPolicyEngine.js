@@ -29,7 +29,8 @@ class AntiSpoofPolicyEngine {
       playIntegrityToken = null,
       deviceInfo = {},
       clientIp = '127.0.0.1',
-      geofence
+      geofence,
+      userAgent = ''
     } = params;
 
     let riskScore = 0;
@@ -148,6 +149,11 @@ class AntiSpoofPolicyEngine {
     const bleMode = geofence?.ble_mode || 'STANDBY_OPTIONAL';
     let bleMatchStatus = 'NOT_CONFIGURED';
 
+    // Platform Intelligence: Transparent Adaptive Hardware Anchor for iOS Safari
+    const ua = String(userAgent || deviceInfo.userAgent || '').toLowerCase();
+    const isIOS = /iphone|ipad|ipod/.test(ua) || Boolean(deviceInfo.isIOS);
+    const isIOSWeb = isIOS && !deviceInfo.isNative;
+
     if (bleProof && bleProof.beaconPublicId) {
       const beaconRes = await bleBeaconService.verifyBleBeaconProof({
         beaconPublicId: bleProof.beaconPublicId,
@@ -161,9 +167,14 @@ class AntiSpoofPolicyEngine {
       } else {
         bleMatchStatus = 'INVALID_BEACON_PROOF';
         if (bleMode === 'STRICT_REQUIRED') {
-          riskScore += 85;
-          unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
-          reasonCodes.push('L3_BLE_STRICT_REJECTED');
+          if (isIOSWeb) {
+            bleMatchStatus = 'IOS_SAFARI_ADAPTIVE_ANCHOR';
+            requiresStepUp = true;
+          } else {
+            riskScore += 85;
+            unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
+            reasonCodes.push('L3_BLE_STRICT_REJECTED');
+          }
         } else if (bleMode === 'SOFT_ANCHOR') {
           riskScore += 45;
           requiresStepUp = true;
@@ -174,13 +185,21 @@ class AntiSpoofPolicyEngine {
     } else {
       // No BLE proof provided
       if (bleMode === 'STRICT_REQUIRED') {
-        bleMatchStatus = 'STRICT_BEACON_MISSING';
-        riskScore += 85;
-        unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
-        reasonCodes.push('L3_BLE_STRICT_REJECTED');
+        if (isIOSWeb) {
+          // Transparent Adaptive Hardware Anchor for iOS Safari:
+          // Apple blocks Web Bluetooth in WebKit. Since iOS cannot run mock GPS apps,
+          // seamlessly route to Photometric Screen-Flash + GPS with 0 strikes.
+          bleMatchStatus = 'IOS_SAFARI_ADAPTIVE_ANCHOR';
+          requiresStepUp = true; // 0 strikes, 0 penalty!
+        } else {
+          bleMatchStatus = 'STRICT_BEACON_MISSING';
+          riskScore += 85;
+          unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
+          reasonCodes.push('L3_BLE_STRICT_REJECTED');
+        }
       } else if (bleMode === 'SOFT_ANCHOR') {
-        bleMatchStatus = 'SOFT_ANCHOR_MISSING';
-        riskScore += 30;
+        bleMatchStatus = isIOSWeb ? 'IOS_SAFARI_ADAPTIVE_ANCHOR' : 'SOFT_ANCHOR_MISSING';
+        riskScore += isIOSWeb ? 10 : 30;
         requiresStepUp = true; // Triggers Step-Up screen-flash liveness, 0 strikes
       } else {
         // STANDBY_OPTIONAL: Zero hardware present today -> 0 penalty

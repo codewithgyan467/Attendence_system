@@ -284,8 +284,8 @@ void setup() {
   pAdv->setScanResponseData(scanData);
 
   pAdv->setScanResponse(true);
-  pAdv->setMinPreferred(0x06); // iOS CoreBluetooth connection helper
-  pAdv->setMinPreferred(0x12);
+  pAdv->setMinPreferred(0x06); // 7.5ms min interval for fast iOS discovery
+  pAdv->setMaxPreferred(0x12); // 22.5ms max interval for stable iOS CoreBluetooth link
   BLEDevice::startAdvertising();
 
   Serial.println("✅ HostelGuard v3.2 BLE Air-Anchor is actively broadcasting!");

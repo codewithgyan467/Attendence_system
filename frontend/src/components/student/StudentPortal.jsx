@@ -186,12 +186,22 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         accuracy: pos.accuracy || 10
       });
 
+      const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+      const isSafari = typeof navigator !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
       const res = await api.attendance.verifyLocation({
         roll_number: dashboard?.student?.roll_number || user?.username,
         latitude: pos.latitude,
         longitude: pos.longitude,
         accuracy: pos.accuracy || 10,
-        is_mock_location: pos.isMockLocation || false
+        is_mock_location: pos.isMockLocation || false,
+        samples: pos.samples || [],
+        device_info: {
+          ...(pos.device_info || {}),
+          isIOS,
+          isSafari,
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : ''
+        }
       });
 
       if (res.success) {

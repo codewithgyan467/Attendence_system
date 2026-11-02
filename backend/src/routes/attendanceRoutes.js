@@ -158,6 +158,7 @@ const verifyLocationHandler = async (req, res) => {
     const effectiveDeviceId = device_id || device_info.deviceId || student.device_id;
     const clientIp = (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) || req.ip || req.connection.remoteAddress || '127.0.0.1';
 
+    const userAgentHeader = req.headers['user-agent'] || device_info.userAgent || '';
     const evaluation = await antiSpoofPolicyEngine.evaluateLocationAndEnvironment({
       student,
       clientLat: parsedLat,
@@ -172,10 +173,12 @@ const verifyLocationHandler = async (req, res) => {
       deviceInfo: {
         ...device_info,
         deviceId: effectiveDeviceId,
-        isNative: Boolean(is_native || device_info.isNative)
+        isNative: Boolean(is_native || device_info.isNative),
+        userAgent: userAgentHeader
       },
       clientIp,
-      geofence
+      geofence,
+      userAgent: userAgentHeader
     });
 
     // 6. Handle Decision Outcomes

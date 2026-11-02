@@ -289,6 +289,9 @@ export const LocationAndEnvironmentEvidenceService = {
       assurance_tier: isNative ? 'NATIVE_HIGH' : 'PWA_DEGRADED',
       device_info: {
         isNative,
+        isIOS: typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)),
+        isSafari: typeof navigator !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent),
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
         virtualCameraDetected: camAudit.hasVirtualCam,
         virtualCameraLabels: camAudit.labels
       }
