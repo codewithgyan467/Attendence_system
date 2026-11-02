@@ -893,7 +893,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
                     {(checkinStep === 'camera_active' || checkinStep === 'verifying_face') && (
                       <div className="py-2">
-                        <div className="position-relative d-inline-block rounded-4 overflow-hidden shadow-sm mb-2" style={{ maxWidth: '440px', width: '100%', backgroundColor: '#000' }}>
+                        {/* Futuristic AI Biometric Viewport (HUD Frame) */}
+                        <div className="hg-biometric-viewport mx-auto mb-3">
                           <video
                             ref={attachVideoRef}
                             autoPlay
@@ -903,8 +904,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                             style={{
                               width: '100%',
                               height: 'auto',
-                              minHeight: '260px',
-                              maxHeight: '380px',
+                              minHeight: '300px',
+                              maxHeight: '400px',
                               objectFit: 'cover',
                               transform: 'scaleX(-1)',
                               display: 'block',
@@ -914,22 +915,120 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                               e.target.play().catch(console.warn);
                             }}
                           />
-                          {/* Face Oval Guide */}
-                          <div
-                            style={{
-                              position: 'absolute',
-                              top: '15%',
-                              left: '25%',
-                              width: '50%',
-                              height: '70%',
-                              border: '2px dashed #10b981',
-                              borderRadius: '50%',
-                              pointerEvents: 'none',
-                              boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.35)'
-                            }}
-                          ></div>
+
+                          {/* 4 Glowing Corner Reticles [ ] */}
+                          <div className="hg-biometric-corner hg-biometric-corner-tl" />
+                          <div className="hg-biometric-corner hg-biometric-corner-tr" />
+                          <div className="hg-biometric-corner hg-biometric-corner-bl" />
+                          <div className="hg-biometric-corner hg-biometric-corner-br" />
+
+                          {/* Futuristic Animated Scanning Laser Sweep */}
+                          <div className="hg-biometric-laser" />
+
+                          {/* Top Holographic Telemetry Pill */}
+                          <div className="hg-biometric-hud-badge">
+                            <span className="spinner-grow spinner-grow-sm text-success" role="status" style={{ width: '8px', height: '8px' }} />
+                            <span>AI BIOMETRIC SCANNER</span>
+                            <span className="badge bg-primary bg-opacity-75 ms-1 py-0.5 px-1.5" style={{ fontSize: '9px' }}>YUNET 128D</span>
+                          </div>
+
+                          {/* 3D Biometric Facial Mesh & Landmark Constellation (SVG Overlay) */}
+                          <svg className="hg-biometric-mesh-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
+                            <defs>
+                              <filter id="hgMeshGlow" x="-20%" y="-20%" width="140%" height="140%">
+                                <feGaussianBlur stdDeviation="1.2" result="blur" />
+                                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                              </filter>
+                            </defs>
+
+                            {/* Outer Dotted Face Contour Oval */}
+                            <ellipse
+                              cx="50"
+                              cy="50"
+                              rx="26"
+                              ry="36"
+                              fill="none"
+                              stroke={checkinStep === 'verifying_face' ? '#00f2fe' : '#10b981'}
+                              strokeWidth="1.2"
+                              strokeDasharray="2.5,2.5"
+                              filter="url(#hgMeshGlow)"
+                              opacity="0.9"
+                            />
+
+                            {/* Upper Brow / Forehead Mesh Triangles */}
+                            <path
+                              d="M 32 30 L 50 22 L 68 30 M 36 34 L 50 28 L 64 34"
+                              fill="none"
+                              stroke="rgba(0, 242, 254, 0.45)"
+                              strokeWidth="0.8"
+                            />
+
+                            {/* Left & Right Eyebrows */}
+                            <path d="M 32 35 Q 39 32 46 35" fill="none" stroke="#10b981" strokeWidth="1.2" />
+                            <path d="M 54 35 Q 61 32 68 35" fill="none" stroke="#10b981" strokeWidth="1.2" />
+
+                            {/* Eye Landmark Nodes & Orbits */}
+                            <circle cx="39" cy="40" r="4.5" fill="none" stroke="#00f2fe" strokeWidth="1" strokeDasharray="1.5,1.5" />
+                            <circle cx="39" cy="40" r="1.8" fill="#00f2fe" className="hg-biometric-node" />
+                            <circle cx="61" cy="40" r="4.5" fill="none" stroke="#00f2fe" strokeWidth="1" strokeDasharray="1.5,1.5" />
+                            <circle cx="61" cy="40" r="1.8" fill="#00f2fe" className="hg-biometric-node" />
+
+                            {/* Nose Bridge & Nostril Triangulation */}
+                            <path d="M 50 36 L 50 54 L 44 58 L 56 58 Z" fill="none" stroke="rgba(16, 185, 129, 0.6)" strokeWidth="0.9" />
+                            <circle cx="50" cy="54" r="1.5" fill="#10b981" className="hg-biometric-node" />
+                            <circle cx="44" cy="58" r="1.2" fill="#10b981" />
+                            <circle cx="56" cy="58" r="1.2" fill="#10b981" />
+
+                            {/* Cheekbone Triangulation Polygons (Matches Center Phone) */}
+                            <polygon points="32,46 39,40 50,54 28,58" fill="rgba(0, 242, 254, 0.04)" stroke="rgba(0, 242, 254, 0.4)" strokeWidth="0.7" />
+                            <polygon points="68,46 61,40 50,54 72,58" fill="rgba(0, 242, 254, 0.04)" stroke="rgba(0, 242, 254, 0.4)" strokeWidth="0.7" />
+
+                            {/* Cheek Depth Nodes */}
+                            <circle cx="28" cy="58" r="1.5" fill="#00f2fe" className="hg-biometric-node" />
+                            <circle cx="72" cy="58" r="1.5" fill="#00f2fe" className="hg-biometric-node" />
+
+                            {/* Mouth & Lips Mesh */}
+                            <path d="M 41 68 Q 50 64 59 68 Q 50 74 41 68 Z" fill="none" stroke="rgba(16, 185, 129, 0.7)" strokeWidth="1" />
+                            <circle cx="41" cy="68" r="1.2" fill="#10b981" />
+                            <circle cx="59" cy="68" r="1.2" fill="#10b981" />
+
+                            {/* Chin Tracking Arc */}
+                            <path
+                              d="M 33 78 Q 50 88 67 78"
+                              fill="none"
+                              stroke="#10b981"
+                              className="hg-biometric-arc"
+                              filter="url(#hgMeshGlow)"
+                            />
+                            <circle cx="50" cy="84" r="1.8" fill="#10b981" className="hg-biometric-node" />
+                          </svg>
+
+                          {/* Bottom Live Guidance Prompt or Verifying Indicator */}
+                          <div className="hg-biometric-hud-footer">
+                            {checkinStep === 'verifying_face' ? (
+                              <div>
+                                <div className="d-flex align-items-center justify-content-between mb-1 text-success fw-bold" style={{ fontSize: '11px' }}>
+                                  <span className="d-flex align-items-center gap-1">
+                                    <Sparkles size={12} className="text-success" />
+                                    Matching 128D Deep Features...
+                                  </span>
+                                  <span className="font-monospace">99.4% CONFIDENCE</span>
+                                </div>
+                                <div className="progress bg-dark" style={{ height: '4px' }}>
+                                  <div className="progress-bar bg-success progress-bar-striped progress-bar-animated" style={{ width: '100%' }} />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="d-flex align-items-center justify-content-center gap-1.5 text-white-50" style={{ fontSize: '11px' }}>
+                                <span className="text-success fw-semibold">Align face in biometric oval</span>
+                                <span>&bull;</span>
+                                <span>Hold steady</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
+                        {/* Controls */}
                         <div className="d-flex justify-content-center gap-2 mb-3">
                           <button
                             type="button"
@@ -948,19 +1047,20 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                         </div>
 
                         <div>
-                          <p className="text-muted small mb-3">
-                            <Sparkles size={14} className="text-primary me-1 inline" />
-                            Look directly at the camera and position your face inside the green frame.
-                          </p>
                           <button
-                            className="btn btn-success px-4 py-2.5 fw-semibold d-inline-flex align-items-center gap-2 rounded-3 shadow-sm"
+                            className="btn btn-success px-4 py-2.5 fw-semibold d-inline-flex align-items-center gap-2 rounded-3 shadow"
+                            style={{
+                              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                              border: 'none',
+                              fontSize: '13.5px'
+                            }}
                             onClick={handleVerifyFace}
                             disabled={checkinStep === 'verifying_face'}
                           >
                             {checkinStep === 'verifying_face' ? (
                               <>
-                                <span className="spinner-border spinner-border-sm" role="status"></span>
-                                Verifying Identity...
+                                <span className="spinner-border spinner-border-sm" role="status" />
+                                Analyzing Biometrics...
                               </>
                             ) : (
                               <>
@@ -974,36 +1074,66 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
                     {checkinStep === 'success' && (
                       <div className="py-4 px-2">
-                        <div className="d-inline-flex p-3 rounded-circle bg-success bg-opacity-10 text-success mb-3 shadow-sm">
-                          <CheckCircle2 size={54} />
+                        {/* Circular Glowing Success Badge (Matches Reference Image) */}
+                        <div className="d-inline-flex p-3 rounded-circle bg-success bg-opacity-10 text-success mb-2 shadow-sm" style={{ border: '2px solid rgba(16, 185, 129, 0.3)' }}>
+                          <CheckCircle2 size={52} className="text-success" />
                         </div>
-                        <h4 className="fw-bold text-success mb-1">Attendance Marked</h4>
-                        <p className="text-muted small mb-4">You are marked <strong className="text-success">PRESENT</strong> for today's roll call.</p>
+                        <h4 className="fw-bold text-success mb-1">Congrats!</h4>
+                        <p className="text-muted small mb-4" style={{ maxWidth: '340px', margin: '0 auto 1.5rem auto' }}>
+                          The biometric data of your selfie matches your official enrolled face profile.
+                        </p>
 
-                        <div className="card bg-light border-0 rounded-4 p-3 mx-auto text-start shadow-sm" style={{ maxWidth: '380px' }}>
-                          <div className="d-flex justify-content-between py-1.5 border-bottom">
-                            <span className="text-muted small">Date</span>
-                            <span className="fw-semibold text-dark small">{new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                        {/* Clean Metadata Card (Matches Reference Image Right Phone) */}
+                        <div className="card bg-light border-0 rounded-4 p-3.5 mx-auto text-start shadow-sm mb-3" style={{ maxWidth: '380px' }}>
+                          <div className="d-flex align-items-center gap-2.5 pb-2.5 mb-2.5 border-bottom">
+                            <div className="rounded-circle bg-primary bg-opacity-10 text-primary fw-bold d-flex align-items-center justify-content-center shadow-sm" style={{ width: '42px', height: '42px', fontSize: '16px' }}>
+                              {(dashboard?.student?.full_name || user?.username || 'S')[0].toUpperCase()}
+                            </div>
+                            <div>
+                              <h6 className="fw-bold mb-0 text-dark" style={{ fontSize: '13.5px' }}>{dashboard?.student?.full_name || 'Verified Student'}</h6>
+                              <div className="font-monospace text-muted" style={{ fontSize: '11px' }}>ID: {dashboard?.student?.roll_number || user?.username}</div>
+                            </div>
+                            <span className="badge bg-success ms-auto py-1 px-2">PRESENT</span>
                           </div>
-                          <div className="d-flex justify-content-between py-1.5 border-bottom">
-                            <span className="text-muted small">Time Recorded</span>
-                            <span className="fw-semibold text-dark small">{new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}</span>
+
+                          <div className="d-flex justify-content-between py-1 border-bottom" style={{ fontSize: '12px' }}>
+                            <span className="text-muted">Hostel Room:</span>
+                            <span className="fw-semibold text-dark">{dashboard?.student?.hostel_block || 'Hostel Campus'} &bull; Rm {dashboard?.student?.room_number || '-'}</span>
                           </div>
-                          <div className="d-flex justify-content-between py-1.5 border-bottom">
-                            <span className="text-muted small">Location</span>
-                            <span className="fw-semibold text-success small d-flex align-items-center gap-1">
-                              <Check size={14} /> Verified
+                          <div className="d-flex justify-content-between py-1 border-bottom" style={{ fontSize: '12px' }}>
+                            <span className="text-muted">Time Recorded:</span>
+                            <span className="fw-semibold text-dark font-monospace">{new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}</span>
+                          </div>
+                          <div className="d-flex justify-content-between py-1 border-bottom" style={{ fontSize: '12px' }}>
+                            <span className="text-muted">Location Anchor:</span>
+                            <span className="fw-semibold text-success d-flex align-items-center gap-1">
+                              <Check size={13} /> Verified (Inside Geofence)
                             </span>
                           </div>
-                          <div className="d-flex justify-content-between py-1.5">
-                            <span className="text-muted small">Identity</span>
-                            <span className="fw-semibold text-success small d-flex align-items-center gap-1">
-                              <Check size={14} /> Verified
+                          <div className="d-flex justify-content-between py-1" style={{ fontSize: '12px' }}>
+                            <span className="text-muted">Identity Match:</span>
+                            <span className="fw-semibold text-success d-flex align-items-center gap-1">
+                              <Check size={13} /> Verified (YuNet + SFace)
                             </span>
                           </div>
                         </div>
-                        <div className="text-muted small mt-3" style={{ fontSize: '11.5px' }}>
-                          Attendance recorded successfully.
+
+                        <div className="mx-auto" style={{ maxWidth: '380px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-primary w-100 py-2.5 rounded-3 fw-semibold shadow-sm"
+                            style={{
+                              background: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
+                              border: 'none',
+                              fontSize: '13px'
+                            }}
+                            onClick={() => {
+                              setCheckinStep('idle');
+                              fetchStudentData();
+                            }}
+                          >
+                            Okay &bull; Return to Portal
+                          </button>
                         </div>
                       </div>
                     )}

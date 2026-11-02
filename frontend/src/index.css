@@ -471,3 +471,171 @@ body {
     display: none !important;
   }
 }
+
+/* ==========================================================================
+   AI Biometric Scanner & Face Mesh HUD Styles (Futuristic Biometrics)
+   ========================================================================== */
+
+@keyframes hgLaserSweep {
+  0% {
+    top: 10%;
+    opacity: 0.6;
+  }
+  50% {
+    top: 86%;
+    opacity: 1;
+  }
+  100% {
+    top: 10%;
+    opacity: 0.6;
+  }
+}
+
+@keyframes hgPulseNode {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 1;
+    filter: drop-shadow(0 0 6px #00f2fe);
+  }
+}
+
+@keyframes hgSweepArc {
+  0%, 100% {
+    opacity: 0.65;
+    stroke-width: 2px;
+  }
+  50% {
+    opacity: 1;
+    stroke-width: 3.5px;
+    filter: drop-shadow(0 0 8px #10b981);
+  }
+}
+
+.hg-biometric-viewport {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  background-color: #030712;
+  border-radius: 1.25rem;
+  overflow: hidden;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5), 0 0 20px rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.hg-biometric-corner {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-color: #00f2fe;
+  z-index: 6;
+  pointer-events: none;
+  filter: drop-shadow(0 0 6px rgba(0, 242, 254, 0.85));
+}
+
+.hg-biometric-corner-tl {
+  top: 12px;
+  left: 12px;
+  border-top: 3px solid #00f2fe;
+  border-left: 3px solid #00f2fe;
+  border-top-left-radius: 6px;
+}
+
+.hg-biometric-corner-tr {
+  top: 12px;
+  right: 12px;
+  border-top: 3px solid #00f2fe;
+  border-right: 3px solid #00f2fe;
+  border-top-right-radius: 6px;
+}
+
+.hg-biometric-corner-bl {
+  bottom: 12px;
+  left: 12px;
+  border-bottom: 3px solid #00f2fe;
+  border-left: 3px solid #00f2fe;
+  border-bottom-left-radius: 6px;
+}
+
+.hg-biometric-corner-br {
+  bottom: 12px;
+  right: 12px;
+  border-bottom: 3px solid #00f2fe;
+  border-right: 3px solid #00f2fe;
+  border-bottom-right-radius: 6px;
+}
+
+.hg-biometric-laser {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #10b981 15%, #00f2fe 50%, #10b981 85%, transparent);
+  box-shadow: 0 0 12px #00f2fe, 0 0 25px rgba(16, 185, 129, 0.8);
+  animation: hgLaserSweep 2.4s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.hg-biometric-mesh-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.hg-biometric-node {
+  animation: hgPulseNode 2s infinite ease-in-out;
+  transform-origin: center;
+}
+
+.hg-biometric-arc {
+  animation: hgSweepArc 2.4s infinite ease-in-out;
+}
+
+.hg-biometric-hud-badge {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 242, 254, 0.35);
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.hg-biometric-hud-footer {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 88%;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+  font-size: 11px;
+  padding: 6px 14px;
+  border-radius: 12px;
+  z-index: 7;
+  text-align: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
