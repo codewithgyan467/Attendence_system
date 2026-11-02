@@ -20,10 +20,6 @@ export default function AppDownloadModal({ isOpen, onClose }) {
   const canvasRef = useRef(null);
   const [copied, setCopied] = useState(false);
 
-  // Direct APK binary download URL
-  const directApkUrl = 'https://github.com/codewithgyan467/Attendence_system/releases/latest/download/app-release.apk';
-  const releasesPageUrl = 'https://github.com/codewithgyan467/Attendence_system/releases/latest';
-
   // Official production URL for iOS Safari scanning & PWA
   const PRODUCTION_WEB_URL = 'https://hostelguard-frontend.onrender.com';
 
@@ -47,6 +43,9 @@ export default function AppDownloadModal({ isOpen, onClose }) {
   };
 
   const webAppUrl = getWebAppUrl();
+
+  // Direct APK binary download URL served directly from website CDN (bypasses private GitHub restrictions)
+  const directApkUrl = `${webAppUrl}/downloads/hostelguard.apk`;
 
   useEffect(() => {
     if (isOpen && canvasRef.current) {
@@ -224,16 +223,10 @@ export default function AppDownloadModal({ isOpen, onClose }) {
                 </div>
 
                 <div className="text-center text-sm-start">
-                  <a
-                    href={releasesPageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-muted small text-decoration-none d-inline-flex align-items-center gap-1"
-                    style={{ fontSize: '10px' }}
-                  >
-                    <span>View GitHub Releases page</span>
-                    <ExternalLink size={9} />
-                  </a>
+                  <span className="text-muted small d-inline-flex align-items-center gap-1" style={{ fontSize: '10px' }}>
+                    <ShieldCheck size={11} className="text-success" />
+                    <span>Official HostelGuard Production Build</span>
+                  </span>
                 </div>
               </div>
             </div>
