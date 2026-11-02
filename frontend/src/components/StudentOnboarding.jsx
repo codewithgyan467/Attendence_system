@@ -414,7 +414,7 @@ export default function StudentOnboarding({ onComplete }) {
 
   return (
     <div style={{ maxWidth: '850px', margin: '0 auto', padding: '0 20px 40px' }}>
-      <div className="glass-panel" style={{ padding: '32px' }}>
+      <div className="card shadow-sm border-0 rounded-4 bg-white" style={{ padding: '36px', border: '1px solid #e2e8f0' }}>
         {/* Header Badge */}
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <div
@@ -432,16 +432,16 @@ export default function StudentOnboarding({ onComplete }) {
           >
             <Shield size={30} color="#ffffff" />
           </div>
-          <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em' }}>
+          <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.02em' }}>
             Student Identity Verification &amp; Account Setup
           </h2>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px', maxWidth: '580px', margin: '4px auto 0' }}>
+          <p style={{ fontSize: '13.5px', color: '#64748b', marginTop: '4px', maxWidth: '580px', margin: '4px auto 0' }}>
             Institutional Onboarding: Authenticate your pre-allotted student profile via OTP, secure your portal credentials, and complete your facial identity enrollment.
           </p>
         </div>
 
         {/* Step Indicator */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '28px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '28px', flexWrap: 'wrap' }}>
           {[
             { id: 'lookup', label: '1. Identity Lookup' },
             { id: 'otp', label: '2. OTP Security' },
@@ -451,14 +451,15 @@ export default function StudentOnboarding({ onComplete }) {
             <div
               key={st.id}
               style={{
-                padding: '6px 14px',
+                padding: '6px 16px',
                 borderRadius: '999px',
                 fontSize: '12px',
                 fontWeight: '700',
-                background: currentStep === st.id ? 'var(--primary)' : 'rgba(255, 255, 255, 0.05)',
-                color: currentStep === st.id ? '#ffffff' : 'var(--text-dim)',
-                border: currentStep === st.id ? '1px solid #818cf8' : '1px solid transparent',
-                transition: 'all 0.2s ease'
+                background: currentStep === st.id ? '#4f46e5' : '#f1f5f9',
+                color: currentStep === st.id ? '#ffffff' : '#475569',
+                border: currentStep === st.id ? '1px solid #4338ca' : '1px solid #e2e8f0',
+                transition: 'all 0.2s ease',
+                boxShadow: currentStep === st.id ? '0 2px 8px rgba(79, 70, 229, 0.25)' : 'none'
               }}
             >
               {st.label}
@@ -515,26 +516,26 @@ export default function StudentOnboarding({ onComplete }) {
           <div>
             <div
               style={{
-                background: 'rgba(99, 102, 241, 0.08)',
-                border: '1px solid rgba(99, 102, 241, 0.25)',
+                background: '#eff6ff',
+                border: '1px solid #bfdbfe',
                 borderRadius: '12px',
-                padding: '14px 18px',
+                padding: '16px 20px',
                 marginBottom: '22px',
-                fontSize: '13px',
-                color: '#c7d2fe',
+                fontSize: '13.5px',
+                color: '#1e40af',
                 display: 'flex',
                 alignItems: 'flex-start',
                 gap: '12px'
               }}
             >
-              <Shield size={20} className="text-indigo-400" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <Shield size={22} color="#2563eb" style={{ flexShrink: 0, marginTop: '2px' }} />
               <div>
-                <strong>Data Privacy Guarantee:</strong> Public student roster lists have been disabled to protect your personal details (room number, course, and phone number). Enter your institutional Roll Number or registered Mobile Number below to find your profile privately.
+                <strong style={{ color: '#1e3a8a' }}>Data Privacy Guarantee:</strong> Public student roster lists have been disabled to protect your personal details (room number, course, and phone number). Enter your institutional Roll Number or registered Mobile Number below to find your profile privately.
               </div>
             </div>
 
             <form onSubmit={handleLookupSubmit} style={{ marginBottom: '24px' }}>
-              <label className="form-label" style={{ fontWeight: '700', fontSize: '13px' }}>
+              <label className="form-label" style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>
                 Enter Your Roll Number or Registered Mobile Phone
               </label>
               <div style={{ display: 'flex', gap: '10px' }}>
@@ -546,20 +547,25 @@ export default function StudentOnboarding({ onComplete }) {
                       left: '14px',
                       top: '50%',
                       transform: 'translateY(-50%)',
-                      color: 'var(--text-dim)'
+                      color: '#64748b'
                     }}
                   />
                   <input
-                    className="form-input"
+                    className="form-control"
                     type="text"
                     required
-                    style={{ paddingLeft: '42px', fontSize: '14px' }}
+                    style={{ paddingLeft: '42px', fontSize: '14px', borderRadius: '10px', border: '1.5px solid #cbd5e1', color: '#0f172a' }}
                     placeholder="e.g. 2024CS008 or +91 9876543210"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
-                <button type="submit" className="btn-primary" disabled={lookupLoading} style={{ minWidth: '140px' }}>
+                <button
+                  type="submit"
+                  className="btn btn-primary fw-semibold px-4 d-inline-flex align-items-center justify-content-center gap-2"
+                  disabled={lookupLoading}
+                  style={{ minWidth: '140px', borderRadius: '10px', background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)', border: 'none' }}
+                >
                   {lookupLoading ? <RefreshCw className="animate-spin" size={16} /> : <UserCheck size={16} />}
                   {lookupLoading ? 'Searching...' : 'Find Profile'}
                 </button>
@@ -570,11 +576,11 @@ export default function StudentOnboarding({ onComplete }) {
             {matchedStudent && (
               <div
                 style={{
-                  background: 'rgba(15, 23, 42, 0.7)',
-                  border: '1px solid rgba(99, 102, 241, 0.35)',
+                  background: '#f8fafc',
+                  border: '1.5px solid #cbd5e1',
                   borderRadius: '14px',
                   padding: '22px',
-                  boxShadow: '0 8px 30px rgba(0, 0, 0, 0.3)'
+                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.06)'
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
@@ -583,8 +589,8 @@ export default function StudentOnboarding({ onComplete }) {
                       width: '42px',
                       height: '42px',
                       borderRadius: '12px',
-                      background: 'rgba(16, 185, 129, 0.2)',
-                      border: '1px solid #10b981',
+                      background: 'rgba(16, 185, 129, 0.15)',
+                      border: '1.5px solid #10b981',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center'
@@ -593,16 +599,16 @@ export default function StudentOnboarding({ onComplete }) {
                     <CheckCircle size={22} color="#10b981" />
                   </div>
                   <div>
-                    <div style={{ fontSize: '18px', fontWeight: '800', color: '#ffffff' }}>
+                    <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a' }}>
                       {matchedStudent.full_name}
                     </div>
-                    <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                      Roll Number: <strong>{matchedStudent.roll_number}</strong> | Program: {matchedStudent.course || 'B.Tech CS'}
+                    <div style={{ fontSize: '13px', color: '#475569', fontFamily: 'var(--font-mono)' }}>
+                      Roll Number: <strong className="text-dark">{matchedStudent.roll_number}</strong> | Program: {matchedStudent.course || 'B.Tech CS'}
                     </div>
                   </div>
                 </div>
 
-                <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginBottom: '12px', fontWeight: '700', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   Select OTP Verification Channel:
                 </div>
 
@@ -613,17 +619,18 @@ export default function StudentOnboarding({ onComplete }) {
                     style={{
                       padding: '14px',
                       borderRadius: '10px',
-                      border: otpMethod === 'PHONE' ? '2px solid #6366f1' : '1px solid rgba(255, 255, 255, 0.1)',
-                      background: otpMethod === 'PHONE' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255, 255, 255, 0.02)',
+                      border: otpMethod === 'PHONE' ? '2px solid #4f46e5' : '1.5px solid #cbd5e1',
+                      background: otpMethod === 'PHONE' ? '#eef2ff' : '#ffffff',
                       cursor: 'pointer',
-                      transition: 'all 0.15s ease'
+                      transition: 'all 0.15s ease',
+                      boxShadow: otpMethod === 'PHONE' ? '0 2px 8px rgba(79, 70, 229, 0.15)' : 'none'
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <Smartphone size={16} color={otpMethod === 'PHONE' ? '#818cf8' : '#94a3b8'} />
-                      <strong style={{ fontSize: '13px', color: '#ffffff' }}>SMS / Phone OTP</strong>
+                      <Smartphone size={16} color={otpMethod === 'PHONE' ? '#4f46e5' : '#64748b'} />
+                      <strong style={{ fontSize: '13px', color: '#0f172a' }}>SMS / Phone OTP</strong>
                     </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                    <div style={{ fontSize: '12px', color: '#475569', fontFamily: 'var(--font-mono)' }}>
                       {matchedStudent.has_phone ? matchedStudent.masked_phone : 'Phone not on file'}
                     </div>
                   </div>
@@ -634,17 +641,18 @@ export default function StudentOnboarding({ onComplete }) {
                     style={{
                       padding: '14px',
                       borderRadius: '10px',
-                      border: otpMethod === 'EMAIL' ? '2px solid #6366f1' : '1px solid rgba(255, 255, 255, 0.1)',
-                      background: otpMethod === 'EMAIL' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255, 255, 255, 0.02)',
+                      border: otpMethod === 'EMAIL' ? '2px solid #4f46e5' : '1.5px solid #cbd5e1',
+                      background: otpMethod === 'EMAIL' ? '#eef2ff' : '#ffffff',
                       cursor: 'pointer',
-                      transition: 'all 0.15s ease'
+                      transition: 'all 0.15s ease',
+                      boxShadow: otpMethod === 'EMAIL' ? '0 2px 8px rgba(79, 70, 229, 0.15)' : 'none'
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <Mail size={16} color={otpMethod === 'EMAIL' ? '#818cf8' : '#94a3b8'} />
-                      <strong style={{ fontSize: '13px', color: '#ffffff' }}>Email OTP</strong>
+                      <Mail size={16} color={otpMethod === 'EMAIL' ? '#4f46e5' : '#64748b'} />
+                      <strong style={{ fontSize: '13px', color: '#0f172a' }}>Email OTP</strong>
                     </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                    <div style={{ fontSize: '12px', color: '#475569', fontFamily: 'var(--font-mono)' }}>
                       {matchedStudent.has_email ? matchedStudent.masked_email : 'Email not on file'}
                     </div>
                   </div>
@@ -709,12 +717,12 @@ export default function StudentOnboarding({ onComplete }) {
               <Key size={26} color="#818cf8" />
             </div>
 
-            <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#ffffff', marginBottom: '6px' }}>
+            <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', marginBottom: '6px' }}>
               Enter 6-Digit Security Code
             </h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '22px' }}>
+            <p style={{ fontSize: '13.5px', color: '#64748b', marginBottom: '22px' }}>
               A security verification code has been dispatched to{' '}
-              <strong style={{ color: '#ffffff', fontFamily: 'var(--font-mono)' }}>{maskedTarget}</strong>.
+              <strong style={{ color: '#0f172a', fontFamily: 'var(--font-mono)' }}>{maskedTarget}</strong>.
             </p>
 
             {debugOtp && (
@@ -756,8 +764,8 @@ export default function StudentOnboarding({ onComplete }) {
                     padding: '12px 16px',
                     borderRadius: '12px',
                     border: '2px solid #6366f1',
-                    background: 'rgba(10, 15, 28, 0.8)',
-                    color: '#ffffff'
+                    background: '#f8fafc',
+                    color: '#0f172a'
                   }}
                 />
               </div>
@@ -826,10 +834,10 @@ export default function StudentOnboarding({ onComplete }) {
               <Key size={28} color="#ffffff" />
             </div>
 
-            <h3 style={{ fontSize: '22px', fontWeight: '800', color: '#ffffff', marginBottom: '4px' }}>
+            <h3 style={{ fontSize: '22px', fontWeight: '800', color: '#0f172a', marginBottom: '4px' }}>
               Identity Verified & Portal Credentials Issued!
             </h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '24px' }}>
+            <p style={{ fontSize: '13.5px', color: '#64748b', marginBottom: '24px' }}>
               Please take note of your official HostelGuard login credentials below. You will use these to sign in.
             </p>
 
@@ -997,10 +1005,10 @@ export default function StudentOnboarding({ onComplete }) {
         {currentStep === 'camera' && (
           <div>
             <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#ffffff' }}>
+              <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>
                 Capture Facial Angles for Verification
               </h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+              <p style={{ fontSize: '13.5px', color: '#64748b', marginBottom: '8px' }}>
                 {anglesToCapture[activeAngleIndex] === 'FRONT'
                   ? 'Look straight at the camera with a neutral expression.'
                   : anglesToCapture[activeAngleIndex].includes('LEFT')
@@ -1293,28 +1301,28 @@ export default function StudentOnboarding({ onComplete }) {
               <CheckCircle size={40} color="#10b981" />
             </div>
 
-            <h3 style={{ fontSize: '24px', fontWeight: '800', color: '#ffffff', marginBottom: '8px' }}>
+            <h3 style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', marginBottom: '8px' }}>
               Registration & Biometrics Activated!
             </h3>
-            <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '24px' }}>
-              Welcome, <strong>{registeredResult.fullName}</strong>. Your account is fully active and enrolled in the attendance system.
+            <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '24px' }}>
+              Welcome, <strong className="text-dark">{registeredResult.fullName}</strong>. Your account is fully active and enrolled in the attendance system.
             </p>
 
-            <div className="glass-panel" style={{ maxWidth: '460px', margin: '0 auto 24px', padding: '20px', textAlign: 'left' }}>
+            <div className="card shadow-sm border-0 rounded-4 bg-light" style={{ maxWidth: '460px', margin: '0 auto 24px', padding: '20px', textAlign: 'left', border: '1px solid #e2e8f0' }}>
               <div style={{ marginBottom: '10px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>STUDENT ROLL NUMBER</span>
-                <div style={{ fontSize: '16px', fontWeight: '800', color: '#818cf8', fontFamily: 'var(--font-mono)' }}>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: '700' }}>STUDENT ROLL NUMBER</span>
+                <div style={{ fontSize: '16px', fontWeight: '800', color: '#4f46e5', fontFamily: 'var(--font-mono)' }}>
                   {registeredResult.rollNumber}
                 </div>
               </div>
               <div style={{ marginBottom: '10px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>ASSIGNED ROOM</span>
-                <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '600' }}>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: '700' }}>ASSIGNED ROOM</span>
+                <div style={{ fontSize: '14px', color: '#0f172a', fontWeight: '700' }}>
                   {registeredResult.hostelBlock} · Room {registeredResult.roomNumber}
                 </div>
               </div>
               <div>
-                <span style={{ fontSize: '11px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>VERIFICATION STATUS</span>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: '700' }}>VERIFICATION STATUS</span>
                 <div style={{ fontSize: '13px', color: '#34d399', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <CheckCircle size={15} /> Identity Verification Active
                 </div>

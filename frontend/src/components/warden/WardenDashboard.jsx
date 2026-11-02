@@ -15,7 +15,8 @@ import {
   MessageSquare,
   ShieldAlert,
   Phone,
-  BedDouble
+  BedDouble,
+  Calendar
 } from 'lucide-react';
 
 export default function WardenDashboard({ subTab = 'warden_overview', onSelectTab }) {
@@ -197,11 +198,20 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
           <div className="row g-4 mb-4">
             <div className="col-lg-12">
               <div className="card shadow-sm border-0 rounded-3">
-                <div className="card-header bg-white border-bottom py-3">
+                <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                   <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
                     <BedDouble size={18} className="text-primary" />
                     Block Attendance & Occupancy Status
                   </h6>
+                  {onSelectTab && (
+                    <button
+                      type="button"
+                      className="btn btn-outline-primary btn-sm d-flex align-items-center gap-1 shadow-sm"
+                      onClick={() => onSelectTab('warden_attendance')}
+                    >
+                      <Calendar size={14} /> Open Roll Call Ledger
+                    </button>
+                  )}
                 </div>
                 <div className="card-body p-3">
                   <div className="row g-3">
@@ -214,7 +224,7 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                           <div className="border rounded-3 p-3 bg-light h-100">
                             <div className="d-flex justify-content-between align-items-center mb-2">
                               <h6 className="fw-bold text-dark mb-0">{b.block_name}</h6>
-                              <span className="badge bg-primary px-2 py-1">{pct}% Present</span>
+                              <span className="badge bg-primary px-2 py-1">{present} / {total} Present Today</span>
                             </div>
                             <div className="text-muted small mb-2">{b.gender_type || 'Co-ed'} Hostel</div>
                             <div className="progress mb-2" style={{ height: '8px' }}>

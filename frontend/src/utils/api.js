@@ -252,7 +252,8 @@ export const api = {
     createBackup: () => request('/admin/backup/create', { method: 'POST' }),
     listBackups: () => request('/admin/backup/list'),
     restoreBackup: (data) => request('/admin/backup/restore', { method: 'POST', body: JSON.stringify(data) }),
-    getSystemHealth: () => request('/admin/system-health')
+    getSystemHealth: () => request('/admin/system-health'),
+    getAttendanceLedger: (params = {}) => request(`/admin/attendance-ledger${params.year || params.month ? '?' + new URLSearchParams(params).toString() : ''}`)
   },
 
   // Warden APIs
@@ -262,7 +263,9 @@ export const api = {
     getCorrections: (status) => request(`/warden/corrections${status ? '?status=' + status : ''}`),
     reviewCorrection: (id, data) => request(`/warden/corrections/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify(data) }),
     getFeedback: () => request('/warden/feedback'),
-    respondFeedback: (id, data) => request(`/warden/feedback/${encodeURIComponent(id)}/respond`, { method: 'POST', body: JSON.stringify(data) })
+    respondFeedback: (id, data) => request(`/warden/feedback/${encodeURIComponent(id)}/respond`, { method: 'POST', body: JSON.stringify(data) }),
+    getAttendanceLedger: (params = {}) => request(`/warden/attendance-ledger${params.year || params.month ? '?' + new URLSearchParams(params).toString() : ''}`),
+    getStudentLedger: (studentId, year) => request(`/warden/student-ledger/${encodeURIComponent(studentId)}${year ? '?year=' + year : ''}`)
   },
 
   // Student APIs
@@ -274,6 +277,7 @@ export const api = {
     verifyOnboardingOtp: (data) => request('/students/onboarding/verify-otp', { method: 'POST', body: JSON.stringify(data) }),
     getDashboard: () => request('/students/dashboard'),
     getHistory: () => request('/students/history'),
+    getAttendanceLedger: (year) => request(`/students/attendance-ledger${year ? '?year=' + year : ''}`),
     submitCorrection: (data) => request('/students/corrections', { method: 'POST', body: JSON.stringify(data) }),
     getCorrections: () => request('/students/corrections'),
     submitFeedback: (data) => request('/students/feedback', { method: 'POST', body: JSON.stringify(data) }),

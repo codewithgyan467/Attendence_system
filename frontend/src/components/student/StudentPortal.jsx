@@ -6,6 +6,7 @@ import { Line } from 'react-chartjs-2';
 import {
   UserCheck,
   History,
+  Calendar,
   FileCheck2,
   LifeBuoy,
   User,
@@ -544,7 +545,23 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const totalDays = stats.totalDaysRecorded || 0;
   const presentDays = stats.presentDays || 0;
   const absentDays = Math.max(0, totalDays - presentDays);
-  const attendanceRate = stats.attendancePercentage !== undefined ? stats.attendancePercentage : 100;
+  // Hostel Day-Count Metrics (Pure day counts: Days Present & Days Absent; no course percentages!)
+  const monthlyPresent = stats.monthlyPresent !== undefined ? stats.monthlyPresent : (stats.presentDays || 0);
+  const monthlyAbsent = stats.monthlyAbsent !== undefined ? stats.monthlyAbsent : 0;
+  const daysInMonth = stats.daysInMonth || new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+  const currentMonthName = stats.currentMonthName || new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+  const monthlyHolidays = stats.monthlyHolidays || 0;
+
+  const yearlyPresent = stats.yearlyPresent !== undefined ? stats.yearlyPresent : (stats.presentDays || 0);
+  const yearlyActiveDays = stats.yearlyActiveDays || (stats.daysInYear || 365) - (stats.yearlyHolidays || 0);
+  const currentYear = stats.currentYear || new Date().getFullYear();
+  const yearlyHolidays = stats.yearlyHolidays || 0;
+  const yearlyAbsent = stats.yearlyAbsent !== undefined ? stats.yearlyAbsent : 0;
+
+  const totalPresentDays = stats.presentDays || 0;
+  const totalAbsentDays = stats.absentDays !== undefined ? stats.absentDays : Math.max(0, (stats.totalDaysRecorded || 0) - totalPresentDays);
+  const monthlyBreakdown = dashboard?.monthlyBreakdown || [];
+  const yearlySummary = dashboard?.yearlySummary || {};
 
   // Trend chart records
   const trendRecords = (history && history.length > 0) ? history.slice(0, 7).reverse() : [];
@@ -571,9 +588,39 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
             {/* Today's Roll Call Status Indicator */}
             <div className="d-flex align-items-center gap-2">
-              <div className={`px-3 py-2 rounded-3 border ${todayStatus.status === 'PRESENT' ? 'bg-success bg-opacity-15 border-success border-opacity-30 text-success' : 'bg-warning bg-opacity-15 border-warning border-opacity-30 text-warning'}`}>
-                <div className="small text-muted" style={{ fontSize: '11px' }}>Today's Status</div>
-                <div className="fw-bold fs-6">
+              <div
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '12px',
+                  background: todayStatus.status === 'PRESENT' 
+                    ? 'rgba(16, 185, 129, 0.18)' 
+                    : 'rgba(245, 158, 11, 0.22)',
+                  border: todayStatus.status === 'PRESENT' 
+                    ? '1.5px solid #10b981' 
+                    : '1.5px solid #f59e0b',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)'
+                }}
+              >
+                <div 
+                  style={{ 
+                    fontSize: '11px', 
+                    fontWeight: '700', 
+                    letterSpacing: '0.6px',
+                    textTransform: 'uppercase',
+                    color: '#cbd5e1',
+                    marginBottom: '2px'
+                  }}
+                >
+                  Today's Status
+                </div>
+                <div 
+                  style={{ 
+                    fontSize: '14px', 
+                    fontWeight: '800', 
+                    letterSpacing: '0.3px',
+                    color: todayStatus.status === 'PRESENT' ? '#34d399' : '#fbbf24'
+                  }}
+                >
                   {todayStatus.status === 'PRESENT' ? '✓ PRESENT' : 'ATTENDANCE REQUIRED'}
                 </div>
               </div>
@@ -586,32 +633,32 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       <div className="row g-3 mb-4">
         <div className="col-6 col-md-3">
           <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-            <div className="text-muted small fw-medium">Overall Attendance</div>
-            <div className="fw-bold fs-4 text-primary mt-1">{attendanceRate}%</div>
-            <div className="text-muted small" style={{ fontSize: '11px' }}>Academic semester rate</div>
+            <div className="text-muted small fw-medium">This Month's Presence</div>
+            <div className="fw-bold fs-4 text-primary mt-1">{monthlyPresent} / {daysInMonth} Days</div>
+            <div className="text-muted small" style={{ fontSize: '11px' }}>{currentMonthName} ({monthlyHolidays} holidays excl.)</div>
           </div>
         </div>
         <div className="col-6 col-md-3">
           <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-            <div className="text-muted small fw-medium">Present Days</div>
-            <div className="fw-bold fs-4 text-success mt-1">{presentDays}</div>
-            <div className="text-muted small" style={{ fontSize: '11px' }}>Verified roll calls</div>
+            <div className="text-muted small fw-medium">Yearly Presence</div>
+            <div className="fw-bold fs-4 text-success mt-1">{yearlyPresent} / {yearlyActiveDays} Active Days</div>
+            <div className="text-muted small" style={{ fontSize: '11px' }}>Session {currentYear} ({yearlyHolidays} holidays excl.)</div>
           </div>
         </div>
         <div className="col-6 col-md-3">
           <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-            <div className="text-muted small fw-medium">Absent Days</div>
-            <div className="fw-bold fs-4 text-danger mt-1">{absentDays}</div>
-            <div className="text-muted small" style={{ fontSize: '11px' }}>Missed check-ins</div>
+            <div className="text-muted small fw-medium">Total Days Present</div>
+            <div className="fw-bold fs-4 text-success mt-1">{totalPresentDays}</div>
+            <div className="text-muted small" style={{ fontSize: '11px' }}>Verified hostel roll calls</div>
           </div>
         </div>
         <div className="col-6 col-md-3">
           <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-            <div className="text-muted small fw-medium">Identity Status</div>
-            <div className={`fw-bold fs-4 mt-1 ${stats.hasFaceRegistered ? 'text-success' : 'text-warning'}`}>
-              {stats.hasFaceRegistered ? 'Active' : 'Pending'}
+            <div className="text-muted small fw-medium">Total Days Absent</div>
+            <div className="fw-bold fs-4 text-danger mt-1">
+              {totalAbsentDays}
             </div>
-            <div className="text-muted small" style={{ fontSize: '11px' }}>Biometric profile</div>
+            <div className="text-muted small" style={{ fontSize: '11px' }}>Missed hostel roll calls</div>
           </div>
         </div>
       </div>
@@ -631,7 +678,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
               data={{
                 labels: trendLabels,
                 datasets: [{
-                  label: 'Attendance Rate',
+                  label: 'Roll Call Status (Present / Absent)',
                   data: trendData,
                   borderColor: '#10b981',
                   backgroundColor: 'rgba(16, 185, 129, 0.08)',
@@ -1252,13 +1299,123 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
       {/* 2. Attendance History Tab */}
       {activeTab === 'student_history' && (
-        <div className="card shadow-sm border-0 rounded-4">
-          <div className="card-header bg-white border-bottom py-3">
-            <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
-              <History size={18} className="text-primary" />
-              My Attendance History ({history.length} Records)
-            </h6>
+        <div className="d-flex flex-column gap-4">
+          {/* Annual Session Roll Call Ledger Card */}
+          <div className="card shadow-sm border-0 rounded-4 overflow-hidden">
+            <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div className="d-flex align-items-center gap-2">
+                <Calendar size={18} className="text-primary" />
+                <h6 className="card-title mb-0 fw-semibold">
+                  Session {currentYear} Official Hostel Roll Call Ledger
+                </h6>
+              </div>
+              <span className="badge bg-light text-dark border">
+                Academic Course % Omitted • Pure Day-Count Ledger
+              </span>
+            </div>
+            <div className="card-body p-4">
+              <div className="row g-3 mb-4">
+                <div className="col-12 col-sm-6 col-md-3">
+                  <div className="p-3 rounded-3 bg-light border text-center">
+                    <div className="text-muted small fw-medium">Yearly Presence</div>
+                    <div className="fw-bold fs-4 text-success mt-1">{yearlyPresent} / {yearlyActiveDays}</div>
+                    <div className="text-muted small" style={{ fontSize: '11px' }}>Net Active Days Present</div>
+                  </div>
+                </div>
+                <div className="col-12 col-sm-6 col-md-3">
+                  <div className="p-3 rounded-3 bg-light border text-center">
+                    <div className="text-muted small fw-medium">Holidays Excluded</div>
+                    <div className="fw-bold fs-4 text-secondary mt-1">{yearlyHolidays} Days</div>
+                    <div className="text-muted small" style={{ fontSize: '11px' }}>Official hostel holidays</div>
+                  </div>
+                </div>
+                <div className="col-12 col-sm-6 col-md-3">
+                  <div className="p-3 rounded-3 bg-light border text-center">
+                    <div className="text-muted small fw-medium">Yearly Missed / Absent</div>
+                    <div className="fw-bold fs-4 text-danger mt-1">{yearlyAbsent} Days</div>
+                    <div className="text-muted small" style={{ fontSize: '11px' }}>Missed roll call check-ins</div>
+                  </div>
+                </div>
+                <div className="col-12 col-sm-6 col-md-3">
+                  <div className="p-3 rounded-3 bg-light border text-center">
+                    <div className="text-muted small fw-medium">Calendar Year Days</div>
+                    <div className="fw-bold fs-4 text-dark mt-1">{yearlySummary?.daysInYear || 365} Days</div>
+                    <div className="text-muted small" style={{ fontSize: '11px' }}>Total days in Year {currentYear}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Month-by-Month Breakdown */}
+              <h6 className="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
+                <Clock size={16} className="text-primary" />
+                Monthly Attendance Breakdown ({currentYear})
+              </h6>
+              <div className="table-responsive rounded-3 border">
+                <table className="table table-hover align-middle mb-0">
+                  <thead className="table-light">
+                    <tr className="small text-muted">
+                      <th className="ps-3">Month</th>
+                      <th>Total Days in Month</th>
+                      <th>Holidays Excluded</th>
+                      <th>Net Active Days</th>
+                      <th>Days Present</th>
+                      <th>Days Absent</th>
+                      <th className="pe-3">Monthly Presence Summary</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monthlyBreakdown && monthlyBreakdown.length > 0 ? (
+                      monthlyBreakdown.map((m) => (
+                        <tr key={m.month}>
+                          <td className="ps-3 fw-semibold text-dark">{m.monthName}</td>
+                          <td>{m.daysInMonth} days</td>
+                          <td>{m.holidaysExcluded > 0 ? (m.holidaysExcluded + ' days') : '0 days'}</td>
+                          <td><span className="fw-medium text-dark">{m.activeDays} days</span></td>
+                          <td>
+                            <span className="badge bg-success bg-opacity-10 text-success fw-bold px-2 py-1">
+                              ✓ {m.daysPresent} Present
+                            </span>
+                          </td>
+                          <td>
+                            <span className={'badge ' + (m.daysAbsent > 0 ? 'bg-danger bg-opacity-10 text-danger' : 'bg-light text-muted') + ' fw-semibold px-2 py-1'}>
+                              {m.daysAbsent} Absent
+                            </span>
+                          </td>
+                          <td className="pe-3">
+                            <span className="fw-bold text-primary">
+                              {m.daysPresent} / {m.daysInMonth} Days
+                            </span>
+                            <span className="text-muted small ms-1" style={{ fontSize: '11px' }}>
+                              ({m.daysPresent} / {m.activeDays} active)
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td className="ps-3 fw-semibold text-dark">{currentMonthName}</td>
+                        <td>{daysInMonth} days</td>
+                        <td>{monthlyHolidays} days</td>
+                        <td>{Math.max(0, daysInMonth - monthlyHolidays)} days</td>
+                        <td><span className="badge bg-success bg-opacity-10 text-success fw-bold px-2 py-1">✓ {monthlyPresent} Present</span></td>
+                        <td><span className="badge bg-danger bg-opacity-10 text-danger fw-semibold px-2 py-1">{monthlyAbsent} Absent</span></td>
+                        <td className="pe-3"><span className="fw-bold text-primary">{monthlyPresent} / {daysInMonth} Days</span></td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
+
+          {/* Daily Attendance History Card */}
+          <div className="card shadow-sm border-0 rounded-4">
+            <div className="card-header bg-white border-bottom py-3">
+              <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
+                <History size={18} className="text-primary" />
+                Daily Roll Call Verification History ({history.length} Records)
+              </h6>
+            </div>
           <div className="card-body p-0">
             {history.length === 0 ? (
               <div className="text-center p-5 text-muted small">No attendance records found yet.</div>
@@ -1301,6 +1458,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
               </div>
             )}
           </div>
+        </div>
         </div>
       )}
 

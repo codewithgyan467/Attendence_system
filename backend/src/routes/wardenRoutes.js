@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { getQuery, allQuery, withTransaction } = require('../db/database');
+const { getQuery, allQuery, withTransaction, runQuery } = require('../db/database');
 const { requireAuth, requireRole, recordAuditEvent } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
+const { getAllStudentsAttendanceSummary, getStudentAttendanceSummary } = require('../services/attendanceStatsService');
 
 // Scoped access for Wardens and Admins
 router.use(requireAuth, requireRole('WARDEN', 'ADMIN'));
@@ -181,6 +182,29 @@ router.post('/feedback/:id/respond', async (req, res) => {
     await recordAuditEvent(req.user.id, req.user.username, 'WARDEN_RESPOND_FEEDBACK', 'FEEDBACK', req.params.id, `Status updated to ${status}`, req);
 
     res.json({ success: true, message: 'Ticket updated successfully.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 5. Monthly & Annual Roll Call Ledger across all hostel residents
+router.get('/attendance-ledger', async (req, res) => {
+  try {
+    const year = req.query.year ? parseInt(req.query.year, 10) : null;
+    const month = req.query.month ? parseInt(req.query.month, 10) : null;
+    const ledger = await getAllStudentsAttendanceSummary(year, month);
+    res.json({ success: true, ledger });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. Individual Resident Monthly & Annual Ledger
+router.get('/student-ledger/:studentId', async (req, res) => {
+  try {
+    const year = req.query.year ? parseInt(req.query.year, 10) : null;
+    const ledger = await getStudentAttendanceSummary(req.params.studentId, year);
+    res.json({ success: true, ledger });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

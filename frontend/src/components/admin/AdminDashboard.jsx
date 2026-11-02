@@ -239,7 +239,7 @@ export default function AdminDashboard({ onNavigate }) {
           <KpiCard
             title="Present Today"
             value={s.presentToday || 0}
-            subtitle={`${s.attendancePercentage || 0}% overall attendance`}
+            subtitle={`${s.presentToday || 0} / ${s.totalRegistered || 0} residents present today`}
             icon={CheckCircle2}
             color="success"
             badgeText={s.lateToday > 0 ? `+${s.lateToday} Late` : undefined}

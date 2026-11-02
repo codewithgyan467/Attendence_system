@@ -18,6 +18,7 @@ const { createMasterRecoveryKey, getActiveRecoveryKeyMetadata } = require('../se
 const embeddingCache = require('../services/embeddingCache');
 const bleBeaconService = require('../services/bleBeaconService');
 const beaconCache = require('../services/beaconCache');
+const { getAllStudentsAttendanceSummary } = require('../services/attendanceStatsService');
 
 // Security Hardened Multer Configuration: 10MB limit and strict file format filter
 const uploadDir = path.join(__dirname, '../../uploads');
@@ -1630,6 +1631,18 @@ router.delete('/ble/beacons/:id', requireRole('ADMIN'), async (req, res) => {
 });
 
 // 5. Attendance Reports & Export
+// 4b. Monthly & Annual Roll Call Ledger across all hostel residents
+router.get('/attendance-ledger', async (req, res) => {
+  try {
+    const year = req.query.year ? parseInt(req.query.year, 10) : null;
+    const month = req.query.month ? parseInt(req.query.month, 10) : null;
+    const ledger = await getAllStudentsAttendanceSummary(year, month);
+    res.json({ success: true, ledger });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 5. Attendance Reports & Export (includes recorded attendances and absent students without records)
 router.get('/reports', async (req, res) => {
   try {

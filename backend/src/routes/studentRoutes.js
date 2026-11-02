@@ -10,6 +10,7 @@ const { sendEmailOtp, sendSmsOtp, maskEmail, maskPhone } = require('../services/
 const { authLimiter } = require('../middleware/rateLimiter');
 const aiServiceClient = require('../services/aiServiceClient');
 const embeddingCache = require('../services/embeddingCache');
+const { getStudentAttendanceSummary } = require('../services/attendanceStatsService');
 
 // 1. Privacy-First Deprecation: Public scraping of all student records is disabled to protect student privacy
 router.get('/allotment-list', async (req, res) => {
@@ -583,13 +584,8 @@ router.get('/dashboard', async (req, res) => {
       SELECT * FROM attendance_records WHERE student_id = ? AND date = ?
     `, [student.id, today]);
 
-    // Calculate 30-day stats
-    const totalDaysRecorded = await getQuery(`SELECT COUNT(*) as count FROM attendance_records WHERE student_id = ?`, [student.id]);
-    const presentDays = await getQuery(`SELECT COUNT(*) as count FROM attendance_records WHERE student_id = ? AND status IN ('PRESENT', 'EXCUSED')`, [student.id]);
-
-    const percentage = (totalDaysRecorded?.count || 0) > 0
-      ? Math.round(((presentDays?.count || 0) / totalDaysRecorded.count) * 100)
-      : 100;
+    // Calculate comprehensive day-count hostel attendance summary (NO percentages!)
+    const summary = await getStudentAttendanceSummary(student.id);
 
     // Recent 10 logs
     const history = await allQuery(`
@@ -615,17 +611,51 @@ router.get('/dashboard', async (req, res) => {
         record: todayRecord || null
       },
       stats: {
-        totalDaysRecorded: totalDaysRecorded?.count || 0,
-        presentDays: presentDays?.count || 0,
-        attendancePercentage: percentage,
+        // Core Hostel Day-Count Metrics (Days Present & Days Absent)
+        monthlyPresent: summary.currentMonth.daysPresent,
+        monthlyAbsent: summary.currentMonth.daysAbsent,
+        daysInMonth: summary.currentMonth.daysInMonth,
+        monthlyHolidays: summary.currentMonth.holidaysExcluded,
+        monthlyActiveDays: summary.currentMonth.activeDays,
+        currentMonthName: summary.currentMonth.monthName,
+
+        yearlyPresent: summary.yearlySummary.daysPresent,
+        yearlyAbsent: summary.yearlySummary.daysAbsent,
+        daysInYear: summary.yearlySummary.daysInYear,
+        yearlyHolidays: summary.yearlySummary.holidaysExcluded,
+        yearlyActiveDays: summary.yearlySummary.activeDays,
+        currentYear: summary.yearlySummary.year,
+
+        presentDays: summary.lifetime.totalPresent,
+        absentDays: summary.lifetime.totalAbsent,
+        totalDaysRecorded: summary.lifetime.totalRecorded,
+
         failedStrikes: student.failed_attempts || 0,
         isFlaggedForge: Boolean(student.is_flagged_forge),
         hasFaceRegistered,
         faceEmbeddingsCount: faceEmbeddingsCount?.count || 0
       },
+      currentMonth: summary.currentMonth,
+      yearlySummary: summary.yearlySummary,
+      monthlyBreakdown: summary.monthlyBreakdown,
+      lifetime: summary.lifetime,
       geofence: activeGeofence,
       recentHistory: history
     });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 3b. Student Attendance Ledger (Month-by-Month & Annual Breakdown)
+router.get('/attendance-ledger', async (req, res) => {
+  try {
+    const student = await getQuery(`SELECT id FROM students WHERE user_id = ? OR id = ?`, [req.user.id, req.user.student_id]);
+    if (!student) return res.status(404).json({ success: false, error: 'Student profile not found.' });
+
+    const year = req.query.year ? parseInt(req.query.year, 10) : new Date().getFullYear();
+    const ledger = await getStudentAttendanceSummary(student.id, year);
+    res.json({ success: true, ledger });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
