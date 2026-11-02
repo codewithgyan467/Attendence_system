@@ -676,6 +676,17 @@ const initDatabase = async () => {
 
   // 17. Initial Data Seeding
   await seedInitialData();
+
+  // 18. Hydrate In-Memory Caches for Sub-0.4ms Attendance Telemetry
+  try {
+    const embeddingCache = require('../services/embeddingCache');
+    await embeddingCache.hydrate(allQuery);
+    const beaconCache = require('../services/beaconCache');
+    await beaconCache.hydrate(allQuery);
+    console.log('[Cache] In-Memory Caches Hydrated: ' + embeddingCache.size() + ' Biometric Profiles | ' + beaconCache.size() + ' Floor BLE Beacons');
+  } catch (cacheErr) {
+    console.warn('⚠️ In-Memory Cache Hydration Notice:', cacheErr.message);
+  }
 };
 
 const clearAllStudentData = async () => {
@@ -764,8 +775,8 @@ const seedInitialData = async () => {
   if (!existingGeo) {
     activeGeoId = uuidv4();
     await runQuery(`
-      INSERT INTO geofence_configs (id, hostel_name, latitude, longitude, radius_meters, is_active, updated_by)
-      VALUES (?, 'Aec hostel', 26.140462, 91.656606, 60.0, 1, 'System Bootstrap')
+      INSERT INTO geofence_configs (id, hostel_name, latitude, longitude, radius_meters, is_active, ble_mode, updated_by)
+      VALUES (?, 'Aec hostel', 26.140462, 91.656606, 60.0, 1, 'SOFT_ANCHOR', 'System Bootstrap')
     `, [activeGeoId]);
   }
 

@@ -96,6 +96,11 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// Lightweight Keepalive Endpoint (< 1ms RAM response to prevent Render free-tier cold sleep)
+app.get(['/api/v1/health/keepalive', '/health/keepalive'], (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Mount Domain Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/admin', adminRoutes);

@@ -17,6 +17,7 @@ const { getAttendanceWindowStatus, formatTime12h } = require('../services/schedu
 const { createMasterRecoveryKey, getActiveRecoveryKeyMetadata } = require('../services/recoveryService');
 const embeddingCache = require('../services/embeddingCache');
 const bleBeaconService = require('../services/bleBeaconService');
+const beaconCache = require('../services/beaconCache');
 
 // Security Hardened Multer Configuration: 10MB limit and strict file format filter
 const uploadDir = path.join(__dirname, '../../uploads');
@@ -1275,29 +1276,343 @@ router.post('/ble/verify-token', requireRole('ADMIN'), async (req, res) => {
 router.post('/ble/beacons', requireRole('ADMIN'), async (req, res) => {
   try {
     const { id, beacon_public_id, block_name, shared_secret_ref, is_active = 1 } = req.body;
-    if (!beacon_public_id || !block_name) {
-      return res.status(400).json({ success: false, error: 'beacon_public_id and block_name are required' });
+    if (!block_name && !beacon_public_id) {
+      return res.status(400).json({ success: false, error: 'Floor/Wing Name is required.' });
     }
+
+    // Auto-generate sequential beacon ID (e.g. FLR_0, FLR_1, FLR_2) if not specified
+    let resolvedPublicId = beacon_public_id;
+    if (!resolvedPublicId) {
+      const countRow = await getQuery(`SELECT COUNT(*) as count FROM site_ble_beacons`);
+      const nextNum = countRow?.count || 0;
+      resolvedPublicId = `FLR_${nextNum}`;
+    }
+
+    const resolvedBlockName = block_name || resolvedPublicId;
     const secret = shared_secret_ref || bleBeaconService.generateBeaconSecret();
     const geo = await getQuery(`SELECT id FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
     const geofenceId = geo?.id || null;
 
+    let targetId = id;
     if (id) {
       await runQuery(`
         UPDATE site_ble_beacons
         SET beacon_public_id = ?, block_name = ?, shared_secret_ref = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `, [beacon_public_id, block_name, secret, is_active ? 1 : 0, id]);
-      await recordAuditEvent(req.user.id, req.user.username, 'UPDATE_BLE_BEACON', 'BEACON', id, `Updated beacon ${beacon_public_id} (${block_name})`, req);
+      `, [resolvedPublicId, resolvedBlockName, secret, is_active ? 1 : 0, id]);
+      await recordAuditEvent(req.user.id, req.user.username, 'UPDATE_BLE_BEACON', 'BEACON', id, `Updated beacon ${resolvedPublicId} (${resolvedBlockName})`, req);
     } else {
-      const newId = uuidv4();
+      targetId = uuidv4();
       await runQuery(`
         INSERT INTO site_ble_beacons (id, geofence_id, beacon_public_id, shared_secret_ref, block_name, is_active)
         VALUES (?, ?, ?, ?, ?, ?)
-      `, [newId, geofenceId, beacon_public_id, secret, block_name, is_active ? 1 : 0]);
-      await recordAuditEvent(req.user.id, req.user.username, 'CREATE_BLE_BEACON', 'BEACON', newId, `Registered new beacon ${beacon_public_id} (${block_name})`, req);
+      `, [targetId, geofenceId, resolvedPublicId, secret, resolvedBlockName, is_active ? 1 : 0]);
+      await recordAuditEvent(req.user.id, req.user.username, 'CREATE_BLE_BEACON', 'BEACON', targetId, `Registered new beacon ${resolvedPublicId} (${resolvedBlockName})`, req);
     }
-    res.json({ success: true, message: 'Beacon saved successfully' });
+
+    // Atomic In-Memory Cache Update (< 0.2ms write-through)
+    beaconCache.set({
+      id: targetId,
+      geofence_id: geofenceId,
+      beacon_public_id: resolvedPublicId,
+      shared_secret_ref: secret,
+      block_name: resolvedBlockName,
+      is_active: is_active ? 1 : 0
+    });
+
+    res.json({
+      success: true,
+      message: 'Beacon saved and cached successfully',
+      beacon: {
+        id: targetId,
+        beacon_public_id: resolvedPublicId,
+        block_name: resolvedBlockName,
+        shared_secret_ref: secret,
+        is_active: is_active ? 1 : 0
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Toggle Beacon Kill Switch (Instant In-Memory & Database Deactivation)
+router.post('/ble/beacons/:id/toggle', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const beacon = await getQuery(`SELECT * FROM site_ble_beacons WHERE id = ?`, [req.params.id]);
+    if (!beacon) {
+      return res.status(404).json({ success: false, error: 'Beacon not found' });
+    }
+    const newActive = beacon.is_active === 1 ? 0 : 1;
+    await runQuery(`UPDATE site_ble_beacons SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [newActive, req.params.id]);
+
+    beacon.is_active = newActive;
+    if (newActive === 1) {
+      beaconCache.set(beacon);
+    } else {
+      beaconCache.deactivate(beacon.id);
+    }
+
+    await recordAuditEvent(req.user.id, req.user.username, 'TOGGLE_BLE_BEACON', 'BEACON', req.params.id, `Toggled beacon ${beacon.beacon_public_id} (${beacon.block_name}) active status to ${newActive}`, req);
+    res.json({
+      success: true,
+      is_active: newActive,
+      message: newActive ? 'Beacon activated and live in BeaconCache' : 'Beacon deactivated via Kill-Switch (Immediate Revocation)'
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// One-Click Arduino Sketch Generator (.ino download for bare ESP32 Dev Module)
+router.get('/ble/beacons/:id/sketch', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const beacon = await getQuery(`SELECT * FROM site_ble_beacons WHERE id = ?`, [req.params.id]);
+    if (!beacon) {
+      return res.status(404).json({ success: false, error: 'Beacon not found' });
+    }
+
+    const sketch = `/**
+ * ============================================================================
+ * HOSTELGUARD ENTERPRISE v3.2: BARE ESP32 AIR-ANCHOR FIRMWARE
+ * Floor/Wing:      ${beacon.block_name || 'Main Hostel'}
+ * Target:          ESP32 Dev Module (Arduino IDE 2.3.10)
+ * Partition:       Huge APP (3MB No OTA/1MB SPIFFS)
+ * Zero Hardware:   Zero external RTC chip, zero external resistors
+ * ============================================================================
+ */
+
+#include <WiFi.h>
+#include <time.h>
+#include <sys/time.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+#include <mbedtls/md.h>
+
+// ----------------------------------------------------------------------------
+// 1. FLOOR PARAMETERS (Auto-configured by HostelGuard Admin)
+// ----------------------------------------------------------------------------
+const char* WIFI_SSID         = "HostelGuard_WiFi";
+const char* WIFI_SSID_ALT     = "iPhone";
+const char* WIFI_PASSWORD     = "Hostel@12345";
+
+const char* BEACON_PUBLIC_ID  = "${beacon.beacon_public_id}";
+const char* BEACON_NAME       = "${beacon.block_name || beacon.beacon_public_id}";
+const char* SHARED_SECRET_HEX = "${beacon.shared_secret_ref}";
+
+// BLE UUID Definitions
+#define SERVICE_UUID              "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define CHARACTERISTIC_UUID       "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define TIME_SYNC_CHAR_UUID       "beb5483e-36e1-4688-b7f5-ea07361b26a9"
+#define OFFLINE_SIGN_CHAR_UUID    "beb5483e-36e1-4688-b7f5-ea07361b26aa"
+
+const char* NTP_SERVER        = "pool.ntp.org";
+const long  GMT_OFFSET_SEC    = 19800; // +05:30 Asia/Kolkata
+const int   DAYLIGHT_OFFSET   = 0;
+
+BLEServer*         pServer = NULL;
+BLECharacteristic* pRollingChar = NULL;
+BLECharacteristic* pTimeSyncChar = NULL;
+BLECharacteristic* pOfflineSignChar = NULL;
+
+bool     deviceConnected = false;
+uint32_t lastComputedSlot = 0;
+String   currentRollingToken = "INIT0000";
+unsigned long lastKeepAlivePulse = 0;
+
+uint8_t hexPairToByte(char high, char low) {
+  auto hexVal = [](char c) -> uint8_t {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return 0;
+  };
+  return (hexVal(high) << 4) | hexVal(low);
+}
+
+String computeHmacHex(const char* secretHex, const char* payload, int outLength) {
+  uint8_t keyBytes[32];
+  for (int i = 0; i < 32; i++) {
+    keyBytes[i] = hexPairToByte(secretHex[i * 2], secretHex[i * 2 + 1]);
+  }
+  uint8_t hmacOutput[32];
+  mbedtls_md_context_t ctx;
+  mbedtls_md_init(&ctx);
+  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1);
+  mbedtls_md_hmac_starts(&ctx, keyBytes, 32);
+  mbedtls_md_hmac_update(&ctx, (const unsigned char*)payload, strlen(payload));
+  mbedtls_md_hmac_finish(&ctx, hmacOutput);
+  mbedtls_md_free(&ctx);
+
+  char hexBuf[65];
+  for (int i = 0; i < 32; i++) {
+    snprintf(&hexBuf[i * 2], 3, "%02X", hmacOutput[i]);
+  }
+  hexBuf[outLength] = '\0';
+  return String(hexBuf);
+}
+
+class ServerCallbacks: public BLEServerCallbacks {
+  void onConnect(BLEServer* pServer) {
+    deviceConnected = true;
+    Serial.println("[BLE] Phone Connected to Floor Beacon: " + String(BEACON_NAME));
+  }
+  void onDisconnect(BLEServer* pServer) {
+    deviceConnected = false;
+    Serial.println("[BLE] Client Disconnected. Advertising...");
+    pServer->startAdvertising();
+  }
+};
+
+class TimeSyncCallbacks: public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* pChar) {
+    String val = pChar->getValue().c_str();
+    if (val.length() > 0) {
+      int sep = val.indexOf(':');
+      if (sep > 0) {
+        String epochStr = val.substring(0, sep);
+        String hmacStr = val.substring(sep + 1);
+        time_t epoch = (time_t)epochStr.toInt();
+        String expected = computeHmacHex(SHARED_SECRET_HEX, ("TIMESYNC|" + String(BEACON_PUBLIC_ID) + "|" + epochStr).c_str(), 16);
+        if (hmacStr.equalsIgnoreCase(expected)) {
+          struct timeval tv = { epoch, 0 };
+          settimeofday(&tv, NULL);
+          Serial.printf("[GATT TIME RELAY] RTC Calibrated from Phone: %ld\n", epoch);
+        }
+      }
+    }
+  }
+};
+
+class OfflineSignCallbacks: public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* pChar) {
+    String val = pChar->getValue().c_str();
+    if (val.startsWith("SIGN:")) {
+      int firstSep = val.indexOf(':', 5);
+      String imgHash = firstSep > 0 ? val.substring(5, firstSep) : val.substring(5);
+      time_t now = time(nullptr);
+      uint32_t slot = (uint32_t)(now / 30);
+      String payload = imgHash + ":" + String(BEACON_PUBLIC_ID) + ":" + String(slot);
+      String sig = computeHmacHex(SHARED_SECRET_HEX, payload.c_str(), 32);
+      String response = String(BEACON_PUBLIC_ID) + ":" + String(slot) + ":" + sig;
+      pChar->setValue((uint8_t*)response.c_str(), response.length());
+      pChar->notify();
+      Serial.printf("[OFFLINE SIGN] Signed frame hash for slot #%u\n", slot);
+    }
+  }
+};
+
+void keepPowerBankAwake() {
+  if (millis() - lastKeepAlivePulse > 20000) {
+    lastKeepAlivePulse = millis();
+    volatile uint32_t dummy = 0;
+    for (int i = 0; i < 200000; i++) dummy += i; // 100ms CPU current pulse
+  }
+}
+
+void setup() {
+  Serial.begin(9600);
+  delay(1000);
+  Serial.println("\n=======================================================");
+  Serial.printf("  HOSTELGUARD v3.2 AIR-ANCHOR: %s (%s)\n", BEACON_NAME, BEACON_PUBLIC_ID);
+  Serial.println("=======================================================");
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  int retry = 0;
+  while (WiFi.status() != WL_CONNECTED && retry < 16) {
+    delay(500);
+    Serial.print(".");
+    retry++;
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET, NTP_SERVER);
+    struct tm ti;
+    if (getLocalTime(&ti)) {
+      Serial.printf("\n[NTP SYNC OK] Current Time: %02d:%02d:%02d\n", ti.tm_hour, ti.tm_min, ti.tm_sec);
+    }
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+  } else {
+    Serial.println("\n[NTP Offline] Waiting for Web Bluetooth Phone Time Relay...");
+  }
+
+  BLEDevice::init(BEACON_PUBLIC_ID);
+  BLEDevice::setPower(ESP_PWR_LVL_P9);
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new ServerCallbacks());
+
+  BLEService* pService = pServer->createService(SERVICE_UUID);
+
+  pRollingChar = pService->createCharacteristic(
+                   CHARACTERISTIC_UUID,
+                   BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+                 );
+  pRollingChar->addDescriptor(new BLE2902());
+
+  pTimeSyncChar = pService->createCharacteristic(
+                    TIME_SYNC_CHAR_UUID,
+                    BLECharacteristic::PROPERTY_WRITE
+                  );
+  pTimeSyncChar->setCallbacks(new TimeSyncCallbacks());
+
+  pOfflineSignChar = pService->createCharacteristic(
+                       OFFLINE_SIGN_CHAR_UUID,
+                       BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+                     );
+  pOfflineSignChar->setCallbacks(new OfflineSignCallbacks());
+  pOfflineSignChar->addDescriptor(new BLE2902());
+
+  pService->start();
+
+  BLEAdvertising* pAdv = BLEDevice::getAdvertising();
+  pAdv->addServiceUUID(SERVICE_UUID);
+
+  BLEAdvertisementData advData;
+  advData.setName(BEACON_PUBLIC_ID);
+  advData.setCompleteServices(BLEUUID(SERVICE_UUID));
+  pAdv->setAdvertisementData(advData);
+
+  BLEAdvertisementData scanData;
+  scanData.setName(BEACON_NAME);
+  pAdv->setScanResponseData(scanData);
+
+  pAdv->setScanResponse(true);
+  pAdv->setMinPreferred(0x06);
+  pAdv->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
+
+  Serial.println("✅ Bare ESP32 Air-Anchor Active & Broadcasting!");
+}
+
+void loop() {
+  keepPowerBankAwake();
+  time_t now = time(nullptr);
+  uint32_t currentSlot = (uint32_t)(now / 30);
+
+  if (currentSlot != lastComputedSlot) {
+    lastComputedSlot = currentSlot;
+    char payload[64];
+    snprintf(payload, sizeof(payload), "%s:%u", BEACON_PUBLIC_ID, currentSlot);
+    currentRollingToken = computeHmacHex(SHARED_SECRET_HEX, payload, 8);
+
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "{\"id\":\"%s\",\"code\":\"%s\",\"slot\":%u}",
+             BEACON_PUBLIC_ID, currentRollingToken.c_str(), currentSlot);
+
+    pRollingChar->setValue((uint8_t*)buffer, strlen(buffer));
+    pRollingChar->notify();
+    Serial.printf("[TICK] Slot #%u -> %s\n", currentSlot, currentRollingToken.c_str());
+  }
+  delay(1000);
+}
+`;
+
+    const filename = `esp32_${(beacon.beacon_public_id || 'beacon').toLowerCase().replace(/[^a-z0-9_]/g, '_')}.ino`;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(sketch);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -1305,6 +1620,7 @@ router.post('/ble/beacons', requireRole('ADMIN'), async (req, res) => {
 
 router.delete('/ble/beacons/:id', requireRole('ADMIN'), async (req, res) => {
   try {
+    beaconCache.delete(req.params.id);
     await runQuery(`DELETE FROM site_ble_beacons WHERE id = ?`, [req.params.id]);
     await recordAuditEvent(req.user.id, req.user.username, 'DELETE_BLE_BEACON', 'BEACON', req.params.id, `Deleted beacon ${req.params.id}`, req);
     res.json({ success: true, message: 'Beacon deleted successfully' });

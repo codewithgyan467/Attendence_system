@@ -200,6 +200,8 @@ export const api = {
     generateBleSecret: () => request('/admin/ble/generate-secret', { method: 'POST' }),
     saveBleBeacon: (data) => request('/admin/ble/beacons', { method: 'POST', body: JSON.stringify(data) }),
     deleteBleBeacon: (id) => request(`/admin/ble/beacons/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    toggleBleBeacon: (id) => request(`/admin/ble/beacons/${encodeURIComponent(id)}/toggle`, { method: 'POST' }),
+    downloadBeaconSketchUrl: (id) => `${getApiBaseUrl()}/admin/ble/beacons/${encodeURIComponent(id)}/sketch`,
     verifyBleToken: (data) => request('/admin/ble/verify-token', { method: 'POST', body: JSON.stringify(data) }),
     getReports: (params = {}) => {
       const q = new URLSearchParams(params).toString();
@@ -296,6 +298,7 @@ export const api = {
     verifyLocation: (data) => request('/attendance/verify-location', { method: 'POST', body: JSON.stringify(data) }),
     verifyFace: (data) => request('/attendance/verify-face', { method: 'POST', body: JSON.stringify(data) }),
     getStatus: (identifier) => request(`/attendance/status/${encodeURIComponent(identifier)}`),
+    offlineSync: (data) => request('/attendance/offline-sync', { method: 'POST', body: JSON.stringify(data) }),
     getSchedule: () => request('/attendance/schedule')
   },
 

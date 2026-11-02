@@ -16,7 +16,10 @@ import {
   ShieldCheck,
   Zap,
   Clock,
-  Copy
+  Copy,
+  Download,
+  Power,
+  ShieldAlert
 } from 'lucide-react';
 import GeofenceMap from '../common/GeofenceMap';
 
@@ -130,6 +133,39 @@ export default function GeofenceManager() {
     } catch (err) {
       setErrorMsg(`Failed to generate secret: ${err.message}`);
     }
+  };
+
+  const handleToggleBeacon = async (id, name) => {
+    try {
+      const res = await api.admin.toggleBleBeacon(id);
+      if (res?.success) {
+        setStatusMsg(`Beacon "${name}" ${res.is_active ? 'activated' : 'deactivated (Kill-switch applied)'}.`);
+        await fetchBleConfig();
+      }
+    } catch (err) {
+      setErrorMsg(`Failed to toggle beacon: ${err.message}`);
+    }
+  };
+
+  const handleDownloadSketch = (beacon) => {
+    const url = api.admin.downloadBeaconSketchUrl(beacon.id);
+    const token = localStorage.getItem('token');
+    fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+      .then(res => res.blob())
+      .then(blob => {
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `esp32_${(beacon.beacon_public_id || 'beacon').toLowerCase().replace(/[^a-z0-9_]/g, '_')}.ino`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(downloadUrl);
+        setStatusMsg(`Pre-configured Arduino firmware (.ino) downloaded for ${beacon.block_name || beacon.beacon_public_id}! Open in Arduino IDE 2.3.10 and click Upload (Target: ESP32 Dev Module).`);
+      })
+      .catch(err => setErrorMsg(`Failed to download sketch: ${err.message}`));
   };
 
   const handleSaveBeacon = async (e) => {
@@ -768,14 +804,32 @@ export default function GeofenceManager() {
                             </span>
                           </td>
                           <td className="text-end">
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteBeacon(b.id, b.beacon_public_id)}
-                              className="btn btn-sm btn-outline-danger p-1"
-                              title="Delete Beacon"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            <div className="d-flex justify-content-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadSketch(b)}
+                                className="btn btn-sm btn-outline-primary p-1"
+                                title="Download Ready-to-Flash .ino Firmware Sketch for Arduino IDE (ESP32 Dev Module)"
+                              >
+                                <Download size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleBeacon(b.id, b.beacon_public_id)}
+                                className={`btn btn-sm p-1 ${b.is_active ? 'btn-outline-warning' : 'btn-outline-success'}`}
+                                title={b.is_active ? "Kill Switch: Immediately Deactivate Stolen/Compromised Beacon" : "Reactivate Beacon"}
+                              >
+                                <Power size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteBeacon(b.id, b.beacon_public_id)}
+                                className="btn btn-sm btn-outline-danger p-1"
+                                title="Delete Beacon"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
