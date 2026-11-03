@@ -1,7 +1,7 @@
 # 🏨 HostelGuard Enterprise: Residential Attendance & Safety Platform
 
-> **Institutional Edition v2.4**  
-> *Production-Ready • Geo-Fenced • AI-Face-Verified • Zero Cloud API Costs*
+> **Institutional Edition v4.0**  
+> *Production-Ready • Three-Ring Fortress • AI MiniFASNet PAD • ESP32 BLE Anchored • Zero Cloud API Costs*
 
 HostelGuard Enterprise is an institutional, client-deployable attendance and resident safety management platform designed specifically for university hostels, dormitories, and residential campuses.
 
@@ -9,23 +9,27 @@ HostelGuard Enterprise is an institutional, client-deployable attendance and res
 
 ## 🌟 Key Platform Capabilities
 
-1. **Real-World Attendance Time Management**:
-   * Server-authoritative roll-call window enforcement (`19:00` – `19:30` / 7:00 PM – 7:30 PM default in `Asia/Kolkata` timezone).
-   * Specific-date delay/extension overrides for college feasts, sports meets, cultural celebrations, or exams.
-   * Bulk holiday list upload tool supporting CSV, Excel (`.xlsx`, `.xls`), and JSON.
-2. **High-Precision Geofencing & Anti-Replay Protection**:
-   * Server-side distance calculations against calibrated hostel perimeter boundaries.
-   * Single-use cryptographic challenge tokens (180-second TTL) preventing network replay attacks.
-   * Speed-based teleportation and mock-location detection.
-3. **AI Biometric Verification & Liveness**:
-   * Deep-learning face detection via OpenCV YuNet (5 facial landmarks) and SFace (128-dimensional embedding vectors).
-   * Active multi-angle calibration (frontal, left 30°, right 30°, dynamic expression) to defeat presentation attacks.
+1. **Three-Ring Fortress Attendance Verification**:
+   * **Ring 1 (Campus Geofence)**: High-precision Haversine perimeter calculations (<95 meters boundary).
+   * **Ring 2 (GPS Anti-Spoofing Engine)**: Deep operating system inspection detecting `isMock` hardware flags, Fake GPS apps (JoyStick/Fly GPS), "Superman" teleportation velocity (>100 km/h), satellite jitter variance, and 15-second timestamp freshness guards.
+   * **Ring 3 (Physical BLE Hardware Anchor)**: Wall-mounted ESP32 Bluetooth Low Energy beacons broadcasting corridor 2.4 GHz radio waves that cannot be faked or forwarded remotely.
+
+2. **Facial Security Engine v4.0 (Presentation Attack Detection)**:
+   * **Deep Learning Passive PAD**: MiniFASNetV2 ONNX (80x80 scale-2.7 context crop) evaluating screen replays, high-PPI mobile/laptop displays, and photo print attacks.
+   * **Active Gesture Challenge**: Dynamic server-issued head pose and landmark challenges (blinking, nodding, head rotation) preventing pre-recorded video injection.
+   * **Camera Integrity Guard**: Detection of virtual cameras (OBS, ManyCam), synthetic frames, and browser driver manipulation.
+   * **Biometric Embedding**: OpenCV YuNet (5 facial landmarks) + SFace (128-dimensional cosine embedding vectors) with local CPU execution.
+
+3. **Operational Redundancy & Incident Readiness**:
+   * **Emergency Evacuation Muster Desk**: Real-time roll-call safety desk providing instant headcount of safe vs. unaccounted residents during fire drills or emergencies.
+   * **In-Person Physical Fallback**: Sign-off protocol for students with facial bandages, medical injuries, or hardware camera failure.
+   * **Hostel Roll Call Ledger**: Pure calendar day counts (Days Present / Days Absent) excluding official hostel holidays, eliminating misleading academic course percentages.
+   * **Offline Resilient Queue**: Cryptographically signed local verifications auto-syncing seamlessly when connectivity returns.
+
 4. **Clean Role-Based Portals**:
-   * **Student Portal**: Live roll-call countdown, 3-step check-in wizard, summary cards, 7-day trend chart, appeal desk, and grievance ticketing.
-   * **Warden Dashboard**: Block-filtered live roster, real-time absentee list, and emergency contact directory with direct calling.
-   * **Admin Management Suite**: KPI dashboard, timing/schedule manager, student roster manager, geofence calibration, security alerts, and system health diagnostics.
-5. **Data Hygiene & Purge Operations**:
-   * Individual row deletion and single-click **Clear All** bulk purges across attendance records, corrections, security alerts, audit logs, and feedback tickets.
+   * **Student Portal**: Evening roll-call wizard, BLE beacon detector, active gesture prompter, monthly presence summary, appeals, and support tickets.
+   * **Warden Dashboard**: Block-filtered live roster, Emergency Muster Desk, in-person verification review, absent residents desk with direct emergency calling.
+   * **Admin Management Suite**: KPI dashboard, timing & holiday manager, student roster manager, geofence calibration, security incident log, and automated SQLite WAL database maintenance.
 
 ---
 
@@ -33,8 +37,8 @@ HostelGuard Enterprise is an institutional, client-deployable attendance and res
 
 | Role | Username / Identifier | Password | Access Scope |
 | :--- | :--- | :--- | :--- |
-| **System Administrator** | `admin` | `Admin@12345` | Full Executive Dashboard, Timing & Schedules, Roster, Geofence, Security Alerts, Diagnostics |
-| **Hostel Warden** | `warden` | `Warden@12345` | Block Supervision, Absent Residents Desk, Correction Reviews, Facility Feedback |
+| **System Administrator** | `admin` | `Admin@12345` | Executive Dashboard, Schedules, Roster, Geofence, Security Desk, Diagnostics |
+| **Hostel Warden** | `warden` | `Warden@12345` | Block Supervision, Muster Desk, Physical Sign-off, Absent Desk, Facility Feedback |
 | **Student Resident** | `2023CS01` *(or self-onboard)* | `Student@12345` | Evening Roll Call, Location & Face Verification, History, Appeals, Support Tickets |
 
 ---
@@ -57,43 +61,58 @@ npm start
 ```
 *Health Check*: [http://localhost:5000/health](http://localhost:5000/health)
 
-#### 2. Frontend (React 19 + Vite 6)
+#### 2. Frontend (React 18 + Vite 6 PWA)
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-*Web Portal*: [http://localhost:3000](http://localhost:3000)
+*Web Portal*: [http://localhost:5173](http://localhost:5173) (or [http://localhost:3000](http://localhost:3000))
 
 ---
 
-## 🧪 Automated Test Suite (91 of 91 Tests Passing)
+## 🧪 Automated Test Suite (121 of 121 Tests Passing)
 
-Run the comprehensive integration test suite verifying authentication, OTP password resets, concurrency hardening, schedule windows, SQLite backup restoration, and bulk purges:
+Run the comprehensive 14-suite automated test matrix verifying authentication, OTP security, geofence algorithms, BLE sync, v4 facial security, and operational enhancements:
 ```bash
-cd backend
 npm test
 ```
 ```
-Test Suites: 9 passed, 9 total
-Tests:       91 passed, 91 total
+PASS tests/admin_master_recovery.test.js
+PASS tests/auth.test.js
+PASS tests/operational_enhancements.test.js
+PASS tests/roster_import.test.js
+PASS tests/password_reset.test.js
+PASS tests/system_reverification.test.js
+PASS tests/security_concurrency_hardening.test.js
+PASS tests/attendance_schedule_and_purges.test.js
+PASS tests/backup_restore.test.js
+PASS tests/attendance_rules.test.js
+PASS tests/v3_antispoof_security.test.js
+PASS tests/offline_ble_sync.test.js
+PASS tests/v4_facial_security_engine.test.js
+PASS tests/geofence.test.js
+
+Test Suites: 14 passed, 14 total
+Tests:       121 passed, 121 total
 Snapshots:   0 total
-Time:        8.085 s
 ```
 
 ---
 
-## 📚 Certified Release Documentation
+## 📚 Certified Release Documentation & Architecture
 
+* **v4.0 PAD Architecture**: [HOSTELGUARD_PAD_V4_ARCHITECTURE.md](HOSTELGUARD_PAD_V4_ARCHITECTURE.md) *(also in [docs/reports/](docs/reports/HOSTELGUARD_PAD_V4_ARCHITECTURE.md))*
+* **Attack Validation Matrix**: [HOSTELGUARD_ATTACK_VALIDATION_MATRIX.md](HOSTELGUARD_ATTACK_VALIDATION_MATRIX.md) *(also in [docs/reports/](docs/reports/HOSTELGUARD_ATTACK_VALIDATION_MATRIX.md))*
+* **Biometric Model Benchmark**: [HOSTELGUARD_MODEL_COMPARISON.md](HOSTELGUARD_MODEL_COMPARISON.md) & [HOSTELGUARD_PERFORMANCE_BENCHMARK.md](HOSTELGUARD_PERFORMANCE_BENCHMARK.md)
+* **Camera Integrity & Virtual Defenses**: [HOSTELGUARD_CAMERA_INTEGRITY_REPORT.md](HOSTELGUARD_CAMERA_INTEGRITY_REPORT.md)
+* **System Known Limitations**: [HOSTELGUARD_KNOWN_LIMITATIONS.md](HOSTELGUARD_KNOWN_LIMITATIONS.md)
 * **System Architecture**: [docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md](docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md)
 * **21 BCNF Database Schema**: [docs/architecture/DATABASE_SCHEMA.md](docs/architecture/DATABASE_SCHEMA.md)
-* **Master Presentation & Engineering Report (v3.0)**: [docs/reports/hostelguard_presentation_and_engineering_report.md](docs/reports/hostelguard_presentation_and_engineering_report.md)
+* **Master Presentation & Engineering Report**: [docs/reports/hostelguard_presentation_and_engineering_report.md](docs/reports/hostelguard_presentation_and_engineering_report.md)
 * **Camera & Facial Verification Specification**: [docs/reports/CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.md](docs/reports/CAMERA_FACE_VERIFICATION_WORKFLOW_REPORT.md)
 * **GPS & Zero-Cloud Geofencing Specification**: [docs/reports/GPS_GEOFENCE_ANTI_SPOOFING_WORKFLOW_REPORT.md](docs/reports/GPS_GEOFENCE_ANTI_SPOOFING_WORKFLOW_REPORT.md)
-* **Final Production Certification Audit (24-Point Scorecard)**: [docs/reports/FINAL_PRODUCTION_AUDIT.md](docs/reports/FINAL_PRODUCTION_AUDIT.md)
-* **Biometric Calibration & Technology Evaluation Report**: [docs/reports/BIOMETRIC_CALIBRATION_REPORT.md](docs/reports/BIOMETRIC_CALIBRATION_REPORT.md)
-* **Pre-Change Release Baseline Snapshot**: [docs/reports/RELEASE_BASELINE.md](docs/reports/RELEASE_BASELINE.md)
-* **Official Release Notes**: [docs/reports/RELEASE_NOTES.md](docs/reports/RELEASE_NOTES.md)
+* **Final Production Certification Audit**: [docs/reports/FINAL_PRODUCTION_AUDIT.md](docs/reports/FINAL_PRODUCTION_AUDIT.md)
 * **Security & Threat Model Guide**: [docs/architecture/SECURITY.md](docs/architecture/SECURITY.md)
 * **Student & Warden Guide**: [docs/guides/USER_GUIDE.md](docs/guides/USER_GUIDE.md)
 * **Administrator Guide**: [docs/guides/ADMIN_GUIDE.md](docs/guides/ADMIN_GUIDE.md)
