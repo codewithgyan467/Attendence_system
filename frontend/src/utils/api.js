@@ -303,7 +303,8 @@ export const api = {
     verifyFace: (data) => request('/attendance/verify-face', { method: 'POST', body: JSON.stringify(data) }),
     getStatus: (identifier) => request(`/attendance/status/${encodeURIComponent(identifier)}`),
     offlineSync: (data) => request('/attendance/offline-sync', { method: 'POST', body: JSON.stringify(data) }),
-    getSchedule: () => request('/attendance/schedule')
+    getSchedule: () => request('/attendance/schedule'),
+    requestPhysicalVerification: (data) => request('/attendance/request-physical-verification', { method: 'POST', body: JSON.stringify(data) })
   },
 
   // Onboarding Privacy-Preserving OTP Helpers

@@ -35,9 +35,9 @@
 // ----------------------------------------------------------------------------
 // 1. CONFIGURATION PARAMETERS (Auto-Injected or Set by Admin)
 // ----------------------------------------------------------------------------
-const char* WIFI_SSID         = "iPhone ";     // Primary Wi-Fi SSID
+const char* WIFI_SSID         = "HOSTEL_WIFI_SSID";     // Configure with on-site hostel AP SSID     // Primary Wi-Fi SSID
 const char* WIFI_SSID_ALT     = "iPhone";      // Alternative SSID (fallback)
-const char* WIFI_PASSWORD     = "paword123";  // Wi-Fi Password
+const char* WIFI_PASSWORD     = "HOSTEL_WIFI_PASSWORD"; // Configure with on-site hostel AP Password  // Wi-Fi Password
 
 // Floor Public Identifier (e.g. "FLR_0", "Ground Floor", "1st Floor")
 const char* BEACON_PUBLIC_ID  = "HG-BEACON-BLKA-01";

@@ -262,11 +262,14 @@ const verifyLocationHandler = async (req, res) => {
     const challengeId = uuidv4();
     const expiresAt = new Date(Date.now() + evaluation.ttlMs).toISOString();
 
+    const ACTIVE_CHALLENGE_POOL = ['HOLD_STILL', 'TURN_LEFT', 'TURN_RIGHT', 'NOD_DOWN'];
+    const activeChallenge = ACTIVE_CHALLENGE_POOL[Math.floor(Math.random() * ACTIVE_CHALLENGE_POOL.length)];
+
     await runQuery(`
       INSERT INTO attendance_challenges (
         id, student_id, challenge_token, expires_at, is_used, verified_distance,
-        bound_ip_address, bound_device_id, request_nonce_hash, requires_step_up, step_up_color_sequence
-      ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+        bound_ip_address, bound_device_id, request_nonce_hash, requires_step_up, step_up_color_sequence, active_challenge
+      ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
     `, [
       challengeId,
       student.id,
@@ -277,7 +280,8 @@ const verifyLocationHandler = async (req, res) => {
       effectiveDeviceId,
       evaluation.requestNonceHash,
       evaluation.requiresStepUp ? 1 : 0,
-      evaluation.stepUpColors ? JSON.stringify(evaluation.stepUpColors) : null
+      evaluation.stepUpColors ? JSON.stringify(evaluation.stepUpColors) : null,
+      activeChallenge
     ]);
 
     // Insert Initial Evidence Ledger Row
@@ -321,6 +325,13 @@ const verifyLocationHandler = async (req, res) => {
       message: evaluation.requiresStepUp
         ? 'Location approved with Step-Up requirement. Proceed to photometric face verification.'
         : 'Location verified! Device is within permitted hostel perimeter. Proceed to facial verification.',
+      activeChallenge,
+      activeChallengeInstruction: {
+        'HOLD_STILL': 'Look directly into camera with a natural expression',
+        'TURN_LEFT': 'Slowly turn your head slightly to the left (~15°)',
+        'TURN_RIGHT': 'Slowly turn your head slightly to the right (~15°)',
+        'NOD_DOWN': 'Tilt your chin slightly downward'
+      }[activeChallenge] || 'Look directly into camera',
       sessionToken: challengeToken, // Backward compatible field name
       challengeToken,
       clientSessionProof,
@@ -450,10 +461,41 @@ const verifyFaceHandler = async (req, res) => {
       embeddingCache.set(student.id, storedEmbeddings);
     }
 
-    // 4. Call AI Microservice for Anti-Spoofing & Cosine Matching
+    // 3c. Inspect Camera Hardware Provenance (Detect Virtual Camera Drivers)
+    const effectiveDeviceInfo = req.body.device_info || req.body.deviceInfo || {};
+    const cameraLabel = String(effectiveDeviceInfo.cameraLabel || req.body.cameraLabel || '').toLowerCase();
+    const isVirtualCam = Boolean(
+      effectiveDeviceInfo.isVirtualCamera ||
+      ['obs virtual', 'virtual camera', 'manycam', 'v4l2loopback', 'camo', 'splitcam', 'snap camera'].some(k => cameraLabel.includes(k))
+    );
+    if (isVirtualCam && (process.env.NODE_ENV !== 'test' || req.headers['x-test-virtual-cam'] === 'true')) {
+      await runQuery(`
+        INSERT INTO security_audit_logs (
+          id, student_id, roll_number, incident_type, calculated_distance, details,
+          ip_address, risk_score, decision_outcome, reason_codes
+        ) VALUES (?, ?, ?, 'VIRTUAL_CAMERA_INJECTION_DETECTED', ?, ?, ?, 95, 'DENY', 'L10_VIRTUAL_CAMERA_DRIVER')
+      `, [
+        uuidv4(), student.id, student.roll_number, challenge.verified_distance,
+        `Virtual camera driver rejected: ${cameraLabel || 'Virtual Media Stream'}`, clientIp
+      ]);
+      return res.status(403).json({
+        success: false,
+        status: 'VIRTUAL_CAMERA_BLOCKED',
+        error: 'Virtual camera or software injection device detected. Please use your device native physical hardware camera.'
+      });
+    }
+
+    // 4. Call AI Microservice for MiniFASNet Deep Anti-Spoofing, Active Challenge & Cosine Matching
     let aiResult;
     try {
-      aiResult = await aiServiceClient.verifyLiveFace(live_photo, storedEmbeddings, 0.65);
+      const temporalFrames = req.body.temporal_frames || req.body.temporalFrames || [];
+      aiResult = await aiServiceClient.verifyLiveFace(live_photo, storedEmbeddings, 0.65, null, {
+        temporal_frames: temporalFrames,
+        active_challenge: challenge.active_challenge || 'HOLD_STILL',
+        requires_step_up: Boolean(challenge.requires_step_up),
+        step_up_frames: photometric_data?.frames || null,
+        step_up_colors: challenge.step_up_color_sequence ? JSON.parse(challenge.step_up_color_sequence) : null
+      });
     } catch (aiErr) {
       return res.status(500).json({ success: false, error: `AI Microservice Error: ${aiErr.message}` });
     }
@@ -695,21 +737,28 @@ const offlineSyncHandler = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Student has not registered facial biometrics.' });
     }
 
-    let aiResult = { verified: true, similarity_score: 0.88, liveness_score: 0.95 };
+    let aiResult = { is_live: true, is_match: true, similarity_score: 0.88, liveness_score: 0.95 };
     try {
-      const aiResp = await aiServiceClient.verifyFace(live_photo, embeddings);
+      const temporalFrames = req.body.temporal_frames || req.body.temporalFrames || null;
+      const aiResp = await aiServiceClient.verifyLiveFace(live_photo, embeddings, 0.65, null, {
+        temporal_frames: temporalFrames,
+        active_challenge: 'HOLD_STILL'
+      });
       if (aiResp) {
         aiResult = aiResp;
-        if (!aiResp.verified && process.env.NODE_ENV !== 'test') {
+        if ((!aiResp.is_match || !aiResp.is_live) && process.env.NODE_ENV !== 'test') {
           return res.status(401).json({
             success: false,
-            error: 'Biometric verification failed: facial likeness does not match enrolled template.'
+            error: 'Biometric verification failed: facial likeness does not match enrolled template or presentation attack detected.'
           });
         }
       }
     } catch (aiErr) {
       if (process.env.NODE_ENV !== 'test') {
-        console.warn('AI worker notice during offline sync:', aiErr.message);
+        return res.status(503).json({
+          success: false,
+          error: `Offline sync biometric verification error: ${aiErr.message}`
+        });
       }
     }
 
@@ -821,4 +870,88 @@ router.get('/status/:identifier', async (req, res) => {
   }
 });
 
+
+// 4. Request In-Person Physical Warden Verification (Medical / Bandages / Camera Malfunction)
+router.post('/request-physical-verification', async (req, res) => {
+  try {
+    const { student_id, roll_number, reason, notes } = req.body;
+    const today = getTodayDateString();
+
+    const student = await getQuery(
+      `SELECT * FROM students WHERE id = ? OR roll_number = ?`,
+      [student_id || req.user?.id, roll_number || req.user?.roll_number]
+    );
+
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Student record not found.' });
+    }
+
+    const existingRecord = await getQuery(
+      `SELECT * FROM attendance_records WHERE student_id = ? AND date = ?`,
+      [student.id, today]
+    );
+
+    if (existingRecord && existingRecord.status === 'PRESENT') {
+      return res.status(400).json({ success: false, error: 'Attendance is already recorded as PRESENT today.' });
+    }
+
+    const existingRequest = await getQuery(
+      `SELECT * FROM attendance_corrections WHERE student_id = ? AND date = ? AND status = 'PENDING'`,
+      [student.id, today]
+    );
+
+    if (existingRequest) {
+      return res.json({
+        success: true,
+        message: 'A physical verification request is already pending for today. The hostel warden will verify your presence during floor rounds.',
+        requestId: existingRequest.id
+      });
+    }
+
+    const reqId = uuidv4();
+    const reasonText = reason || 'MEDICAL_OR_CAMERA_FAILURE';
+    const detailText = notes || 'Student requested in-person warden physical verification.';
+
+    await runQuery(`
+      INSERT INTO attendance_corrections (
+        id, attendance_id, student_id, roll_number, date, original_status, requested_status, reason, status
+      ) VALUES (?, ?, ?, ?, ?, ?, 'PRESENT', ?, 'PENDING')
+    `, [
+      reqId,
+      existingRecord?.id || null,
+      student.id,
+      student.roll_number,
+      today,
+      existingRecord?.status || 'ABSENT',
+      `[PHYSICAL_VERIFICATION] ${reasonText}: ${detailText}`
+    ]);
+
+    const timeMarked = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    if (!existingRecord) {
+      await runQuery(`
+        INSERT INTO attendance_records (
+          id, student_id, roll_number, full_name, date, time_marked, status, verification_method, override_reason
+        ) VALUES (?, ?, ?, ?, ?, ?, 'ABSENT', 'PHYSICAL_REVIEW_PENDING', ?)
+      `, [
+        uuidv4(),
+        student.id,
+        student.roll_number,
+        student.full_name,
+        today,
+        timeMarked,
+        `Pending in-person warden physical review: ${reasonText}`
+      ]);
+    }
+
+    res.json({
+      success: true,
+      message: 'Physical verification request submitted. The hostel warden will verify your presence in your room during evening roll-call rounds.',
+      requestId: reqId
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
+

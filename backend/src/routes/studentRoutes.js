@@ -266,23 +266,36 @@ router.post('/onboarding/verify-otp', authLimiter, async (req, res) => {
     const cleanRoll = roll_number.trim();
     const cleanOtp = String(otp).trim();
 
-    // Verify OTP
-    const otpRecord = await getQuery(`
+    // Find active OTP record with attempt throttling
+    const activeOtp = await getQuery(`
       SELECT * FROM password_reset_otps
       WHERE identifier = ?
-        AND otp_code = ?
         AND is_used = 0
         AND datetime(expires_at) > datetime('now')
       ORDER BY created_at DESC
       LIMIT 1
-    `, [cleanRoll, cleanOtp]);
+    `, [cleanRoll]);
 
-    if (!otpRecord) {
+    if (!activeOtp) {
       return res.status(400).json({ success: false, error: 'Invalid or expired OTP code. Please check the code or request a new one.' });
     }
 
+    if (activeOtp.attempts >= 5) {
+      await runQuery(`UPDATE password_reset_otps SET is_used = 1 WHERE id = ?`, [activeOtp.id]);
+      return res.status(400).json({
+        success: false,
+        error: 'Too many incorrect attempts. This OTP has been invalidated for security. Please request a new one.'
+      });
+    }
+
+    if (activeOtp.otp_code !== cleanOtp) {
+      await runQuery(`UPDATE password_reset_otps SET attempts = attempts + 1 WHERE id = ?`, [activeOtp.id]);
+      return res.status(400).json({ success: false, error: 'Invalid OTP code. Please check the code or request a new one.' });
+    }
+
     // Mark OTP used
-    await runQuery(`UPDATE password_reset_otps SET is_used = 1 WHERE id = ?`, [otpRecord.id]);
+    await runQuery(`UPDATE password_reset_otps SET is_used = 1 WHERE id = ?`, [activeOtp.id]);
+    const otpRecord = activeOtp;
 
     // Fetch full verified allotment & student profile
     const record = await getQuery(`

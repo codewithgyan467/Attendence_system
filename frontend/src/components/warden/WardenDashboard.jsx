@@ -36,9 +36,60 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
   const [ticketModal, setTicketModal] = useState({ open: false, ticket: null, status: 'RESOLVED', note: '' });
   const [submittingTicket, setSubmittingTicket] = useState(false);
 
+  // Emergency Muster & In-Person Physical Check-in States
+  const [showMusterModal, setShowMusterModal] = useState(false);
+  const [musterData, setMusterData] = useState(null);
+  const [musterLoading, setMusterLoading] = useState(false);
+  const [musterTab, setMusterTab] = useState('missing');
+
+  const [showPhysicalQueueModal, setShowPhysicalQueueModal] = useState(false);
+  const [pendingPhysicalList, setPendingPhysicalList] = useState([]);
+  const [verifyingPhysicalId, setVerifyingPhysicalId] = useState(null);
+
   useEffect(() => {
     loadAllData();
   }, []);
+
+  const loadMusterData = async () => {
+    setMusterLoading(true);
+    try {
+      const res = await api.warden.getEmergencyMuster();
+      if (res?.success) setMusterData(res);
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to load emergency muster roll');
+    } finally {
+      setMusterLoading(false);
+    }
+  };
+
+  const loadPendingPhysical = async () => {
+    try {
+      const res = await api.warden.getPendingPhysicalVerifications();
+      if (res?.success) setPendingPhysicalList(res.pending || []);
+    } catch (_) {}
+  };
+
+  const handleConfirmPhysicalAttendance = async (item) => {
+    try {
+      setVerifyingPhysicalId(item.id);
+      const res = await api.warden.verifyPhysicalAttendance({
+        student_id: item.student_id,
+        roll_number: item.roll_number,
+        notes: 'In-person verification approved by warden during night roll-call rounds.'
+      });
+      setVerifyingPhysicalId(null);
+      if (res?.success) {
+        setStatusMsg(res.message);
+        loadPendingPhysical();
+        loadAllData();
+      } else {
+        setErrorMsg(res.error || 'Failed to confirm attendance.');
+      }
+    } catch (err) {
+      setVerifyingPhysicalId(null);
+      setErrorMsg(err.message || 'Error confirming attendance.');
+    }
+  };
 
   const loadAllData = async () => {
     setLoading(true);
@@ -240,9 +291,236 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                               <span>Capacity: <strong>{b.capacity || total}</strong></span>
                             </div>
                           </div>
+                    
+      {/* ========================================================= */}
+      {/* MODAL 1: Emergency Evacuation Muster Roll                  */}
+      {/* ========================================================= */}
+      {showMusterModal && (
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(3px)' }}>
+          <div className="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div className="modal-content border-0 shadow-lg rounded-4">
+              <div className="modal-header bg-danger text-white py-3 px-4 rounded-top-4">
+                <div className="d-flex align-items-center gap-2">
+                  <ShieldAlert size={22} />
+                  <div>
+                    <h5 className="modal-title fw-bold mb-0">🚨 Emergency Evacuation Muster Desk</h5>
+                    <div className="small opacity-75" style={{ fontSize: '12px' }}>
+                      Official Incident Safety Ledger • Real-time Headcount for Emergency Responders
+                    </div>
+                  </div>
+                </div>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setShowMusterModal(false)} />
+              </div>
+              <div className="modal-body p-4 bg-light">
+                {musterLoading ? (
+                  <div className="text-center py-5">
+                    <div className="spinner-border text-danger" role="status"></div>
+                    <p className="mt-2 text-muted small">Generating live hostel muster count...</p>
+                  </div>
+                ) : musterData ? (
+                  <div>
+                    {/* Top Summary Stats */}
+                    <div className="row g-3 mb-4">
+                      <div className="col-md-3">
+                        <div className="card border-0 shadow-sm rounded-3 p-3 text-center bg-white">
+                          <div className="text-muted small fw-semibold">TOTAL REGISTERED</div>
+                          <h3 className="fw-bold text-dark mb-0">{musterData.summary?.total_residents || 0}</h3>
+                          <div className="small text-muted">All active hostel beds</div>
                         </div>
-                      );
-                    })}
+                      </div>
+                      <div className="col-md-3">
+                        <div className="card border-0 shadow-sm rounded-3 p-3 text-center bg-success bg-opacity-10 border-success border-opacity-25">
+                          <div className="text-success small fw-semibold">✓ VERIFIED INSIDE</div>
+                          <h3 className="fw-bold text-success mb-0">{musterData.summary?.verified_inside_count || 0}</h3>
+                          <div className="small text-success">Biometrically Present</div>
+                        </div>
+                      </div>
+                      <div className="col-md-3">
+                        <div className="card border-0 shadow-sm rounded-3 p-3 text-center bg-warning bg-opacity-10 border-warning border-opacity-25">
+                          <div className="text-warning small fw-semibold">✈ ON APPROVED LEAVE</div>
+                          <h3 className="fw-bold text-warning mb-0">{musterData.summary?.approved_leave_count || 0}</h3>
+                          <div className="small text-warning">Authorized Out-pass</div>
+                        </div>
+                      </div>
+                      <div className="col-md-3">
+                        <div className="card border-0 shadow-sm rounded-3 p-3 text-center bg-danger bg-opacity-10 border-danger border-opacity-25">
+                          <div className="text-danger small fw-semibold">⚠ UNACCOUNTED / MISSING</div>
+                          <h3 className="fw-bold text-danger mb-0">{musterData.summary?.missing_unaccounted_count || 0}</h3>
+                          <div className="small text-danger">Requires Immediate Check</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Filter Tabs */}
+                    <div className="d-flex justify-content-between align-items-center mb-3">
+                      <div className="btn-group shadow-sm rounded-pill overflow-hidden bg-white p-1">
+                        <button
+                          type="button"
+                          className={`btn btn-sm rounded-pill px-3 fw-semibold ${musterTab === 'missing' ? 'btn-danger text-white' : 'btn-light text-dark'}`}
+                          onClick={() => setMusterTab('missing')}
+                        >
+                          Unaccounted ({musterData.missingUnaccounted?.length || 0})
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm rounded-pill px-3 fw-semibold ${musterTab === 'inside' ? 'btn-success text-white' : 'btn-light text-dark'}`}
+                          onClick={() => setMusterTab('inside')}
+                        >
+                          Verified Inside ({musterData.verifiedInside?.length || 0})
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm rounded-pill px-3 fw-semibold ${musterTab === 'leave' ? 'btn-warning text-dark' : 'btn-light text-dark'}`}
+                          onClick={() => setMusterTab('leave')}
+                        >
+                          On Leave ({musterData.approvedLeave?.length || 0})
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn btn-outline-dark btn-sm d-flex align-items-center gap-1 shadow-sm rounded-pill px-3"
+                        onClick={() => window.print()}
+                      >
+                        🖨️ Print Muster Roll
+                      </button>
+                    </div>
+
+                    {/* Residents Table */}
+                    <div className="card border-0 shadow-sm rounded-3 overflow-hidden">
+                      <div className="table-responsive">
+                        <table className="table table-hover align-middle mb-0">
+                          <thead className="table-light small">
+                            <tr>
+                              <th>Student</th>
+                              <th>Roll Number</th>
+                              <th>Block & Room</th>
+                              <th>Phone Number</th>
+                              <th>Emergency Parent Contact</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="small">
+                            {musterTab === 'missing' && (
+                              (musterData.missingUnaccounted || []).length === 0 ? (
+                                <tr><td colSpan="6" className="text-center py-4 text-success fw-semibold">✓ 100% of residents are accounted for tonight!</td></tr>
+                              ) : (
+                                (musterData.missingUnaccounted || []).map((st) => (
+                                  <tr key={st.id} className="table-danger">
+                                    <td className="fw-bold">{st.full_name}</td>
+                                    <td><code className="text-dark">{st.roll_number}</code></td>
+                                    <td><span className="badge bg-secondary">{st.hostel_block}</span> Rm {st.room_number || 'N/A'}</td>
+                                    <td><a href={`tel:${st.phone}`} className="text-decoration-none fw-semibold">{st.phone || 'N/A'}</a></td>
+                                    <td><strong className="text-danger">{st.emergency_phone || 'Parent Contact Missing'}</strong></td>
+                                    <td><span className="badge bg-danger">MISSING / UNCHECKED</span></td>
+                                  </tr>
+                                ))
+                              )
+                            )}
+
+                            {musterTab === 'inside' && (
+                              (musterData.verifiedInside || []).map((st) => (
+                                <tr key={st.id}>
+                                  <td className="fw-semibold">{st.full_name}</td>
+                                  <td><code>{st.roll_number}</code></td>
+                                  <td><span className="badge bg-light text-dark border">{st.hostel_block}</span> Rm {st.room_number || 'N/A'}</td>
+                                  <td>{st.phone || 'N/A'}</td>
+                                  <td>{st.emergency_phone || 'N/A'}</td>
+                                  <td><span className="badge bg-success">✓ PRESENT ({st.time_marked || 'Verified'})</span></td>
+                                </tr>
+                              ))
+                            )}
+
+                            {musterTab === 'leave' && (
+                              (musterData.approvedLeave || []).map((st) => (
+                                <tr key={st.id}>
+                                  <td className="fw-semibold">{st.full_name}</td>
+                                  <td><code>{st.roll_number}</code></td>
+                                  <td><span className="badge bg-light text-dark border">{st.hostel_block}</span> Rm {st.room_number || 'N/A'}</td>
+                                  <td>{st.phone || 'N/A'}</td>
+                                  <td>{st.emergency_phone || 'N/A'}</td>
+                                  <td><span className="badge bg-warning text-dark">APPROVED LEAVE</span></td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-4">No muster data loaded.</div>
+                )}
+              </div>
+              <div className="modal-footer border-top py-2 px-4 bg-white">
+                <button type="button" className="btn btn-secondary btn-sm rounded-pill px-3" onClick={() => setShowMusterModal(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 2: In-Person Physical Check-In Queue                */}
+      {/* ========================================================= */}
+      {showPhysicalQueueModal && (
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)' }}>
+          <div className="modal-dialog modal-lg modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg rounded-4">
+              <div className="modal-header border-bottom py-3 px-4 bg-light rounded-top-4">
+                <h6 className="modal-title fw-bold text-dark d-flex align-items-center gap-2">
+                  <UserCheck className="text-primary" size={20} />
+                  Pending In-Person Physical Verifications
+                </h6>
+                <button type="button" className="btn-close" onClick={() => setShowPhysicalQueueModal(false)} />
+              </div>
+              <div className="modal-body p-4">
+                <p className="text-muted small mb-3">
+                  Residents who reported medical facial injuries, bandages, or broken smartphone cameras for tonight's roll call. Wardens can verify them in person during room rounds and confirm their attendance.
+                </p>
+
+                {pendingPhysicalList.length === 0 ? (
+                  <div className="alert alert-light border text-center py-4 text-muted small mb-0 rounded-3">
+                    ✓ No pending physical verification requests tonight. All residents are using automated biometric check-in.
+                  </div>
+                ) : (
+                  <div className="list-group shadow-sm rounded-3">
+                    {pendingPhysicalList.map((item) => (
+                      <div key={item.id} className="list-group-item p-3 border-start border-4 border-warning">
+                        <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+                          <div>
+                            <h6 className="fw-bold text-dark mb-0">{item.full_name} ({item.roll_number})</h6>
+                            <div className="text-muted small">
+                              Block {item.hostel_block} &bull; Room {item.room_number || 'N/A'} &bull; Phone: <a href={`tel:${item.phone}`}>{item.phone || 'N/A'}</a>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-success btn-sm rounded-pill px-3 fw-semibold shadow-sm"
+                            disabled={verifyingPhysicalId === item.id}
+                            onClick={() => handleConfirmPhysicalAttendance(item)}
+                          >
+                            {verifyingPhysicalId === item.id ? 'Confirming...' : '✓ Confirm Physical Presence'}
+                          </button>
+                        </div>
+                        <div className="small bg-light p-2 rounded text-dark border">
+                          <strong>Reported Note:</strong> {item.reason.replace('[PHYSICAL_VERIFICATION] ', '')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer border-top py-2 px-4 bg-white">
+                <button type="button" className="btn btn-outline-secondary btn-sm rounded-pill px-3" onClick={() => setShowPhysicalQueueModal(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+})}
                   </div>
                 </div>
               </div>

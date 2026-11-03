@@ -221,4 +221,153 @@ router.get('/student-ledger/:studentId', async (req, res) => {
   }
 });
 
+
+// 7. Emergency Evacuation Muster Desk (Real-time safety roll call for first responders)
+router.get('/emergency-muster', async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+
+    const allStudents = await allQuery(`
+      SELECT s.id, s.roll_number, s.full_name, s.hostel_block, s.room_number, s.phone, s.whatsapp_no
+      FROM students s
+      WHERE s.is_active = 1
+      ORDER BY s.hostel_block ASC, s.room_number ASC
+    `);
+
+    const todayRecords = await allQuery(`
+      SELECT student_id, status, time_marked, verification_method, override_reason
+      FROM attendance_records
+      WHERE date = ?
+    `, [today]);
+
+    const recordMap = new Map();
+    for (const r of todayRecords) {
+      recordMap.set(r.student_id, r);
+    }
+
+    const verifiedInside = [];
+    const approvedLeave = [];
+    const missingUnaccounted = [];
+
+    for (const s of allStudents) {
+      const rec = recordMap.get(s.id);
+      if (rec && rec.status === 'PRESENT') {
+        verifiedInside.push({
+          ...s,
+          time_marked: rec.time_marked,
+          verification_method: rec.verification_method
+        });
+      } else if (rec && rec.status === 'EXCUSED') {
+        approvedLeave.push({
+          ...s,
+          notes: rec.notes
+        });
+      } else {
+        missingUnaccounted.push({
+          ...s,
+          status: rec ? rec.status : 'ABSENT',
+          notes: rec?.notes || 'No roll-call check-in recorded tonight'
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      summary: {
+        total_residents: allStudents.length,
+        verified_inside_count: verifiedInside.length,
+        approved_leave_count: approvedLeave.length,
+        missing_unaccounted_count: missingUnaccounted.length,
+        date: today,
+        generated_at: new Date().toISOString()
+      },
+      verifiedInside,
+      approvedLeave,
+      missingUnaccounted
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 8. Pending Physical In-Person Verifications Queue (Medical injuries, bandages, camera failure)
+router.get('/pending-physical-verifications', async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const pending = await allQuery(`
+      SELECT c.*, s.full_name, s.hostel_block, s.room_number, s.phone
+      FROM attendance_corrections c
+      JOIN students s ON c.student_id = s.id
+      WHERE c.date = ? AND c.status = 'PENDING' AND c.reason LIKE '%[PHYSICAL_VERIFICATION]%'
+      ORDER BY c.created_at DESC
+    `, [today]);
+
+    res.json({ success: true, pending });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 9. Confirm Physical Presence (Warden In-Person Sign-Off during Night Rounds)
+router.post('/verify-physical-attendance', async (req, res) => {
+  try {
+    const { student_id, roll_number, notes } = req.body;
+    const today = new Date().toISOString().split('T')[0];
+    const wardenIdentifier = req.user?.username || req.user?.id || 'WARDEN';
+
+    const student = await getQuery(
+      `SELECT * FROM students WHERE id = ? OR roll_number = ?`,
+      [student_id, roll_number]
+    );
+
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Student not found.' });
+    }
+
+    const timeMarked = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    await withTransaction(async ({ runQuery }) => {
+      const existing = await getQuery(`SELECT id FROM attendance_records WHERE student_id = ? AND date = ?`, [student.id, today]);
+      if (existing) {
+        await runQuery(`
+          UPDATE attendance_records
+          SET status = 'PRESENT', verification_method = 'WARDEN_PHYSICAL_SIGN_OFF',
+              time_marked = ?, override_reason = ?
+          WHERE id = ?
+        `, [timeMarked, notes || `Verified in-person by warden (${wardenIdentifier}) during night rounds`, existing.id]);
+      } else {
+        await runQuery(`
+          INSERT INTO attendance_records (
+            id, student_id, roll_number, full_name, date, status, verification_method, time_marked, override_reason
+          ) VALUES (?, ?, ?, ?, ?, 'PRESENT', 'WARDEN_PHYSICAL_SIGN_OFF', ?, ?)
+        `, [uuidv4(), student.id, student.roll_number, student.full_name, today, timeMarked, notes || `Verified in-person by warden (${wardenIdentifier}) during night rounds`]);
+      }
+
+      await runQuery(`
+        UPDATE attendance_corrections
+        SET status = 'APPROVED', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
+        WHERE student_id = ? AND date = ? AND status = 'PENDING'
+      `, [wardenIdentifier, student.id, today]);
+
+      await recordAuditEvent(
+        req.user?.id || 'warden-id',
+        wardenIdentifier,
+        'WARDEN_PHYSICAL_ATTENDANCE_CONFIRM',
+        'ATTENDANCE',
+        student.id,
+        JSON.stringify({ student_id: student.id, roll_number: student.roll_number, date: today }),
+        req
+      );
+    });
+
+    res.json({
+      success: true,
+      message: `Physical attendance verified and recorded as PRESENT for ${student.full_name} (${student.roll_number}).`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
+

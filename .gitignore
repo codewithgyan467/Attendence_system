@@ -11,6 +11,8 @@ __pycache__/
 dist/
 */dist/
 build/
+coverage/
+*/coverage/
 
 # Local Environment Variables & Secrets
 .env

@@ -104,6 +104,29 @@ class FaceEngine:
         bbox = best_face[:4].astype(int)
         return aligned_face, bbox, best_face
 
+    def extract_full_face_data(self, bgr_img: np.ndarray):
+        """
+        Detects face and returns aligned crop, raw YuNet 15D face array, and 128D embedding.
+        """
+        aligned_face, bbox, raw_face = self.detect_and_align_face(bgr_img)
+        if aligned_face is None or raw_face is None:
+            return None, None, None, 0.0
+
+        conf = float(raw_face[-1])
+        if self.recognizer is not None:
+            feat = self.recognizer.feature(aligned_face)
+            feat_norm = feat.flatten()
+            norm = np.linalg.norm(feat_norm)
+            if norm > 0:
+                feat_norm = feat_norm / norm
+            return feat_norm.tolist(), aligned_face, raw_face, conf
+        else:
+            gray = cv2.cvtColor(aligned_face, cv2.COLOR_BGR2GRAY)
+            resized = cv2.resize(gray, (64, 64))
+            hist = cv2.calcHist([resized], [0], None, [128], [0, 256]).flatten()
+            hist = hist / (np.linalg.norm(hist) + 1e-8)
+            return hist.tolist(), aligned_face, raw_face, 0.85
+
     def extract_embedding(self, bgr_img: np.ndarray) -> tuple[list[float] | None, np.ndarray | None, float]:
         """
         Detects face, aligns it, and computes 128-dimensional mathematical vector.

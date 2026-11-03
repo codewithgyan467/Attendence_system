@@ -597,7 +597,8 @@ const initDatabase = async () => {
     bound_device_id: 'TEXT',
     request_nonce_hash: 'TEXT',
     requires_step_up: 'INTEGER DEFAULT 0',
-    step_up_color_sequence: 'TEXT'
+    step_up_color_sequence: 'TEXT',
+    active_challenge: "TEXT DEFAULT 'HOLD_STILL'"
   });
 
   await ensureColumns('security_audit_logs', {
@@ -687,6 +688,33 @@ const initDatabase = async () => {
   } catch (cacheErr) {
     console.warn('⚠️ In-Memory Cache Hydration Notice:', cacheErr.message);
   }
+
+  // 19. Start Automated Maintenance Task (WAL Checkpoint & PRAGMA optimize)
+  scheduleMaintenance();
+};
+
+const performMaintenanceCheckpoint = async () => {
+  if (useTurso) return { ok: true, message: 'Cloud database manages checkpoints automatically' };
+  try {
+    await runQuery('PRAGMA wal_checkpoint(TRUNCATE);');
+    await runQuery('PRAGMA optimize;');
+    return { ok: true, message: 'SQLite WAL checkpointed and query plans optimized' };
+  } catch (err) {
+    console.warn('⚠️ [DB Maintenance] Checkpoint error:', err.message);
+    return { ok: false, error: err.message };
+  }
+};
+
+let maintenanceTimer = null;
+const scheduleMaintenance = (intervalMs = 24 * 60 * 60 * 1000) => {
+  if (process.env.NODE_ENV === 'test' || maintenanceTimer) return;
+  maintenanceTimer = setInterval(async () => {
+    const res = await performMaintenanceCheckpoint();
+    if (res.ok) {
+      console.log('🧹 [HostelGuard Maintenance] Scheduled SQLite WAL checkpoint completed.');
+    }
+  }, intervalMs);
+  if (maintenanceTimer.unref) maintenanceTimer.unref();
 };
 
 const clearAllStudentData = async () => {
@@ -950,7 +978,9 @@ module.exports = {
   clearAllStudentData,
   checkDatabaseIntegrity,
   openSqliteConnection,
-  closeSqliteConnection
+  closeSqliteConnection,
+  performMaintenanceCheckpoint,
+  scheduleMaintenance
 };
 
 

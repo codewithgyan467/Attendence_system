@@ -69,8 +69,19 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [verifiedDistance, setVerifiedDistance] = useState(null);
   const [checkinError, setCheckinError] = useState(null);
   const [studentCoords, setStudentCoords] = useState(null);
+  const [activeChallenge, setActiveChallenge] = useState('HOLD_STILL');
+  const [activeChallengeInstruction, setActiveChallengeInstruction] = useState('Fit face into oval and hold steady');
+  const [activeCameraLabel, setActiveCameraLabel] = useState('');
+  const [isVirtualCamDetected, setIsVirtualCamDetected] = useState(false);
   const [showMapRadar, setShowMapRadar] = useState(true);
   const [scanProgress, setScanProgress] = useState(0);
+  const [screenFlashEnabled, setScreenFlashEnabled] = useState(false);
+  const [isFlashing, setIsFlashing] = useState(false);
+  const [showPhysicalReviewModal, setShowPhysicalReviewModal] = useState(false);
+  const [physicalReviewReason, setPhysicalReviewReason] = useState('Medical condition / facial bandage');
+  const [physicalReviewNotes, setPhysicalReviewNotes] = useState('');
+  const [physicalReviewSubmitting, setPhysicalReviewSubmitting] = useState(false);
+  const [physicalReviewSuccess, setPhysicalReviewSuccess] = useState(null);
 
   // Live Check-in Camera
   const videoRef = useRef(null);
@@ -437,6 +448,37 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     }
   };
 
+  // Request In-Person Physical Review (Graceful Fallback for Medical/Bandages/Broken Camera)
+  const handleRequestPhysicalVerification = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!dashboard?.student?.id && !dashboard?.student?.roll_number) return;
+    try {
+      setPhysicalReviewSubmitting(true);
+      setPhysicalReviewSuccess(null);
+      const res = await api.attendance.requestPhysicalVerification({
+        student_id: dashboard?.student?.id,
+        roll_number: dashboard?.student?.roll_number,
+        reason: physicalReviewReason,
+        notes: physicalReviewNotes
+      });
+      setPhysicalReviewSubmitting(false);
+      if (res.success) {
+        setPhysicalReviewSuccess(res.message);
+        setStatusMsg(res.message);
+        fetchStudentData();
+        setTimeout(() => {
+          setShowPhysicalReviewModal(false);
+          setPhysicalReviewSuccess(null);
+        }, 3000);
+      } else {
+        setCheckinError(res.error || 'Failed to submit physical review request.');
+      }
+    } catch (err) {
+      setPhysicalReviewSubmitting(false);
+      setCheckinError(err.message || 'Error requesting physical verification.');
+    }
+  };
+
   // Check-In Step 3: Face Capture & Biometric Matching
   const handleVerifyFace = async () => {
     if (!videoRef.current || !sessionToken) return;
@@ -459,6 +501,9 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       const ctx = canvas.getContext('2d');
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
       const livePhotoBase64 = canvas.toDataURL('image/jpeg', 0.88);
+      if (screenFlashEnabled) {
+        setTimeout(() => setIsFlashing(false), 200);
+      }
 
       const res = await api.attendance.verifyFace({
         session_token: sessionToken,
@@ -2049,6 +2094,100 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     Cancel
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Screen Fill Flash Full-Viewport White Illumination */}
+      {isFlashing && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: '#ffffff',
+            zIndex: 999999,
+            pointerEvents: 'none',
+            opacity: 0.95
+          }}
+        />
+      )}
+
+      {/* Modal: Request Physical In-Person Warden Review */}
+      {showPhysicalReviewModal && (
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)' }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg rounded-4">
+              <div className="modal-header border-bottom py-3 px-4 bg-light rounded-top-4">
+                <h6 className="modal-title fw-bold text-dark d-flex align-items-center gap-2">
+                  <span>🩺</span> Request In-Person Warden Check-In
+                </h6>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowPhysicalReviewModal(false)}
+                  disabled={physicalReviewSubmitting}
+                />
+              </div>
+              <div className="modal-body p-4">
+                {physicalReviewSuccess ? (
+                  <div className="alert alert-success d-flex align-items-center gap-2 mb-0">
+                    <CheckCircle2 size={18} />
+                    <div>{physicalReviewSuccess}</div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleRequestPhysicalVerification}>
+                    <p className="text-muted small mb-3">
+                      If you have medical facial bandages, swelling, eye injury, or a broken smartphone camera, you can request an in-person roll-call check-in. The hostel warden will verify your presence in your room during evening rounds.
+                    </p>
+                    <div className="mb-3">
+                      <label className="form-label small fw-bold text-dark">Reason for Physical Verification</label>
+                      <select
+                        className="form-select form-select-sm rounded-3"
+                        value={physicalReviewReason}
+                        onChange={(e) => setPhysicalReviewReason(e.target.value)}
+                        required
+                      >
+                        <option value="Medical condition / facial bandage">Medical condition / facial bandage</option>
+                        <option value="Eye injury / temporary facial distortion">Eye injury / temporary facial distortion</option>
+                        <option value="Front camera hardware failure / cracked lens">Front camera hardware failure / cracked lens</option>
+                        <option value="Religious / Cultural accommodation">Religious / Cultural accommodation</option>
+                        <option value="Persistent low-light / environment constraint">Persistent low-light / environment constraint</option>
+                      </select>
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label small fw-bold text-dark">Additional Details (Optional)</label>
+                      <textarea
+                        className="form-control form-control-sm rounded-3"
+                        rows="2"
+                        placeholder="E.g., Room A-204, resting with eye drops after clinic visit"
+                        value={physicalReviewNotes}
+                        onChange={(e) => setPhysicalReviewNotes(e.target.value)}
+                      />
+                    </div>
+                    <div className="d-flex justify-content-end gap-2 mt-4">
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm rounded-pill px-3"
+                        onClick={() => setShowPhysicalReviewModal(false)}
+                        disabled={physicalReviewSubmitting}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn btn-primary btn-sm rounded-pill px-4 fw-semibold"
+                        disabled={physicalReviewSubmitting}
+                      >
+                        {physicalReviewSubmitting ? 'Submitting Request...' : 'Submit Request to Warden'}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             </div>
           </div>

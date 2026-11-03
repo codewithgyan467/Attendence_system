@@ -43,7 +43,8 @@ const configuredOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
   : [];
 
-const allowAllOrigins = configuredOrigins.includes('*') || !process.env.ALLOWED_ORIGINS;
+const isProduction = process.env.NODE_ENV === 'production';
+const allowAllOrigins = configuredOrigins.includes('*') || (!isProduction && !process.env.ALLOWED_ORIGINS);
 
 app.use(cors({
   origin: (origin, callback) => {
