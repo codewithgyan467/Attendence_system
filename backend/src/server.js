@@ -110,6 +110,26 @@ app.use('/api/v1/students', studentRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
 app.use('/api/v1/ota', otaRoutes);
 
+// Public Client Report Download Route
+app.get('/api/v1/reports/ble-geofence-antispoof', (req, res) => {
+  const format = (req.query.format || 'pdf').toLowerCase();
+  const filename = format === 'html'
+    ? 'HOSTELGUARD_BLE_GEOFENCE_ANTISPOOF_CLIENT_REPORT.html'
+    : format === 'md'
+    ? 'HOSTELGUARD_BLE_GEOFENCE_ANTISPOOF_CLIENT_REPORT.md'
+    : 'HOSTELGUARD_BLE_GEOFENCE_ANTISPOOF_CLIENT_REPORT.pdf';
+
+  const filePath = path.join(__dirname, '../../', filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ success: false, error: 'Report file not found.' });
+  }
+
+  if (req.query.view === 'true' && format === 'html') {
+    return res.sendFile(filePath);
+  }
+  res.download(filePath, filename);
+});
+
 
 // Serve Frontend Static Assets if built
 const frontendDistPath = path.join(__dirname, '../../frontend/dist');
