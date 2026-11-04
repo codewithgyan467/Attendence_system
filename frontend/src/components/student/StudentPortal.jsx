@@ -220,6 +220,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       if (res.success) {
         setSessionToken(res.sessionToken || res.challengeToken);
         setVerifiedDistance(res.verifiedDistance || res.distanceMeters);
+        if (res.activeChallenge) {
+          setActiveChallenge(res.activeChallenge);
+        }
+        if (res.activeChallengeInstruction) {
+          setActiveChallengeInstruction(res.activeChallengeInstruction);
+        }
         setCheckinStep('gps_ok');
         // Auto open camera with resilient fallback
         setTimeout(() => startCamera(), 400);
@@ -483,38 +489,55 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     }
   };
 
-  // Check-In Step 3: Face Capture & Biometric Matching
+  // Check-In Step 3: Face Capture & Multi-Frame Biometric Matching
   const handleVerifyFace = async () => {
     if (!videoRef.current || !sessionToken) return;
 
+    if (videoRef.current.readyState < 2) {
+      setCheckinError('Camera is warming up. Please hold still and try again in a moment.');
+      setCheckinStep('failed');
+      return;
+    }
+
     setCheckinStep('verifying_face');
     setCheckinError(null);
-    setScanProgress(25);
-
-    const progressTimer = setInterval(() => {
-      setScanProgress((prev) => {
-        if (prev >= 92) return 92;
-        return prev + Math.floor(Math.random() * 12 + 8);
-      });
-    }, 180);
+    setScanProgress(15);
 
     try {
-      const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth || 640;
-      canvas.height = videoRef.current.videoHeight || 480;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      const livePhotoBase64 = canvas.toDataURL('image/jpeg', 0.88);
+      const primaryCanvas = document.createElement('canvas');
+      primaryCanvas.width = videoRef.current.videoWidth || 640;
+      primaryCanvas.height = videoRef.current.videoHeight || 480;
+      const pctx = primaryCanvas.getContext('2d');
+      pctx.drawImage(videoRef.current, 0, 0, primaryCanvas.width, primaryCanvas.height);
+      const livePhotoBase64 = primaryCanvas.toDataURL('image/jpeg', 0.88);
+
       if (screenFlashEnabled) {
         setTimeout(() => setIsFlashing(false), 200);
       }
 
+      // Fast, lightweight temporal burst sequence (6 frames over ~900ms)
+      const burstCanvas = document.createElement('canvas');
+      burstCanvas.width = 320;
+      burstCanvas.height = 240;
+      const bctx = burstCanvas.getContext('2d');
+      const temporalFrames = [];
+
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => setTimeout(r, 140));
+        if (videoRef.current && videoRef.current.readyState >= 2) {
+          bctx.drawImage(videoRef.current, 0, 0, 320, 240);
+          temporalFrames.push(burstCanvas.toDataURL('image/jpeg', 0.70));
+        }
+        setScanProgress(Math.min(92, 20 + (i + 1) * 12));
+      }
+
       const res = await api.attendance.verifyFace({
         session_token: sessionToken,
-        live_photo: livePhotoBase64
+        live_photo: livePhotoBase64,
+        temporal_frames: temporalFrames,
+        active_challenge: activeChallenge || 'HOLD_STILL'
       });
 
-      clearInterval(progressTimer);
       setScanProgress(100);
       stopCamera();
       if (res.success) {
@@ -526,7 +549,6 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         setCheckinStep('failed');
       }
     } catch (err) {
-      clearInterval(progressTimer);
       stopCamera();
       setCheckinError(err.message || 'Facial verification failed.');
       setCheckinStep('failed');
