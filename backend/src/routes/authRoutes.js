@@ -51,8 +51,20 @@ router.post('/login', authLimiter, async (req, res) => {
 
     // Fetch student profile if student
     let studentProfile = null;
-    if (user.role === 'STUDENT' && user.student_id) {
-      studentProfile = await getQuery(`SELECT * FROM students WHERE id = ?`, [user.student_id]);
+    if (user.role === 'STUDENT') {
+      studentProfile = await getQuery(`
+        SELECT s.*,
+          (SELECT COUNT(*) FROM student_face_embeddings e WHERE e.student_id = s.id OR e.student_id = s.roll_number) as embeddings_count
+        FROM students s
+        WHERE s.id = ? OR s.user_id = ? OR s.roll_number = ?
+      `, [user.student_id, user.id, user.username]);
+
+      if (studentProfile) {
+        const isEnrolled = studentProfile.face_enrollment_status === 'ENROLLED' || (studentProfile.embeddings_count || 0) > 0;
+        studentProfile.hasFaceRegistered = isEnrolled;
+        studentProfile.face_enrollment_status = isEnrolled ? 'ENROLLED' : 'NOT_ENROLLED';
+        studentProfile.enrollmentStatus = isEnrolled ? 'ENROLLED' : 'NOT_ENROLLED';
+      }
     }
 
     const accessToken = generateAccessToken(user);
@@ -74,6 +86,9 @@ router.post('/login', authLimiter, async (req, res) => {
         email: user.email,
         role: user.role,
         studentId: user.student_id,
+        hasFaceRegistered: studentProfile ? Boolean(studentProfile.hasFaceRegistered) : false,
+        face_enrollment_status: studentProfile ? studentProfile.face_enrollment_status : 'NOT_ENROLLED',
+        enrollmentStatus: studentProfile ? studentProfile.enrollmentStatus : 'NOT_ENROLLED',
         mustChangePassword: Boolean(user.must_change_password),
         studentProfile
       }
@@ -110,16 +125,26 @@ router.get('/me', requireAuth, async (req, res) => {
     if (req.user.role === 'STUDENT') {
       studentProfile = await getQuery(`
         SELECT s.*,
-          (SELECT COUNT(*) FROM student_face_embeddings e WHERE e.student_id = s.id) as embeddings_count
+          (SELECT COUNT(*) FROM student_face_embeddings e WHERE e.student_id = s.id OR e.student_id = s.roll_number) as embeddings_count
         FROM students s
-        WHERE s.id = ? OR s.user_id = ?
-      `, [req.user.student_id, req.user.id]);
+        WHERE s.id = ? OR s.user_id = ? OR s.roll_number = ?
+      `, [req.user.student_id, req.user.id, req.user.username]);
+
+      if (studentProfile) {
+        const isEnrolled = studentProfile.face_enrollment_status === 'ENROLLED' || (studentProfile.embeddings_count || 0) > 0;
+        studentProfile.hasFaceRegistered = isEnrolled;
+        studentProfile.face_enrollment_status = isEnrolled ? 'ENROLLED' : 'NOT_ENROLLED';
+        studentProfile.enrollmentStatus = isEnrolled ? 'ENROLLED' : 'NOT_ENROLLED';
+      }
     }
 
     res.json({
       success: true,
       user: {
         ...req.user,
+        hasFaceRegistered: studentProfile ? Boolean(studentProfile.hasFaceRegistered) : false,
+        face_enrollment_status: studentProfile ? studentProfile.face_enrollment_status : 'NOT_ENROLLED',
+        enrollmentStatus: studentProfile ? studentProfile.enrollmentStatus : 'NOT_ENROLLED',
         mustChangePassword: Boolean(req.user.must_change_password),
         studentProfile
       }

@@ -573,7 +573,10 @@ const initDatabase = async () => {
     device_model: 'TEXT',
     is_active: 'INTEGER DEFAULT 1',
     failed_attempts: 'INTEGER DEFAULT 0',
-    is_flagged_forge: 'INTEGER DEFAULT 0'
+    is_flagged_forge: 'INTEGER DEFAULT 0',
+    face_enrollment_status: "TEXT DEFAULT 'NOT_ENROLLED'",
+    face_enrolled_at: 'TEXT',
+    face_enrolled_version: 'INTEGER DEFAULT 0'
   });
 
   await ensureColumns('users', {
@@ -641,6 +644,25 @@ const initDatabase = async () => {
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_records(date);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_attendance_date_status ON attendance_records(date, status);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_attendance_student_date ON attendance_records(student_id, date);`);
+  // Synchronize authoritative face enrollment status based on existing biometric records
+  try {
+    await runQuery(`
+      UPDATE students
+      SET face_enrollment_status = 'ENROLLED',
+          face_enrolled_at = COALESCE(face_enrolled_at, CURRENT_TIMESTAMP),
+          face_enrolled_version = CASE WHEN face_enrolled_version IS NULL OR face_enrolled_version = 0 THEN 1 ELSE face_enrolled_version END
+      WHERE (face_enrollment_status IS NULL OR face_enrollment_status != 'ENROLLED')
+        AND (
+          id IN (SELECT DISTINCT student_id FROM student_face_embeddings)
+          OR roll_number IN (SELECT DISTINCT student_id FROM student_face_embeddings)
+        )
+    `);
+  } catch (syncErr) {
+    console.warn('[Enrollment Sync Notice]', syncErr.message);
+  }
+
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_students_enrollment_status ON students(face_enrollment_status);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_face_embeddings_student ON student_face_embeddings(student_id);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_students_roll ON students(roll_number);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_students_phone ON students(phone);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_students_active ON students(is_active);`);
@@ -948,12 +970,14 @@ const seedInitialData = async () => {
 
       // Ensure face embeddings exist for demo students so they can test biometric check-in out-of-the-box
       const existingFaces = await getQuery(`SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ?`, [actualStudentId]);
-      if (!existingFaces || existingFaces.count === 0) {
+      const isTestOrDemo = process.env.NODE_ENV === 'test' || process.env.ENABLE_DEMO_BIOMETRICS === 'true' || ds.roll.startsWith('DEMO_');
+      if ((!existingFaces || existingFaces.count === 0) && isTestOrDemo) {
         const demoVector = Array(128).fill(0.088);
         await runQuery(`
           INSERT INTO student_face_embeddings (id, student_id, angle_label, embedding_vector, quality_score, liveness_score)
           VALUES (?, ?, 'FRONT', ?, 1.0, 1.0)
         `, [uuidv4(), actualStudentId, JSON.stringify(demoVector)]);
+        await runQuery(`UPDATE students SET face_enrollment_status = 'ENROLLED', face_enrolled_at = CURRENT_TIMESTAMP WHERE id = ?`, [actualStudentId]);
       }
     }
   }

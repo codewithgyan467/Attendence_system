@@ -587,7 +587,7 @@ router.use(requireAuth, requireRole('STUDENT'));
 router.get('/dashboard', async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
-    const student = await getQuery(`SELECT * FROM students WHERE id = ? OR user_id = ?`, [req.user.student_id, req.user.id]);
+    const student = await getQuery(`SELECT * FROM students WHERE id = ? OR user_id = ? OR roll_number = ?`, [req.user.student_id, req.user.id, req.user.username]);
 
     if (!student) {
       return res.status(404).json({ success: false, error: 'Student profile not found.' });
@@ -611,12 +611,29 @@ router.get('/dashboard', async (req, res) => {
     const activeGeofence = await getQuery(`SELECT * FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
 
     const faceEmbeddingsCount = await getQuery(`
-      SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ?
-    `, [student.id]);
-    const hasFaceRegistered = (faceEmbeddingsCount?.count || 0) > 0;
+      SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ? OR student_id = ?
+    `, [student.id, student.roll_number]);
+    const countVal = faceEmbeddingsCount?.count || 0;
+    const isEnrolled = (student.face_enrollment_status === 'ENROLLED') || (countVal > 0);
+    const authoritativeStatus = isEnrolled ? 'ENROLLED' : 'NOT_ENROLLED';
+
+    // Synchronize column if it was NOT_ENROLLED but count > 0
+    if (countVal > 0 && student.face_enrollment_status !== 'ENROLLED') {
+      try {
+        await runQuery(
+          `UPDATE students SET face_enrollment_status = 'ENROLLED', face_enrolled_at = COALESCE(face_enrolled_at, CURRENT_TIMESTAMP) WHERE id = ?`,
+          [student.id]
+        );
+        student.face_enrollment_status = 'ENROLLED';
+      } catch (_) {}
+    }
+    const hasFaceRegistered = isEnrolled;
 
     res.json({
       success: true,
+      hasFaceRegistered,
+      enrollmentStatus: authoritativeStatus,
+      face_enrollment_status: authoritativeStatus,
       student,
       todayStatus: {
         isMarkedToday: Boolean(todayRecord),
@@ -656,7 +673,9 @@ router.get('/dashboard', async (req, res) => {
         failedStrikes: student.failed_attempts || 0,
         isFlaggedForge: Boolean(student.is_flagged_forge),
         hasFaceRegistered,
-        faceEmbeddingsCount: faceEmbeddingsCount?.count || 0
+        enrollmentStatus: authoritativeStatus,
+        face_enrollment_status: authoritativeStatus,
+        faceEmbeddingsCount: countVal
       },
       currentMonth: summary.currentMonth,
       yearlySummary: summary.yearlySummary,
@@ -804,19 +823,37 @@ router.get('/feedback', async (req, res) => {
   }
 });
 
-// 7. Student Self-Service Face Registration
+// 7. Student Self-Service Face Registration & Authoritative Enrollment
 router.post('/register-face', async (req, res) => {
   try {
-    const { photos } = req.body;
+    const { photos, is_re_enrollment, isReEnrollment } = req.body;
     if (!photos || !Array.isArray(photos) || photos.length === 0) {
       return res.status(400).json({ success: false, error: 'At least one face capture photo is required.' });
     }
 
-    const student = await getQuery(`SELECT * FROM students WHERE user_id = ? OR id = ?`, [req.user.id, req.user.student_id]);
+    const student = await getQuery(`SELECT * FROM students WHERE user_id = ? OR id = ? OR roll_number = ?`, [req.user.id, req.user.student_id, req.user.username]);
     if (!student) {
       return res.status(404).json({ success: false, error: 'Student profile not found.' });
     }
 
+    // A. Check if already enrolled to prevent silent/accidental overwrite
+    const existingCount = await getQuery(
+      `SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ? OR student_id = ?`,
+      [student.id, student.roll_number]
+    );
+    const hasPriorEnrollment = (existingCount?.count || 0) > 0 || student.face_enrollment_status === 'ENROLLED';
+    const isReEnrollmentRequested = Boolean(is_re_enrollment || isReEnrollment);
+
+    if (hasPriorEnrollment && !isReEnrollmentRequested) {
+      return res.status(409).json({
+        success: false,
+        isAlreadyEnrolled: true,
+        alreadyEnrolled: true,
+        error: 'You have already completed biometric face enrollment. To update your face biometrics, request an authorized re-enrollment.'
+      });
+    }
+
+    // B. Extract and validate vectors with deep PAD anti-spoofing
     let aiResponse;
     try {
       aiResponse = await aiServiceClient.extractEmbeddings(photos);
@@ -831,8 +868,32 @@ router.post('/register-face', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Could not detect face in captured photos.' });
     }
 
+    // C. ENFORCE ANTI-SPOOFING ON ENROLLMENT: Reject if any capture failed presentation attack detection
+    const spoofedItem = aiResponse.embeddings.find(e => e.is_live === false || (e.liveness_score !== undefined && e.liveness_score < 0.60));
+    if (spoofedItem) {
+      await runQuery(`
+        INSERT INTO security_audit_logs (
+          id, student_id, roll_number, incident_type, calculated_distance, details,
+          ip_address, risk_score, decision_outcome, reason_codes
+        ) VALUES (?, ?, ?, 'ENROLLMENT_SPOOF_ATTEMPT', 0, ?, ?, 95, 'DENY', 'L8_ENROLLMENT_PAD_FAILED')
+      `, [
+        uuidv4(),
+        student.id,
+        student.roll_number,
+        `Spoof attack detected during face enrollment (score: ${spoofedItem.liveness_score || 0.0})`,
+        req.ip || '127.0.0.1'
+      ]);
+
+      return res.status(403).json({
+        success: false,
+        status: 'ENROLLMENT_SPOOF_DETECTED',
+        error: 'Face enrollment rejected: Presentation attack detected (photograph or screen display). You must register with a live camera.'
+      });
+    }
+
+    // D. Safe Atomic Replacement & Version Increment
     await withTransaction(async ({ runQuery }) => {
-      await runQuery(`DELETE FROM student_face_embeddings WHERE student_id = ?`, [student.id]);
+      await runQuery(`DELETE FROM student_face_embeddings WHERE student_id = ? OR student_id = ?`, [student.id, student.roll_number]);
 
       for (const embItem of aiResponse.embeddings) {
         await runQuery(`
@@ -848,15 +909,37 @@ router.post('/register-face', async (req, res) => {
           embItem.liveness_score || 1.0
         ]);
       }
+
+      await runQuery(`
+        UPDATE students
+        SET face_enrollment_status = 'ENROLLED',
+            face_enrolled_at = CURRENT_TIMESTAMP,
+            face_enrolled_version = COALESCE(face_enrolled_version, 0) + 1
+        WHERE id = ?
+      `, [student.id]);
     });
 
+    // Invalidate and refresh cache
     embeddingCache.invalidate(student.id);
+    embeddingCache.invalidate(student.roll_number);
+    embeddingCache.set(student.id, aiResponse.embeddings.map(e => e.embedding));
 
-    await recordAuditEvent(req.user.id, req.user.username, 'REGISTER_FACE', 'STUDENT', student.id, `Enrolled ${aiResponse.embeddings.length} biometric facial vectors`, req);
+    await recordAuditEvent(
+      req.user.id,
+      req.user.username,
+      hasPriorEnrollment ? 'UPDATE_FACE_PROFILE' : 'REGISTER_FACE',
+      'STUDENT',
+      student.id,
+      `Enrolled ${aiResponse.embeddings.length} biometric facial vectors (status: ENROLLED)`,
+      req
+    );
 
     res.json({
       success: true,
-      message: 'Facial identity successfully registered! You can now mark biometric attendance.',
+      enrollmentStatus: 'ENROLLED',
+      face_enrollment_status: 'ENROLLED',
+      hasFaceRegistered: true,
+      message: hasPriorEnrollment ? 'Facial identity profile successfully updated!' : 'Facial identity successfully registered! You can now mark biometric attendance.',
       embeddingsCount: aiResponse.embeddings.length
     });
   } catch (err) {

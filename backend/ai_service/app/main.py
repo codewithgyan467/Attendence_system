@@ -208,7 +208,7 @@ def verify_live(req: VerifyLiveRequest):
     all_raw_faces = [raw_face]
 
     if req.temporal_frames and len(req.temporal_frames) > 0:
-        for f_b64 in req.temporal_frames[:6]: # evaluate up to 6 burst frames
+        for f_b64 in req.temporal_frames[:12]: # evaluate up to 12 burst frames
             try:
                 frame_bgr = face_engine.decode_image(f_b64)
                 _, _, f_face = face_engine.detect_and_align_face(frame_bgr)

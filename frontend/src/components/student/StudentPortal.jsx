@@ -430,7 +430,11 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     setEnrollSubmitting(true);
     setEnrollError(null);
     try {
-      const res = await api.student.registerFace({ photos: enrollPhotos });
+      const isReEnroll = Boolean(stats.hasFaceRegistered || dashboard?.student?.face_enrollment_status === 'ENROLLED');
+      const res = await api.student.registerFace({
+        photos: enrollPhotos,
+        is_re_enrollment: isReEnroll
+      });
       if (res.success) {
         setStatusMsg('Face profile successfully registered! You can now mark attendance.');
         stopEnrollCamera();

@@ -30,7 +30,14 @@ class AiServiceClient {
   async extractEmbeddings(photos, allowSimulation = null) {
     const isProduction = process.env.NODE_ENV === 'production';
     const isTest = process.env.NODE_ENV === 'test';
-    const effectiveSimulation = allowSimulation !== null ? allowSimulation : (!isProduction && process.env.AI_ALLOW_SIMULATION !== 'false');
+    // Production & Development: Strictly fail-closed. No simulated fake biometrics for real students.
+    // Test environment: Allow simulation fallback so Jest suites pass without requiring a live Python daemon,
+    // unless AI_ALLOW_SIMULATION === 'false' or allowSimulation === false.
+    const effectiveSimulation = !isProduction && (
+      allowSimulation === true ||
+      (isTest && process.env.AI_ALLOW_SIMULATION !== 'false' && allowSimulation !== false) ||
+      (process.env.AI_ALLOW_SIMULATION === 'true')
+    );
 
     try {
       const payload = {
@@ -44,7 +51,7 @@ class AiServiceClient {
       const resp = await this.client.post('/api/v1/faces/extract-embeddings', payload);
       return resp.data;
     } catch (err) {
-      if (effectiveSimulation && (isTest || err.code === 'ECONNREFUSED' || err.message?.includes('ECONNREFUSED') || !err.response || err.response?.status === 400)) {
+      if (effectiveSimulation) {
         return {
           success: true,
           embeddings: photos.map((p, idx) => ({
@@ -69,7 +76,14 @@ class AiServiceClient {
   async verifyLiveFace(liveImageBase64, storedEmbeddings, threshold = 0.65, allowSimulation = null, options = {}) {
     const isProduction = process.env.NODE_ENV === 'production';
     const isTest = process.env.NODE_ENV === 'test';
-    const effectiveSimulation = allowSimulation !== null ? allowSimulation : (!isProduction && process.env.AI_ALLOW_SIMULATION !== 'false');
+    // Production & Development: Strictly fail-closed. No simulated fake biometrics for real students.
+    // Test environment: Allow simulation fallback so Jest suites pass without requiring a live Python daemon,
+    // unless AI_ALLOW_SIMULATION === 'false' or allowSimulation === false.
+    const effectiveSimulation = !isProduction && (
+      allowSimulation === true ||
+      (isTest && process.env.AI_ALLOW_SIMULATION !== 'false' && allowSimulation !== false) ||
+      (process.env.AI_ALLOW_SIMULATION === 'true')
+    );
 
     try {
       const payload = {
@@ -87,7 +101,7 @@ class AiServiceClient {
       const resp = await this.client.post('/api/v1/faces/verify-live', payload);
       return resp.data;
     } catch (err) {
-      if (effectiveSimulation && (isTest || err.code === 'ECONNREFUSED' || err.message?.includes('ECONNREFUSED') || !err.response || err.response?.status === 400)) {
+      if (effectiveSimulation) {
         return {
           is_live: true,
           is_match: true,
