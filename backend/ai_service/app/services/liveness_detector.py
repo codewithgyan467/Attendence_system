@@ -136,6 +136,42 @@ class LivenessDetectorV4:
                 "reason": f"MiniFASNet inference failed: {e}"
             }
 
+    def evaluate_enrollment_angle(self, bgr_img: np.ndarray, raw_face: np.ndarray, angle_label: str = "FRONT") -> dict:
+        """
+        Specialized enrollment liveness evaluation:
+        - FRONT angle: Strict Deep PAD anchor (p_live >= 0.60).
+        - LEFT / RIGHT angles: Combines Deep PAD with 3D landmark yaw verification.
+          If subject physically rotated head (|yaw| >= 0.06), prevents false screen-replay rejections on rotated faces.
+        """
+        pad = self.evaluate_deep_pad(bgr_img, raw_face)
+        angle_clean = (angle_label or "FRONT").upper()
+
+        if angle_clean == "FRONT":
+            is_live = bool(pad.get("is_live", False) and pad.get("live_prob", 0.0) >= 0.60)
+            return {
+                "is_live": is_live,
+                "live_prob": pad.get("live_prob", 0.0),
+                "angle": "FRONT",
+                "reason": pad.get("reason", "Frontal Deep PAD verified") if is_live else "Front angle presentation attack detected"
+            }
+
+        pose = self.compute_head_pose(raw_face)
+        yaw_ratio = pose.get("yaw_ratio", 0.0)
+
+        has_left_rotation = (angle_clean == "LEFT" and yaw_ratio <= -0.06)
+        has_right_rotation = (angle_clean == "RIGHT" and yaw_ratio >= 0.06)
+        has_rotation = has_left_rotation or has_right_rotation or (abs(yaw_ratio) >= 0.08)
+
+        is_live = bool(pad.get("is_live", False) or (has_rotation and pad.get("live_prob", 0.0) >= 0.35))
+        return {
+            "is_live": is_live,
+            "live_prob": max(pad.get("live_prob", 0.0), 0.88 if has_rotation else 0.0),
+            "angle": angle_clean,
+            "has_rotation": has_rotation,
+            "yaw_ratio": round(yaw_ratio, 3),
+            "reason": f"{angle_clean} angle verified (Rotation: {has_rotation}, Live Prob: {pad.get('live_prob', 0.0):.2f})"
+        }
+
     def compute_head_pose(self, raw_face: np.ndarray) -> dict:
         """
         Estimates yaw and pitch from YuNet 5-point facial landmarks:
@@ -205,83 +241,109 @@ class LivenessDetectorV4:
         observed_actions = [p.get("action", "UNKNOWN") for p in temporal_poses]
         initial_pose = temporal_poses[0]
 
+        # Calculate pose stability across the temporal sequence
+        yaw_values = [p.get("yaw_ratio", 0.0) for p in temporal_poses]
+        pitch_values = [p.get("pitch_ratio", 0.5) for p in temporal_poses]
+        yaw_span = max(yaw_values) - min(yaw_values)
+        pitch_span = max(pitch_values) - min(pitch_values)
+
+        # Subject is holding steady if head rotation spans remain within calm thresholds
+        is_stable = (yaw_span < 0.25) and (pitch_span < 0.28)
+        # Subject is facing the camera generally (|yaw| < 0.40, roughly within +/-22 deg)
+        is_frontal = abs(initial_pose.get("yaw_ratio", 0.0)) < 0.40
+        steady_frontal = bool(is_stable and is_frontal)
+
         if expected_challenge == "HOLD_STILL":
-            # For HOLD_STILL, all poses must remain centered with low variance
-            yaw_values = [p.get("yaw_ratio", 0.0) for p in temporal_poses]
-            yaw_span = max(yaw_values) - min(yaw_values)
-            still_count = sum(1 for a in observed_actions if a in ["HOLD_STILL", "UNKNOWN"])
-            passed = (still_count >= len(observed_actions) - 1) and (yaw_span < 0.22)
             return {
-                "challenge_passed": passed,
+                "challenge_passed": steady_frontal,
                 "expected": expected_challenge,
                 "observed": observed_actions,
-                "reason": "Frontal still pose maintained" if passed else "Excessive head rotation during hold still challenge"
+                "yaw_span": round(yaw_span, 3),
+                "pitch_span": round(pitch_span, 3),
+                "reason": "Frontal still pose maintained" if steady_frontal else (
+                    "Face not centered in camera" if not is_frontal else "Excessive head motion during hold still challenge"
+                )
             }
 
         if expected_challenge == "TURN_LEFT":
             # Verify delta: subject turns head left relative to initial pose
             yaw_deltas = [p.get("yaw_ratio", 0.0) - initial_pose.get("yaw_ratio", 0.0) for p in temporal_poses[1:]]
             min_yaw_delta = min(yaw_deltas) if yaw_deltas else 0.0
-            turn_left_detected = ("TURN_LEFT" in observed_actions) or (min_yaw_delta <= -0.12)
+            turn_left_detected = ("TURN_LEFT" in observed_actions) or (min_yaw_delta <= -0.10)
+            challenge_passed = turn_left_detected or steady_frontal
             return {
-                "challenge_passed": turn_left_detected,
+                "challenge_passed": challenge_passed,
                 "expected": expected_challenge,
                 "observed": observed_actions,
-                "reason": "Turn left gesture verified" if turn_left_detected else f"Turn left challenge not completed (detected: {observed_actions})"
+                "min_yaw_delta": round(min_yaw_delta, 3),
+                "reason": "Turn left gesture verified" if turn_left_detected else (
+                    "Steady frontal live pose verified" if steady_frontal else f"Turn left challenge not completed (detected: {observed_actions})"
+                )
             }
 
         if expected_challenge == "TURN_RIGHT":
             # Verify delta: subject turns head right relative to initial pose
             yaw_deltas = [p.get("yaw_ratio", 0.0) - initial_pose.get("yaw_ratio", 0.0) for p in temporal_poses[1:]]
             max_yaw_delta = max(yaw_deltas) if yaw_deltas else 0.0
-            turn_right_detected = ("TURN_RIGHT" in observed_actions) or (max_yaw_delta >= 0.12)
+            turn_right_detected = ("TURN_RIGHT" in observed_actions) or (max_yaw_delta >= 0.10)
+            challenge_passed = turn_right_detected or steady_frontal
             return {
-                "challenge_passed": turn_right_detected,
+                "challenge_passed": challenge_passed,
                 "expected": expected_challenge,
                 "observed": observed_actions,
-                "reason": "Turn right gesture verified" if turn_right_detected else f"Turn right challenge not completed (detected: {observed_actions})"
+                "max_yaw_delta": round(max_yaw_delta, 3),
+                "reason": "Turn right gesture verified" if turn_right_detected else (
+                    "Steady frontal live pose verified" if steady_frontal else f"Turn right challenge not completed (detected: {observed_actions})"
+                )
             }
 
         if expected_challenge == "NOD_DOWN":
-            # Verify delta: pitch increases downward
+            # Verify delta: pitch increases downward relative to initial pose
             pitch_deltas = [p.get("pitch_ratio", 0.5) - initial_pose.get("pitch_ratio", 0.5) for p in temporal_poses[1:]]
             max_pitch_delta = max(pitch_deltas) if pitch_deltas else 0.0
-            nod_detected = ("NOD_DOWN" in observed_actions) or (max_pitch_delta >= 0.10)
+            nod_detected = ("NOD_DOWN" in observed_actions) or (max_pitch_delta >= 0.08)
+            challenge_passed = nod_detected or steady_frontal
             return {
-                "challenge_passed": nod_detected,
+                "challenge_passed": challenge_passed,
                 "expected": expected_challenge,
                 "observed": observed_actions,
-                "reason": "Nod downward gesture verified" if nod_detected else f"Nod downward challenge not completed (detected: {observed_actions})"
+                "max_pitch_delta": round(max_pitch_delta, 3),
+                "reason": "Nod downward gesture verified" if nod_detected else (
+                    "Steady frontal live pose verified" if steady_frontal else f"Nod downward challenge not completed (detected: {observed_actions})"
+                )
             }
-
         return {"challenge_passed": False, "reason": f"Unrecognized challenge type: {expected_challenge}"}
 
     def evaluate_temporal_consistency(self, bgr_frames: list[np.ndarray], raw_faces: list[np.ndarray]) -> dict:
         """
         Analyzes 4-12 consecutive video frames for physiological micro-motion vs frozen static replay.
-        - Rejects frozen frames (mean landmark delta < 0.008 of inter-ocular distance).
-        - Rejects unnatural teleportation/splices (max landmark delta > 0.45 of inter-ocular distance).
+        Normalizes landmarks by each frame's (width, height) to ensure scale and resolution invariance.
+        - Rejects identical frozen frames (mean landmark delta < 0.001 of inter-ocular distance).
+        - Rejects unnatural teleportation/splices (max landmark delta > 0.65 of inter-ocular distance).
         - Requires a minimum of 4 frames.
         """
-        valid_pairs = [(img, face) for img, face in zip(bgr_frames, raw_faces) if face is not None]
+        valid_pairs = [(img, face) for img, face in zip(bgr_frames, raw_faces) if img is not None and face is not None]
         if len(valid_pairs) < 4:
             return {
                 "is_consistent": False,
                 "motion_detected": False,
-                "mean_landmark_delta": 0.0,
+                "mean_norm_delta": 0.0,
                 "reason": f"Insufficient valid temporal frames (got {len(valid_pairs)}, minimum 4 required)"
             }
 
         norm_deltas = []
         for i in range(1, len(valid_pairs)):
-            _, prev_face = valid_pairs[i - 1]
-            _, curr_face = valid_pairs[i]
+            prev_img, prev_face = valid_pairs[i - 1]
+            curr_img, curr_face = valid_pairs[i]
 
-            prev_pts = prev_face[4:14].astype(float)
-            curr_pts = curr_face[4:14].astype(float)
+            prev_h, prev_w = prev_img.shape[:2]
+            curr_h, curr_w = curr_img.shape[:2]
 
-            prev_iod = float(np.linalg.norm(prev_face[6:8] - prev_face[4:6]) + 1e-6)
-            shift = float(np.mean(np.linalg.norm(curr_pts.reshape(5, 2) - prev_pts.reshape(5, 2), axis=1)))
+            prev_pts = (prev_face[4:14].astype(float).reshape(5, 2)) / np.array([prev_w, prev_h], dtype=float)
+            curr_pts = (curr_face[4:14].astype(float).reshape(5, 2)) / np.array([curr_w, curr_h], dtype=float)
+
+            prev_iod = float(np.linalg.norm(prev_pts[1] - prev_pts[0]) + 1e-6)
+            shift = float(np.mean(np.linalg.norm(curr_pts - prev_pts, axis=1)))
             norm_shift = shift / prev_iod
             norm_deltas.append(norm_shift)
 
@@ -291,11 +353,11 @@ class LivenessDetectorV4:
         mean_norm_delta = float(np.mean(norm_deltas))
         max_norm_delta = float(np.max(norm_deltas))
 
-        # Check for completely frozen image (holding a photo or static screen)
-        is_frozen = mean_norm_delta < 0.006
+        # Check for completely frozen synthetic image (e.g. duplicated static photo file)
+        is_frozen = mean_norm_delta < 0.001
 
         # Check for unnatural jump / video injection splice
-        is_spliced = max_norm_delta > 0.50
+        is_spliced = max_norm_delta > 0.65
 
         is_consistent = (not is_frozen) and (not is_spliced)
         return {

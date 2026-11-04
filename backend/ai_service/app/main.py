@@ -141,15 +141,16 @@ def extract_embeddings(req: ExtractEmbeddingsRequest):
                     ))
                 continue
 
-            # Evaluate MiniFASNet deep PAD
-            pad = liveness_detector.evaluate_deep_pad(bgr_img, raw_face)
+            # Evaluate per-angle deep PAD & 3D gesture verification
+            pad = liveness_detector.evaluate_enrollment_angle(bgr_img, raw_face, item.angle or "FRONT")
 
             results.append(EmbeddingResult(
                 angle=item.angle or "FRONT",
                 embedding=vec,
                 confidence=round(conf, 3),
                 liveness_score=round(pad.get("live_prob", 0.95), 3),
-                is_live=bool(pad.get("is_live", True))
+                is_live=bool(pad.get("is_live", True)),
+                diagnostic=pad
             ))
         except Exception as e:
             logger.error(f"Error processing angle {item.angle}: {e}")
@@ -204,23 +205,31 @@ def verify_live(req: VerifyLiveRequest):
             )
 
     # 2. Build temporal frame burst for multi-frame sequence evaluation
-    all_bgr_frames = [primary_bgr]
-    all_raw_faces = [raw_face]
+    temporal_bgr_frames = []
+    temporal_raw_faces = []
 
     if req.temporal_frames and len(req.temporal_frames) > 0:
         for f_b64 in req.temporal_frames[:12]: # evaluate up to 12 burst frames
             try:
                 frame_bgr = face_engine.decode_image(f_b64)
                 _, _, f_face = face_engine.detect_and_align_face(frame_bgr)
-                all_bgr_frames.append(frame_bgr)
-                all_raw_faces.append(f_face)
+                temporal_bgr_frames.append(frame_bgr)
+                temporal_raw_faces.append(f_face)
             except Exception as t_err:
                 logger.warning(f"Error decoding temporal burst frame: {t_err}")
+
+    # If client submitted burst frames, evaluate the burst sequence directly
+    if len(temporal_bgr_frames) >= 3:
+        eval_bgr_frames = temporal_bgr_frames
+        eval_raw_faces = temporal_raw_faces
+    else:
+        eval_bgr_frames = [primary_bgr]
+        eval_raw_faces = [raw_face]
 
     # 3. Enterprise v4.0 Multi-Frame PAD & Active Challenge Evaluation
     if not req.allow_simulation_fallback:
         active_target = req.active_challenge or "HOLD_STILL"
-        seq_eval = liveness_detector.evaluate_sequence(all_bgr_frames, all_raw_faces, active_target)
+        seq_eval = liveness_detector.evaluate_sequence(eval_bgr_frames, eval_raw_faces, active_target)
         
         if not seq_eval["is_live"]:
             return VerifyLiveResponse(

@@ -54,6 +54,10 @@ const formatDisplayTime12h = (timeVal) => {
 export default function StudentPortal({ activeTab = 'student_attendance', onSelectTab }) {
   const { user } = useAuth();
   const [dashboard, setDashboard] = useState(null);
+  // Safely hoisted resident profile & stats references to eliminate TDZ ReferenceErrors permanently
+  const student = dashboard?.student || user?.studentProfile || {};
+  const stats = dashboard?.stats || {};
+  const todayStatus = dashboard?.todayStatus || {};
   const [history, setHistory] = useState([]);
   const [corrections, setCorrections] = useState([]);
   const [tickets, setTickets] = useState([]);
@@ -71,6 +75,15 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [studentCoords, setStudentCoords] = useState(null);
   const [activeChallenge, setActiveChallenge] = useState('HOLD_STILL');
   const [activeChallengeInstruction, setActiveChallengeInstruction] = useState('Fit face into oval and hold steady');
+
+  // Robust multi-layer enrollment fallback to eliminate reload flicker
+  const isFaceEnrolled = Boolean(
+    dashboard?.hasFaceRegistered ||
+    student?.face_enrollment_status === 'ENROLLED' ||
+    stats?.hasFaceRegistered ||
+    user?.hasFaceRegistered ||
+    user?.studentProfile?.face_enrollment_status === 'ENROLLED'
+  );
   const [activeCameraLabel, setActiveCameraLabel] = useState('');
   const [isVirtualCamDetected, setIsVirtualCamDetected] = useState(false);
   const [showMapRadar, setShowMapRadar] = useState(true);
@@ -515,20 +528,27 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         setTimeout(() => setIsFlashing(false), 200);
       }
 
-      // Fast, lightweight temporal burst sequence (6 frames over ~900ms)
+      // High-fidelity temporal burst sequence (8 frames over ~2.0s) preserving video aspect ratio
+      const vWidth = videoRef.current.videoWidth || 640;
+      const vHeight = videoRef.current.videoHeight || 480;
+      const maxDim = 480;
+      const scale = Math.min(1, maxDim / Math.max(vWidth, vHeight));
+      const targetW = Math.round(vWidth * scale);
+      const targetH = Math.round(vHeight * scale);
+
       const burstCanvas = document.createElement('canvas');
-      burstCanvas.width = 320;
-      burstCanvas.height = 240;
+      burstCanvas.width = targetW;
+      burstCanvas.height = targetH;
       const bctx = burstCanvas.getContext('2d');
       const temporalFrames = [];
 
-      for (let i = 0; i < 6; i++) {
-        await new Promise((r) => setTimeout(r, 140));
+      for (let i = 0; i < 8; i++) {
+        await new Promise((r) => setTimeout(r, 220));
         if (videoRef.current && videoRef.current.readyState >= 2) {
-          bctx.drawImage(videoRef.current, 0, 0, 320, 240);
-          temporalFrames.push(burstCanvas.toDataURL('image/jpeg', 0.70));
+          bctx.drawImage(videoRef.current, 0, 0, targetW, targetH);
+          temporalFrames.push(burstCanvas.toDataURL('image/jpeg', 0.80));
         }
-        setScanProgress(Math.min(92, 20 + (i + 1) * 12));
+        setScanProgress(Math.min(92, 15 + (i + 1) * 10));
       }
 
       const res = await api.attendance.verifyFace({
@@ -599,9 +619,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     }
   };
 
-  const student = dashboard?.student || {};
-  const stats = dashboard?.stats || {};
-  const todayStatus = dashboard?.todayStatus || {};
+  // stats hoisted to top
+  // todayStatus hoisted to top
 
   const getGreeting = (fullName) => {
     const hour = new Date().getHours();
@@ -833,7 +852,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         <div className="row g-4 justify-content-center">
           <div className="col-lg-8">
             {/* Warning Banner if Facial Biometrics Not Yet Enrolled */}
-            {dashboard && stats.hasFaceRegistered === false && (
+            {dashboard && !isFaceEnrolled && (
               <div className="card border-warning border-opacity-50 bg-warning-subtle rounded-4 p-3 mb-4 shadow-sm text-start">
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
                   <div className="d-flex align-items-center gap-2">
@@ -1064,13 +1083,17 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                       <div className="py-2 text-center">
                         <div className="mb-3">
                           <h5 className="fw-bold mb-1">
-                            {checkinStep === 'verifying_face' ? 'Please wait...' : 'Face Verification'}
-                          </h5>
-                          <p className="text-muted small mb-0">
                             {checkinStep === 'verifying_face'
-                              ? 'Hold still while your biometric identity is verified'
-                              : 'Fit your face into the oval and ensure adequate light'}
-                          </p>
+                              ? (activeChallenge === 'TURN_LEFT' ? 'Turn Head Slightly Left (~15°)' :
+                                 activeChallenge === 'TURN_RIGHT' ? 'Turn Head Slightly Right (~15°)' :
+                                 activeChallenge === 'NOD_DOWN' ? 'Tilt Chin Downward' :
+                                 'Hold Steady & Face Camera')
+                              : 'Biometric Face Verification'}
+                          </h5>
+                          <div className="d-inline-flex align-items-center gap-1.5 px-3 py-1 rounded-pill bg-primary bg-opacity-10 text-primary small fw-semibold mt-1">
+                            <Sparkles size={13} />
+                            <span>{activeChallengeInstruction || 'Position face within oval and follow challenge'}</span>
+                          </div>
                         </div>
 
                         {/* Clean Minimalist Face ID Viewport */}
@@ -1814,20 +1837,20 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
               <div className="p-3 bg-light rounded-3 d-flex justify-content-between align-items-center">
                 <div>
                   <div className="text-muted">Identity Verification</div>
-                  <div className={`fw-medium ${stats.hasFaceRegistered ? 'text-success' : 'text-warning'}`}>
-                    {stats.hasFaceRegistered ? 'Active • Identity Verified' : 'Pending Enrollment'}
+                  <div className={`fw-medium ${isFaceEnrolled ? 'text-success' : 'text-warning'}`}>
+                    {isFaceEnrolled ? 'Face Enrolled • Identity Verified' : 'Pending Enrollment'}
                   </div>
                 </div>
                 <button
                   type="button"
-                  className={`btn btn-sm ${stats.hasFaceRegistered ? 'btn-outline-primary' : 'btn-primary'} fw-medium d-inline-flex align-items-center gap-1`}
+                  className={`btn btn-sm ${isFaceEnrolled ? 'btn-outline-primary' : 'btn-primary'} fw-medium d-inline-flex align-items-center gap-1`}
                   onClick={() => {
                     setShowEnrollModal(true);
                     startEnrollCamera();
                   }}
                 >
                   <Camera size={14} />
-                  {stats.hasFaceRegistered ? 'Update Face Profile' : 'Enroll Face'}
+                  {isFaceEnrolled ? 'Update Face Profile' : 'Enroll Face'}
                 </button>
               </div>
             </div>
