@@ -400,7 +400,7 @@ router.get('/students', async (req, res) => {
     const students = await allQuery(`
       SELECT
         s.*,
-        (SELECT COUNT(*) FROM student_face_embeddings e WHERE e.student_id = s.id) as embeddings_count
+        (SELECT COUNT(*) FROM student_face_embeddings e WHERE e.student_id = s.id OR e.student_id = s.roll_number) as embeddings_count
       FROM students s
       WHERE ${whereClause}
       ORDER BY s.roll_number ASC

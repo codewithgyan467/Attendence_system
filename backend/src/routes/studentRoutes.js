@@ -488,8 +488,8 @@ router.post('/onboard', async (req, res) => {
           INSERT INTO students (
             id, user_id, allotment_id, roll_number, full_name, email, phone,
             course, admission_year, semester, room_number, hostel_block,
-            device_id, device_model
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            device_id, device_model, face_enrollment_status, face_enrolled_at, face_enrolled_version
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ENROLLED', CURRENT_TIMESTAMP, 1)
         `, [
           studentId,
           userId,
@@ -511,7 +511,10 @@ router.post('/onboard', async (req, res) => {
         await runQuery(`
           UPDATE students
           SET email = ?, phone = ?, course = ?, admission_year = ?, semester = ?,
-              device_id = ?, device_model = ?
+              device_id = ?, device_model = ?,
+              face_enrollment_status = 'ENROLLED',
+              face_enrolled_at = CURRENT_TIMESTAMP,
+              face_enrolled_version = COALESCE(face_enrolled_version, 0) + 1
           WHERE id = ?
         `, [
           userEmail, userPhone, targetCourse, parseInt(targetAdmYear), parseInt(targetSemester),

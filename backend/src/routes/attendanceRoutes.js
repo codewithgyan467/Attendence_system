@@ -442,12 +442,12 @@ const verifyFaceHandler = async (req, res) => {
     }
 
     // 3b. Fast In-Memory Face Embedding Retrieval with Cache
-    let storedEmbeddings = embeddingCache.get(student.id);
+    let storedEmbeddings = embeddingCache.get(student.id) || (student.roll_number ? embeddingCache.get(student.roll_number) : null);
     if (!storedEmbeddings) {
       const storedRows = await allQuery(`
         SELECT embedding_vector FROM student_face_embeddings
-        WHERE student_id = ?
-      `, [student.id]);
+        WHERE student_id = ? OR student_id = ?
+      `, [student.id, student.roll_number]);
 
       if (!storedRows || storedRows.length === 0) {
         return res.status(400).json({
@@ -459,6 +459,7 @@ const verifyFaceHandler = async (req, res) => {
 
       storedEmbeddings = storedRows.map((r) => JSON.parse(r.embedding_vector));
       embeddingCache.set(student.id, storedEmbeddings);
+      if (student.roll_number) embeddingCache.set(student.roll_number, storedEmbeddings);
     }
 
     // 3c. Inspect Camera Hardware Provenance (Detect Virtual Camera Drivers)
@@ -719,17 +720,18 @@ const offlineSyncHandler = async (req, res) => {
     }
 
     // 5. Biometric Face AI Verification
-    let embeddings = embeddingCache.get(student.id);
+    let embeddings = embeddingCache.get(student.id) || (student.roll_number ? embeddingCache.get(student.roll_number) : null);
     if (!embeddings) {
       const dbEmbeddings = await allQuery(
-        `SELECT embedding_vector FROM student_face_embeddings WHERE student_id = ?`,
-        [student.id]
+        `SELECT embedding_vector FROM student_face_embeddings WHERE student_id = ? OR student_id = ?`,
+        [student.id, student.roll_number]
       );
       if (dbEmbeddings && dbEmbeddings.length > 0) {
         embeddings = dbEmbeddings.map(e => {
           try { return JSON.parse(e.embedding_vector); } catch (_) { return e.embedding_vector; }
         });
         embeddingCache.set(student.id, embeddings);
+        if (student.roll_number) embeddingCache.set(student.roll_number, embeddings);
       }
     }
 
