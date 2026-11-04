@@ -874,6 +874,8 @@ router.post('/register-face', async (req, res) => {
     // C. ENFORCE ANTI-SPOOFING ON ENROLLMENT: Reject if any capture failed presentation attack detection
     const spoofedItem = aiResponse.embeddings.find(e => e.is_live === false || (e.liveness_score !== undefined && e.liveness_score < 0.60));
     if (spoofedItem) {
+      const failAngle = spoofedItem.angle || 'Capture';
+      const failMsg = spoofedItem.diagnostic?.reason || 'Presentation attack detected (photograph or screen display)';
       await runQuery(`
         INSERT INTO security_audit_logs (
           id, student_id, roll_number, incident_type, calculated_distance, details,
@@ -883,14 +885,16 @@ router.post('/register-face', async (req, res) => {
         uuidv4(),
         student.id,
         student.roll_number,
-        `Spoof attack detected during face enrollment (score: ${spoofedItem.liveness_score || 0.0})`,
+        `Spoof attack detected during face enrollment for ${failAngle} angle (score: ${spoofedItem.liveness_score || 0.0})`,
         req.ip || '127.0.0.1'
       ]);
 
       return res.status(403).json({
         success: false,
         status: 'ENROLLMENT_SPOOF_DETECTED',
-        error: 'Face enrollment rejected: Presentation attack detected (photograph or screen display). You must register with a live camera.'
+        error: `Face enrollment rejected: ${failAngle} angle presentation check failed (${failMsg}). Please ensure adequate lighting and face the camera directly.`,
+        failing_angle: failAngle,
+        diagnostics: aiResponse.diagnostics || []
       });
     }
 
@@ -943,7 +947,8 @@ router.post('/register-face', async (req, res) => {
       face_enrollment_status: 'ENROLLED',
       hasFaceRegistered: true,
       message: hasPriorEnrollment ? 'Facial identity profile successfully updated!' : 'Facial identity successfully registered! You can now mark biometric attendance.',
-      embeddingsCount: aiResponse.embeddings.length
+      embeddingsCount: aiResponse.embeddings.length,
+      diagnostics: aiResponse.diagnostics || []
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

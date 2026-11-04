@@ -102,6 +102,23 @@ app.get(['/api/v1/health/keepalive', '/health/keepalive'], (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// System Observability & Biometric Engine Health Endpoint
+app.get(['/api/v1/system/version', '/system/version'], (req, res) => {
+  const isTurso = Boolean(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
+  res.json({
+    version: 'v4.2.0-master',
+    status: 'ONLINE',
+    persistence_mode: isTurso ? 'TURSO_PERSISTENT_CLOUD' : 'LOCAL_EPHEMERAL_SQLITE',
+    is_persistent: isTurso,
+    models: {
+      face_detection: 'OpenCV_YuNet_2023mar',
+      face_recognition: 'OpenCV_SFace_128D',
+      anti_spoofing: 'MiniFASNetV2_DeepPAD'
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Mount Domain Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/admin', adminRoutes);
