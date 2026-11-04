@@ -75,10 +75,10 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   // Robust multi-layer enrollment fallback to eliminate reload flicker
   const isFaceEnrolled = Boolean(
     dashboard?.hasFaceRegistered ||
+    dashboard?.student?.face_enrollment_status === 'ENROLLED' ||
     stats?.hasFaceRegistered ||
     user?.hasFaceRegistered ||
-    user?.studentProfile?.face_enrollment_status === 'ENROLLED' ||
-    student?.face_enrollment_status === 'ENROLLED'
+    user?.studentProfile?.face_enrollment_status === 'ENROLLED'
   );
   const [activeCameraLabel, setActiveCameraLabel] = useState('');
   const [isVirtualCamDetected, setIsVirtualCamDetected] = useState(false);
