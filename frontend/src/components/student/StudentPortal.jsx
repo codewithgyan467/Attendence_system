@@ -27,8 +27,14 @@ import {
   X,
   Check,
   Zap,
-  Volume2
+  Volume2,
+  Globe,
+  Download,
+  ExternalLink,
+  QrCode,
+  Copy
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import GeofenceMap from '../common/GeofenceMap';
 import { playBiometricChime, detectFaceAngle } from '../../utils/faceAngleGuide';
 
@@ -80,6 +86,13 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [verifiedBeaconInfo, setVerifiedBeaconInfo] = useState(null);
   const [activeChallenge, setActiveChallenge] = useState('HOLD_STILL');
   const [activeChallengeInstruction, setActiveChallengeInstruction] = useState('Fit face into oval and hold steady');
+
+  // Peer QR Relay for iOS Safari ($0 Co-Presence Forwarding)
+  const [peerRelayTokenToSubmit, setPeerRelayTokenToSubmit] = useState(null);
+  const [showPeerScanModal, setShowPeerScanModal] = useState(false);
+  const [peerInputToken, setPeerInputToken] = useState('');
+  const [peerRelayToken, setPeerRelayToken] = useState(null);
+  const [peerQrDataUrl, setPeerQrDataUrl] = useState(null);
 
   // Dynamic beacon list from active admin configuration
   const activeBeaconList = Array.isArray(dashboard?.beacons) && dashboard.beacons.length > 0
@@ -271,7 +284,13 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       let isBleUnsupported = false;
 
       // Layer 2 Check: ESP32 Hardware Radio Anchor Range Verification (Inside Geofence)
-      if (bleMode === 'STRICT_REQUIRED') {
+      if (peerRelayTokenToSubmit) {
+        setCheckinStep('verifying_ble');
+        setBleScanningStatus('Layer 2 Check: Verifying 5-Second Peer Beacon Relay Token...');
+        bleProof = {
+          peerRelayToken: peerRelayTokenToSubmit
+        };
+      } else if (bleMode === 'STRICT_REQUIRED') {
         setCheckinStep('verifying_ble');
         setBleScanningStatus('Layer 2 Check: Connecting to nearby hostel ESP32 Bluetooth beacon (~15m range)...');
 
@@ -282,26 +301,37 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         });
 
         if (!bleRes.success) {
-          // Adaptive Presence Gate: Detect browsers/WebViews that physically lack Web Bluetooth (Safari, Phoenix, In-App WebViews, Brave, Firefox)
+          const isAndroidDevice = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent || '');
+          const isIOSDevice = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
           const isUnsupportedBrowser = bleRes.reason === 'BLUETOOTH_API_UNSUPPORTED' ||
                                        (typeof navigator !== 'undefined' && !navigator.bluetooth);
 
-          if (isUnsupportedBrowser) {
-            isBleUnsupported = true;
-            bleProof = {
-              fallbackMode: 'ADAPTIVE_PHOTOMETRIC_STEP_UP',
-              reason: 'BLUETOOTH_API_UNSUPPORTED'
-            };
-            setBleScanningStatus('Adaptive Presence Gate: Browser lacks Bluetooth API — activating Step-Up Liveness...');
-          } else {
-            // Layer 2 Rejection: Device supports Bluetooth, but beacon was not selected, out of range, or board powered OFF
+          if (isAndroidDevice) {
+            // Flaw 1 Hardening: Android devices MUST NEVER skip BLE in Strict Mode.
             setCheckinError(
               bleRes.message ||
-              `Layer 2 Check Failed (ESP32 Beacon Range Required): You are inside the campus perimeter (${clientDistance}m from center), but you are not within physical range of an authorized hostel ESP32 beacon (${activeBeaconList}) or the board is powered OFF. Please walk near your floor beacon (~15m corridor zone) and ensure it is plugged into power to proceed to face verification.`
+              `Layer 2 Check: Hardware Bluetooth proximity is strictly required. Your current browser lacks Web Bluetooth. Tap "Open in Google Chrome" or install the HostelGuard APK below.`
             );
             setCheckinStep('failed');
             return;
           }
+
+          if (isIOSDevice && isUnsupportedBrowser) {
+            // iOS Safari: Prompt for Bluefy or roommate Peer QR scan
+            setCheckinError(
+              `Layer 2 Check (Apple Safari): Apple Safari blocks Web Bluetooth. To verify presence, open HostelGuard in "Bluefy BLE Browser" (free on App Store) or scan a 5-second Beacon Relay QR from a nearby roommate.`
+            );
+            setCheckinStep('failed');
+            return;
+          }
+
+          // Layer 2 Rejection: Device supports Bluetooth, but beacon was not selected, out of range, or board powered OFF
+          setCheckinError(
+            bleRes.message ||
+            `Layer 2 Check Failed (ESP32 Beacon Range Required): You are inside the campus perimeter (${clientDistance}m from center), but you are not within physical range of an authorized hostel ESP32 beacon (${activeBeaconList}) or the board is powered OFF. Please walk near your floor beacon (~15m corridor zone) and ensure it is plugged into power to proceed to face verification.`
+          );
+          setCheckinStep('failed');
+          return;
         } else {
           bleProof = {
             beaconPublicId: bleRes.beaconPublicId,
@@ -685,6 +715,14 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       if (res.success) {
         setCheckinStep('success');
         setStatusMsg('Biometric attendance verified and recorded successfully!');
+        if (res.peerRelayToken) {
+          setPeerRelayToken(res.peerRelayToken);
+          try {
+            QRCode.toDataURL(res.peerRelayToken, { width: 160, margin: 1 })
+              .then(url => setPeerQrDataUrl(url))
+              .catch(() => {});
+          } catch (_) {}
+        }
         fetchStudentData();
       } else {
         setCheckinError(res.error || 'Face verification failed.');
@@ -1478,6 +1516,33 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           </div>
                         </div>
 
+                        {/* Mode C: 5-Second Peer QR Relay for Roommates */}
+                        {peerQrDataUrl && (
+                          <div
+                            className="card border-0 rounded-4 p-3.5 mx-auto text-center shadow-sm mb-4"
+                            style={{
+                              maxWidth: '360px',
+                              background: '#eff6ff',
+                              border: '1px solid #bfdbfe'
+                            }}
+                          >
+                            <div className="fw-bold text-primary small mb-1 d-flex align-items-center justify-content-center gap-1.5">
+                              <QrCode size={16} /> iPhone Roommate Relay QR
+                            </div>
+                            <div className="small text-muted mb-2.5" style={{ fontSize: '11.5px', lineHeight: '1.4' }}>
+                              Have an iPhone roommate who cannot scan BLE? Show this dynamic QR code so they can verify co-presence instantly!
+                            </div>
+                            <div className="bg-white p-2.5 d-inline-block rounded-3 shadow-sm mx-auto mb-2">
+                              <img src={peerQrDataUrl} alt="Peer Relay QR" style={{ width: '130px', height: '130px' }} />
+                            </div>
+                            <div className="d-flex justify-content-center">
+                              <span className="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 font-monospace py-1 px-2.5 rounded-pill" style={{ fontSize: '10.5px' }}>
+                                ⏱ Valid for 10 seconds
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="mx-auto" style={{ maxWidth: '360px' }}>
                           <button
                             type="button"
@@ -1592,17 +1657,78 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                                     <li>Ensure <strong>Bluetooth is turned ON</strong> in your device settings.</li>
                                     <li>Walk within <strong>~15 meters</strong> of an authorized floor beacon ({activeBeaconList}).</li>
                                     <li>Ensure the ESP32 board is plugged into USB power and LED is glowing.</li>
-                                    <li>On Android, use Google Chrome. In the Bluetooth prompt, tap your beacon and click <strong>Pair</strong>.</li>
-                                    <li>On iPhone, Apple Safari blocks Bluetooth. Open this page in <strong>Bluefy BLE Browser</strong> (free on App Store).</li>
+                                    <li>On Android: Tap <strong>"Open Directly in Google Chrome"</strong> or install the APK below.</li>
+                                    <li>On iPhone: Open this page in <strong>Bluefy BLE Browser</strong> (free on App Store) or scan a roommate's Peer Relay QR.</li>
                                   </ul>
                                 </div>
                               </div>
-                              <button
-                                className="btn btn-primary btn-sm px-4 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
-                                onClick={handleVerifyLocation}
-                              >
-                                <RefreshCw size={14} /> Retry Hardware Presence Check
-                              </button>
+
+                              {/* 1-Tap Solution Action Buttons */}
+                              <div className="d-flex flex-column gap-2 w-100" style={{ maxWidth: '460px' }}>
+                                {typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent || '') && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="btn btn-success fw-bold py-2.5 shadow-sm d-flex align-items-center justify-content-center gap-2"
+                                      onClick={() => {
+                                        const intentUrl = `intent://${window.location.host}${window.location.pathname}${window.location.search}#Intent;scheme=https;package=com.android.chrome;end`;
+                                        window.location.href = intentUrl;
+                                      }}
+                                    >
+                                      <Globe size={18} /> Open Directly in Google Chrome
+                                    </button>
+
+                                    <a
+                                      href="/downloads/hostelguard.apk"
+                                      download="hostelguard.apk"
+                                      className="btn btn-dark fw-semibold py-2 shadow-sm d-flex align-items-center justify-content-center gap-2"
+                                    >
+                                      <Download size={18} /> Download HostelGuard App (Signed APK)
+                                    </a>
+                                  </>
+                                )}
+
+                                {typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) && (
+                                  <>
+                                    <a
+                                      href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055"
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="btn btn-primary fw-bold py-2.5 shadow-sm d-flex align-items-center justify-content-center gap-2"
+                                    >
+                                      <ExternalLink size={18} /> Get Bluefy BLE Browser (Free on App Store)
+                                    </a>
+
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline-primary fw-semibold py-2 shadow-sm d-flex align-items-center justify-content-center gap-2"
+                                      onClick={() => setShowPeerScanModal(true)}
+                                    >
+                                      <QrCode size={18} /> Scan Roommate's Beacon Relay QR
+                                    </button>
+                                  </>
+                                )}
+
+                                <div className="d-flex gap-2">
+                                  <button
+                                    className="btn btn-outline-secondary btn-sm flex-fill py-2 fw-semibold d-inline-flex align-items-center justify-content-center gap-1.5 shadow-sm"
+                                    onClick={() => {
+                                      if (navigator.clipboard) {
+                                        navigator.clipboard.writeText(window.location.href);
+                                        alert('Link copied to clipboard! Open Google Chrome and paste this link.');
+                                      }
+                                    }}
+                                  >
+                                    <Copy size={14} /> Copy Page Link
+                                  </button>
+                                  <button
+                                    className="btn btn-primary btn-sm flex-fill py-2 fw-semibold d-inline-flex align-items-center justify-content-center gap-1.5 shadow-sm"
+                                    onClick={handleVerifyLocation}
+                                  >
+                                    <RefreshCw size={14} /> Retry Bluetooth Scan
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           ) : isFaceError ? (
                             /* CASE D: Face Verification Notice */
@@ -2483,6 +2609,62 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     </div>
                   </form>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5-Second Peer QR Relay Scanner Modal (for iPhone / Safari PWA) */}
+      {showPeerScanModal && (
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(3px)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '440px' }}>
+            <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+              <div className="modal-header border-bottom px-4 py-3 bg-light">
+                <h6 className="modal-title fw-bold text-dark d-flex align-items-center gap-2 mb-0">
+                  <QrCode size={18} className="text-primary" /> Roommate Beacon Relay QR
+                </h6>
+                <button type="button" className="btn-close" onClick={() => setShowPeerScanModal(false)}></button>
+              </div>
+              <div className="modal-body p-4 text-center">
+                <div className="p-3 bg-primary bg-opacity-10 rounded-3 text-primary small mb-3 text-start">
+                  <strong>Roommate Proximity Forwarding:</strong> If your iPhone Safari browser blocks Bluetooth, ask a roommate who just checked in to show their 10-second Beacon Relay QR code.
+                </div>
+                <div className="mb-3 text-start">
+                  <label className="form-label small fw-bold text-dark">Paste or Enter Peer Relay Token</label>
+                  <input
+                    type="text"
+                    className="form-control form-control-sm text-center font-monospace"
+                    placeholder="PEER_RELAY:HG-BEACON-...:token"
+                    value={peerInputToken}
+                    onChange={(e) => setPeerInputToken(e.target.value.trim())}
+                  />
+                  <div className="form-text text-muted" style={{ fontSize: '11px' }}>
+                    Tip: Your roommate can tap "Copy Token" on their success screen and send it via text or show their QR code.
+                  </div>
+                </div>
+                <div className="d-flex gap-2 justify-content-end">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm rounded-pill px-3"
+                    onClick={() => setShowPeerScanModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm rounded-pill px-4 fw-bold shadow-sm"
+                    disabled={!peerInputToken}
+                    onClick={() => {
+                      setPeerRelayTokenToSubmit(peerInputToken);
+                      setShowPeerScanModal(false);
+                      setCheckinStep('gps_checking');
+                      setTimeout(() => handleVerifyLocation(), 300);
+                    }}
+                  >
+                    Confirm & Verify Co-Presence
+                  </button>
+                </div>
               </div>
             </div>
           </div>

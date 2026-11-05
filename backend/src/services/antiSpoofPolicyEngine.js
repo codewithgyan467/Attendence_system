@@ -152,14 +152,39 @@ class AntiSpoofPolicyEngine {
     // Platform Intelligence: Transparent Adaptive Hardware Anchor for iOS Safari
     const ua = String(userAgent || deviceInfo.userAgent || '').toLowerCase();
     const isIOS = /iphone|ipad|ipod/.test(ua) || Boolean(deviceInfo.isIOS);
+    const isAndroid = /android/.test(ua) || Boolean(deviceInfo.isAndroid) || !isIOS;
     const isIOSWeb = isIOS && !deviceInfo.isNative;
 
-    if (bleProof && bleProof.beaconPublicId) {
+    if (bleProof && (bleProof.peerRelayToken || bleProof.peerRelayProof)) {
+      const relayToken = bleProof.peerRelayToken || bleProof.peerRelayProof;
+      const relayRes = await bleBeaconService.verifyPeerRelayProof({
+        peerRelayToken: relayToken,
+        studentId: student?.id || student?.roll_number || null
+      });
+
+      if (relayRes.isValid) {
+        bleMatchStatus = 'VERIFIED_BEACON_PROXIMITY';
+        riskScore = Math.max(0, riskScore - 25);
+      } else {
+        bleMatchStatus = 'INVALID_BEACON_PROOF';
+        if (bleMode === 'STRICT_REQUIRED') {
+          riskScore += 85;
+          unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
+          reasonCodes.push('L3_BLE_STRICT_REJECTED');
+        } else if (bleMode === 'SOFT_ANCHOR') {
+          riskScore += 45;
+          requiresStepUp = true;
+        } else {
+          riskScore += 20;
+        }
+      }
+    } else if (bleProof && bleProof.beaconPublicId) {
       const beaconRes = await bleBeaconService.verifyBleBeaconProof({
         beaconPublicId: bleProof.beaconPublicId,
         rollingCode: bleProof.rollingCode || bleProof.hmac || bleProof.code,
         timestampSlot: bleProof.timestampSlot || bleProof.slot,
-        rssi: bleProof.rssi ?? null
+        rssi: bleProof.rssi ?? null,
+        studentId: student?.id || student?.roll_number || null
       });
 
       if (beaconRes.isValid) {
@@ -181,26 +206,15 @@ class AntiSpoofPolicyEngine {
       }
     } else {
       // No BLE proof provided
-      const isBleUnsupported = Boolean(
-        deviceInfo?.bleUnsupported ||
-        (bleProof && bleProof.fallbackMode === 'ADAPTIVE_PHOTOMETRIC_STEP_UP') ||
-        (isIOSWeb && !deviceInfo?.isNative)
-      );
-
       if (bleMode === 'STRICT_REQUIRED') {
-        if (isBleUnsupported) {
-          // Adaptive Hardware Presence Gate: Browser/WebView physically lacks Web Bluetooth (Safari, In-App WebView, Phoenix, Brave)
-          // Require Photometric Liveness Step-Up (Screen Flash / Facial Challenge) + 0 strikes, ensuring 100% student accessibility
-          bleMatchStatus = 'ADAPTIVE_HARDWARE_STEP_UP';
-          riskScore += 20;
-          requiresStepUp = true;
-        } else {
-          // Strict Hardware Lock: Standard browser with Bluetooth support that is turned OFF or out of range
-          bleMatchStatus = 'STRICT_BEACON_MISSING';
-          riskScore += 85;
-          unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
-          reasonCodes.push('L3_BLE_STRICT_REJECTED');
-        }
+        // Strict Hardware Lock: Physical ESP32 radio presence is mandatory.
+        // Android devices MUST NEVER skip BLE — they can use Google Chrome (which supports Web Bluetooth)
+        // or the native HostelGuard APK. Skipping BLE on Android allows Mock GPS spoofing from home!
+        bleMatchStatus = 'STRICT_BEACON_MISSING';
+        riskScore += 85;
+        unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
+        reasonCodes.push('L3_BLE_STRICT_REJECTED');
+        requiresStepUp = false;
       } else if (bleMode === 'SOFT_ANCHOR') {
         // Soft Anchor allows smart fallback: iOS Safari or devices without BLE do Photometric Step-Up
         bleMatchStatus = isIOSWeb ? 'IOS_SAFARI_ADAPTIVE_ANCHOR' : 'SOFT_ANCHOR_MISSING';

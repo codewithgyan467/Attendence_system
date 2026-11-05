@@ -289,4 +289,113 @@ describe('HostelGuard Strict Mode: Dual ESP32 Hardware Presence Lock Enforcement
     // Clean up
     await runQuery(`DELETE FROM site_ble_beacons WHERE id = ?`, [beaconRevokeId]);
   });
+
+  test('10. Server-Anchored Boot Offset: Calibrates offline Epoch-0 board and rejects replayed historical slots', async () => {
+    const offlineBeaconId = 'test-beacon-offline-01';
+    const offlinePublicId = 'HG-BEACON-OFFLINE-01';
+    const secret = bleBeaconService.generateBeaconSecret();
+
+    await runQuery(`
+      INSERT OR REPLACE INTO site_ble_beacons (id, geofence_id, beacon_public_id, shared_secret_ref, block_name, is_active)
+      VALUES (?, ?, ?, ?, 'Offline Epoch-0 Beacon', 1)
+    `, [offlineBeaconId, geofence.id, offlinePublicId, secret]);
+
+    beaconCache.set({
+      id: offlineBeaconId,
+      geofence_id: geofence.id,
+      beacon_public_id: offlinePublicId,
+      shared_secret_ref: secret,
+      block_name: 'Offline Epoch-0 Beacon',
+      is_active: 1
+    });
+
+    // 1. Initial check-in at ESP32 slot 42 (Epoch 0 boot)
+    const token42 = bleBeaconService.computeRollingToken(secret, offlinePublicId, 42);
+    const initRes = await bleBeaconService.verifyBleBeaconProof({
+      beaconPublicId: offlinePublicId,
+      rollingCode: token42,
+      timestampSlot: 42
+    });
+
+    expect(initRes.isValid).toBe(true);
+    expect(bleBeaconService.beaconAnchorStates.has(offlinePublicId)).toBe(true);
+
+    // 2. Immediate replay of slot 42 by a student who already used it
+    const studentCheckin1 = await bleBeaconService.verifyBleBeaconProof({
+      beaconPublicId: offlinePublicId,
+      rollingCode: token42,
+      timestampSlot: 42,
+      studentId: 'STUDENT_TEST_REPLAY'
+    });
+    expect(studentCheckin1.isValid).toBe(true);
+
+    const replayAttempt = await bleBeaconService.verifyBleBeaconProof({
+      beaconPublicId: offlinePublicId,
+      rollingCode: token42,
+      timestampSlot: 42,
+      studentId: 'STUDENT_TEST_REPLAY'
+    });
+    expect(replayAttempt.isValid).toBe(false);
+    expect(replayAttempt.reason).toBe('TOKEN_ALREADY_USED');
+
+    // 3. Attacker captures slot 42 and attempts to replay it while claiming a historical slot
+    // Simulate server advancing or an attacker submitting an out-of-window slot (e.g. slot 10 or slot 999)
+    const staleSlot = 10;
+    const staleToken = bleBeaconService.computeRollingToken(secret, offlinePublicId, staleSlot);
+    const staleRes = await bleBeaconService.verifyBleBeaconProof({
+      beaconPublicId: offlinePublicId,
+      rollingCode: staleToken,
+      timestampSlot: staleSlot,
+      studentId: 'ATTACKER_01'
+    });
+    expect(staleRes.isValid).toBe(false);
+    expect(staleRes.reason).toBe('ROLLING_CODE_MISMATCH');
+
+    // Clean up
+    await runQuery(`DELETE FROM site_ble_beacons WHERE id = ?`, [offlineBeaconId]);
+    beaconCache.deactivate(offlineBeaconId);
+    bleBeaconService.beaconAnchorStates.delete(offlinePublicId);
+  });
+
+  test('11. 5-Second Dynamic Peer Relay QR enables co-presence forwarding for iOS Safari PWA', async () => {
+    const slot = Math.floor(Date.now() / 30000);
+    const peerToken = bleBeaconService.generatePeerRelayToken(
+      beacon1.beacon_public_id,
+      beacon1.shared_secret_ref,
+      slot,
+      'VERIFIED_ANDROID_STUDENT'
+    );
+
+    // 1. Roommate with iPhone scans valid peer relay QR
+    const verifyPeerRes = await bleBeaconService.verifyPeerRelayProof({
+      peerRelayToken: peerToken,
+      studentId: 'IPHONE_ROOMMATE_STUDENT'
+    });
+
+    expect(verifyPeerRes.isValid).toBe(true);
+    expect(verifyPeerRes.isPeerRelay).toBe(true);
+    expect(verifyPeerRes.beaconPublicId).toBe(beacon1.beacon_public_id);
+
+    // 2. Attacker tries to reuse the consumed peer relay token
+    const duplicateRelay = await bleBeaconService.verifyPeerRelayProof({
+      peerRelayToken: peerToken,
+      studentId: 'ANOTHER_STUDENT'
+    });
+    expect(duplicateRelay.isValid).toBe(false);
+    expect(duplicateRelay.reason).toBe('PEER_RELAY_ALREADY_USED');
+
+    // 3. Self-relay prevention (student cannot scan their own token)
+    const selfToken = bleBeaconService.generatePeerRelayToken(
+      beacon1.beacon_public_id,
+      beacon1.shared_secret_ref,
+      slot,
+      'SELF_STUDENT'
+    );
+    const selfRes = await bleBeaconService.verifyPeerRelayProof({
+      peerRelayToken: selfToken,
+      studentId: 'SELF_STUDENT'
+    });
+    expect(selfRes.isValid).toBe(false);
+    expect(selfRes.reason).toBe('SELF_RELAY_PROHIBITED');
+  });
 });

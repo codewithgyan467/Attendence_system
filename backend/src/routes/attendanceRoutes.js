@@ -609,10 +609,26 @@ const verifyFaceHandler = async (req, res) => {
       ]);
     });
 
+    let peerRelayToken = null;
+    try {
+      const activeBeacons = beaconCache.getActiveBeacons();
+      const primaryBeacon = activeBeacons.length > 0 ? activeBeacons[0] : null;
+      if (primaryBeacon && primaryBeacon.shared_secret_ref) {
+        const slot = Math.floor(Date.now() / 30000);
+        peerRelayToken = bleBeaconService.generatePeerRelayToken(
+          primaryBeacon.beacon_public_id,
+          primaryBeacon.shared_secret_ref,
+          slot,
+          student.id
+        );
+      }
+    } catch (_) {}
+
     res.json({
       success: true,
       status: 'PRESENT',
       message: `🎉 Attendance marked successfully for ${student.full_name}!`,
+      peerRelayToken,
       attendanceRecord: {
         id: recordId,
         studentId: student.id,

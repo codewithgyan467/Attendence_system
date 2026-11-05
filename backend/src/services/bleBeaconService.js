@@ -11,6 +11,26 @@ const beaconCache = require('./beaconCache');
  *   4. Sub-0.4ms In-Memory O(1) BeaconCache resolution across multiple floors
  */
 class BleBeaconService {
+  constructor() {
+    // Server-Anchored Boot Offset map: beaconPublicId -> { bootEpochOffset, lastVerifiedEsp32Slot, lastVerifiedServerSlot, lastUpdatedAt }
+    this.beaconAnchorStates = new Map();
+    // Sliding TTL anti-replay cache (10 min): key -> { timestamp, studentId, slot }
+    this.tokenReplayCache = new Map();
+  }
+
+  /**
+   * Cleans entries older than 10 minutes from the anti-replay cache
+   * @private
+   */
+  _cleanReplayCache() {
+    const now = Date.now();
+    const TTL_MS = 10 * 60 * 1000;
+    for (const [key, entry] of this.tokenReplayCache.entries()) {
+      if (now - entry.timestamp > TTL_MS) {
+        this.tokenReplayCache.delete(key);
+      }
+    }
+  }
   /**
    * Generates a 32-byte cryptographically secure hexadecimal secret key
    * @returns {string} 64-character hex string
@@ -137,8 +157,101 @@ class BleBeaconService {
   }
 
   /**
+   * Generates a 5-second dynamic peer relay token for room-level proximity forwarding (Mode C - $0 iOS Safari)
+   * @param {string} beaconPublicId
+   * @param {string} sharedSecret
+   * @param {number} slot
+   * @param {string} verifierStudentId
+   * @returns {string} Format: "PEER_RELAY:<beaconPublicId>:<slot>:<timestamp>:<verifierStudentId>:<hmac16>"
+   */
+  generatePeerRelayToken(beaconPublicId, sharedSecret, slot, verifierStudentId) {
+    const now = Date.now();
+    const payload = `PEER_RELAY|${beaconPublicId}|${slot}|${now}|${verifierStudentId}`;
+    const hmac16 = crypto.createHmac('sha256', Buffer.from(sharedSecret, 'hex'))
+      .update(payload)
+      .digest('hex')
+      .substring(0, 16)
+      .toUpperCase();
+    return `PEER_RELAY:${beaconPublicId}:${slot}:${now}:${verifierStudentId}:${hmac16}`;
+  }
+
+  /**
+   * Verifies an incoming 5-second dynamic peer relay token
+   * @param {Object} params
+   * @returns {Promise<Object>}
+   */
+  async verifyPeerRelayProof(params) {
+    const { peerRelayToken, studentId } = params;
+    if (!peerRelayToken || typeof peerRelayToken !== 'string') {
+      return { isValid: false, reason: 'MISSING_PEER_RELAY_TOKEN' };
+    }
+
+    const parts = peerRelayToken.split(':');
+    if (parts.length !== 6 || parts[0] !== 'PEER_RELAY') {
+      return { isValid: false, reason: 'INVALID_PEER_RELAY_FORMAT' };
+    }
+
+    const [_, beaconPublicId, slotStr, tsStr, verifierStudentId, receivedHmac] = parts;
+    const now = Date.now();
+    const tokenTime = parseInt(tsStr, 10);
+
+    // 10-second TTL window (5-second display + 5-second network propagation grace)
+    if (isNaN(tokenTime) || Math.abs(now - tokenTime) > 10000) {
+      return {
+        isValid: false,
+        reason: 'PEER_RELAY_EXPIRED',
+        message: 'Peer beacon relay QR code has expired (valid for 5-10 seconds). Please request a fresh scan.'
+      };
+    }
+
+    if (studentId && String(studentId) === String(verifierStudentId)) {
+      return {
+        isValid: false,
+        reason: 'SELF_RELAY_PROHIBITED',
+        message: 'You cannot scan your own peer relay token.'
+      };
+    }
+
+    const beacon = await this.resolveBeacon(beaconPublicId);
+    if (!beacon || beacon.is_active !== 1) {
+      return { isValid: false, reason: 'UNREGISTERED_OR_INACTIVE_BEACON' };
+    }
+
+    const payload = `PEER_RELAY|${beaconPublicId}|${slotStr}|${tsStr}|${verifierStudentId}`;
+    const expectedHmac = crypto.createHmac('sha256', Buffer.from(beacon.shared_secret_ref, 'hex'))
+      .update(payload)
+      .digest('hex')
+      .substring(0, 16)
+      .toUpperCase();
+
+    if (receivedHmac.toUpperCase() !== expectedHmac) {
+      return { isValid: false, reason: 'PEER_RELAY_SIGNATURE_INVALID' };
+    }
+
+    this._cleanReplayCache();
+    const relayKey = `RELAY:${peerRelayToken}`;
+    if (this.tokenReplayCache.has(relayKey)) {
+      return {
+        isValid: false,
+        reason: 'PEER_RELAY_ALREADY_USED',
+        message: 'This peer relay token has already been consumed.'
+      };
+    }
+    this.tokenReplayCache.set(relayKey, { timestamp: now, studentId });
+
+    return {
+      isValid: true,
+      beaconId: beacon.id,
+      beaconPublicId: beacon.beacon_public_id,
+      blockName: beacon.block_name,
+      isPeerRelay: true
+    };
+  }
+
+  /**
    * Verifies incoming BLE rolling proof against site_ble_beacons.
    * Tolerates ±2 slots (±60s, 5 slots total) to absorb bare ESP32 internal RC oscillator drift.
+   * Enforces server-anchored boot offset for bare ESP32 Epoch-0 boards to eliminate token replay attacks.
    * @param {Object} params
    * @returns {Promise<Object>}
    */
@@ -147,7 +260,8 @@ class BleBeaconService {
       beaconPublicId,
       rollingCode,
       timestampSlot = null,
-      rssi = null
+      rssi = null,
+      studentId = null
     } = params;
 
     if (!beaconPublicId || !rollingCode) {
@@ -176,19 +290,73 @@ class BleBeaconService {
       };
     }
 
-    const currentSlot = Math.floor(Date.now() / 30000);
-    // 5-Slot Window: [-2, -1, 0, +1, +2] gives ±60s clock drift absorption for bare ESP32
-    const candidateSlots = [currentSlot - 2, currentSlot - 1, currentSlot, currentSlot + 1, currentSlot + 2];
+    this._cleanReplayCache();
 
-    // Support both online NTP-synchronized anchors and standalone offline boards (monotonic hardware slots)
-    if (timestampSlot !== null && typeof timestampSlot !== 'undefined') {
-      const slotNum = Number(timestampSlot);
-      if (!isNaN(slotNum)) {
-        for (let s = slotNum - 1; s <= slotNum + 1; s++) {
-          if (!candidateSlots.includes(s)) {
-            candidateSlots.push(s);
+    // Anti-Replay Nonce Check (per student)
+    if (studentId) {
+      const studentCodeKey = `CODE:${beacon.beacon_public_id}:${studentId}:${cleanCode}`;
+      if (this.tokenReplayCache.has(studentCodeKey)) {
+        return {
+          isValid: false,
+          reason: 'TOKEN_ALREADY_USED',
+          message: 'This BLE verification token has already been consumed. Please wait for the next 30-second token broadcast.',
+          beaconPublicId: beacon.beacon_public_id
+        };
+      }
+    }
+
+    const currentServerSlot = Math.floor(Date.now() / 30000);
+    let candidateSlots = [];
+
+    // Determine candidate slots: NTP-synchronized vs Server-Anchored Epoch-0
+    const hasClientSlot = timestampSlot !== null && typeof timestampSlot !== 'undefined' && !isNaN(Number(timestampSlot));
+    const clientSlotNum = hasClientSlot ? Number(timestampSlot) : null;
+    const isNtpSynced = !hasClientSlot || Math.abs(clientSlotNum - currentServerSlot) <= 5;
+
+    if (isNtpSynced) {
+      // 5-Slot Window: [-2, -1, 0, +1, +2] gives ±60s clock drift absorption for bare ESP32
+      candidateSlots = [currentServerSlot - 2, currentServerSlot - 1, currentServerSlot, currentServerSlot + 1, currentServerSlot + 2];
+    } else {
+      // Offline bare ESP32 booted at Unix Epoch 0 (1970)
+      let anchor = this.beaconAnchorStates.get(beacon.beacon_public_id);
+      // Reboot criteria: low boot slot (<=5) indicating fresh boot, or first check-in after idle timeout (>10 min)
+      const isLowBootSlot = clientSlotNum <= 5;
+      const isIdleTimeout = anchor ? (Date.now() - anchor.lastUpdatedAt > 10 * 60 * 1000) : true;
+      const isRebootDetected = anchor && (clientSlotNum < anchor.lastVerifiedEsp32Slot) && (isLowBootSlot || isIdleTimeout);
+
+      if (!anchor || isRebootDetected) {
+        // Calibration Phase: Initial check-in after boot/reboot
+        // Test candidate window around reported slot
+        const testSlots = [clientSlotNum - 2, clientSlotNum - 1, clientSlotNum, clientSlotNum + 1, clientSlotNum + 2];
+        let matchedInitSlot = null;
+
+        for (const s of testSlots) {
+          const expected = this.computeRollingToken(beacon.shared_secret_ref, beacon.beacon_public_id, s);
+          if (cleanCode === expected || cleanCode === expected.substring(0, 6)) {
+            matchedInitSlot = s;
+            break;
           }
         }
+
+        if (matchedInitSlot !== null) {
+          // Calibrate anchor state
+          anchor = {
+            bootEpochOffset: currentServerSlot - matchedInitSlot,
+            lastVerifiedEsp32Slot: matchedInitSlot,
+            lastVerifiedServerSlot: currentServerSlot,
+            lastUpdatedAt: Date.now()
+          };
+          this.beaconAnchorStates.set(beacon.beacon_public_id, anchor);
+          candidateSlots = [matchedInitSlot];
+        } else {
+          // Uncalibrated and invalid code
+          candidateSlots = testSlots;
+        }
+      } else {
+        // Anchored Phase: Enforce expectedEsp32Slot = currentServerSlot - bootEpochOffset
+        const expectedEsp32Slot = currentServerSlot - anchor.bootEpochOffset;
+        // Strictly only accept ±2 slots around server-anchored expected slot
+        candidateSlots = [expectedEsp32Slot - 2, expectedEsp32Slot - 1, expectedEsp32Slot, expectedEsp32Slot + 1, expectedEsp32Slot + 2];
       }
     }
 
@@ -205,6 +373,31 @@ class BleBeaconService {
     }
 
     if (matchFound) {
+      // Replay prevention: Check if student already checked in on this exact slot
+      if (studentId) {
+        const studentSlotKey = `SLOT:${beacon.beacon_public_id}:${studentId}:${matchedSlot}`;
+        if (this.tokenReplayCache.has(studentSlotKey)) {
+          return {
+            isValid: false,
+            reason: 'SLOT_ALREADY_USED',
+            message: 'Attendance already recorded for this beacon slot. Please wait for the next slot.',
+            beaconPublicId: beacon.beacon_public_id
+          };
+        }
+        // Record token and slot consumption in replay cache
+        const now = Date.now();
+        this.tokenReplayCache.set(`CODE:${beacon.beacon_public_id}:${studentId}:${cleanCode}`, { timestamp: now, studentId });
+        this.tokenReplayCache.set(studentSlotKey, { timestamp: now, studentId, slot: matchedSlot });
+      }
+
+      // Update anchor monotonically if offline beacon
+      let anchor = this.beaconAnchorStates.get(beacon.beacon_public_id);
+      if (anchor) {
+        anchor.lastVerifiedEsp32Slot = Math.max(anchor.lastVerifiedEsp32Slot, matchedSlot);
+        anchor.lastVerifiedServerSlot = currentServerSlot;
+        anchor.lastUpdatedAt = Date.now();
+      }
+
       // Touch last_seen_at for telemetry monitoring (non-blocking)
       try {
         runQuery(
@@ -218,7 +411,7 @@ class BleBeaconService {
         beaconId: beacon.id,
         beaconPublicId: beacon.beacon_public_id,
         blockName: beacon.block_name,
-        timeSkewSlots: matchedSlot - currentSlot
+        timeSkewSlots: matchedSlot - currentServerSlot
       };
     }
 
