@@ -268,6 +268,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       }
 
       let bleProof = null;
+      let isBleUnsupported = false;
 
       // Layer 2 Check: ESP32 Hardware Radio Anchor Range Verification (Inside Geofence)
       if (bleMode === 'STRICT_REQUIRED') {
@@ -281,21 +282,34 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         });
 
         if (!bleRes.success) {
-          // Layer 2 Rejection: Inside geofence, but ESP32 beacon signal is missing or student is out of range
-          setCheckinError(
-            bleRes.message ||
-            `Layer 2 Check Failed (ESP32 Beacon Range Required): You are inside the campus perimeter (${clientDistance}m from center), but you are not within physical range of an authorized hostel ESP32 beacon (${activeBeaconList}) or the board is powered OFF. Please walk near your floor beacon (~15m corridor zone) and ensure it is plugged into power to proceed to face verification.`
-          );
-          setCheckinStep('failed');
-          return;
-        }
+          // Adaptive Presence Gate: Detect browsers/WebViews that physically lack Web Bluetooth (Safari, Phoenix, In-App WebViews, Brave, Firefox)
+          const isUnsupportedBrowser = bleRes.reason === 'BLUETOOTH_API_UNSUPPORTED' ||
+                                       (typeof navigator !== 'undefined' && !navigator.bluetooth);
 
-        bleProof = {
-          beaconPublicId: bleRes.beaconPublicId,
-          rollingCode: bleRes.rollingCode,
-          slot: bleRes.slot
-        };
-        setVerifiedBeaconInfo(bleRes);
+          if (isUnsupportedBrowser) {
+            isBleUnsupported = true;
+            bleProof = {
+              fallbackMode: 'ADAPTIVE_PHOTOMETRIC_STEP_UP',
+              reason: 'BLUETOOTH_API_UNSUPPORTED'
+            };
+            setBleScanningStatus('Adaptive Presence Gate: Browser lacks Bluetooth API — activating Step-Up Liveness...');
+          } else {
+            // Layer 2 Rejection: Device supports Bluetooth, but beacon was not selected, out of range, or board powered OFF
+            setCheckinError(
+              bleRes.message ||
+              `Layer 2 Check Failed (ESP32 Beacon Range Required): You are inside the campus perimeter (${clientDistance}m from center), but you are not within physical range of an authorized hostel ESP32 beacon (${activeBeaconList}) or the board is powered OFF. Please walk near your floor beacon (~15m corridor zone) and ensure it is plugged into power to proceed to face verification.`
+            );
+            setCheckinStep('failed');
+            return;
+          }
+        } else {
+          bleProof = {
+            beaconPublicId: bleRes.beaconPublicId,
+            rollingCode: bleRes.rollingCode,
+            slot: bleRes.slot
+          };
+          setVerifiedBeaconInfo(bleRes);
+        }
       } else if (bleMode === 'SOFT_ANCHOR') {
         // Soft Anchor: Optional scan for fast pass
         if (typeof navigator !== 'undefined' && navigator.bluetooth) {
@@ -333,6 +347,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           ...(pos.device_info || {}),
           isIOS,
           isSafari,
+          bleUnsupported: isBleUnsupported,
           userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : ''
         }
       });

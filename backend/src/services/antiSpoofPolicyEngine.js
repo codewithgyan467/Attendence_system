@@ -181,13 +181,26 @@ class AntiSpoofPolicyEngine {
       }
     } else {
       // No BLE proof provided
+      const isBleUnsupported = Boolean(
+        deviceInfo?.bleUnsupported ||
+        (bleProof && bleProof.fallbackMode === 'ADAPTIVE_PHOTOMETRIC_STEP_UP') ||
+        (isIOSWeb && !deviceInfo?.isNative)
+      );
+
       if (bleMode === 'STRICT_REQUIRED') {
-        // Strict Hardware Lock: ESP32 radio signal is mandatory for ALL platforms.
-        // No bypasses. If the ESP32 is powered OFF or out of range, check-in is strictly blocked.
-        bleMatchStatus = 'STRICT_BEACON_MISSING';
-        riskScore += 85;
-        unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
-        reasonCodes.push('L3_BLE_STRICT_REJECTED');
+        if (isBleUnsupported) {
+          // Adaptive Hardware Presence Gate: Browser/WebView physically lacks Web Bluetooth (Safari, In-App WebView, Phoenix, Brave)
+          // Require Photometric Liveness Step-Up (Screen Flash / Facial Challenge) + 0 strikes, ensuring 100% student accessibility
+          bleMatchStatus = 'ADAPTIVE_HARDWARE_STEP_UP';
+          riskScore += 20;
+          requiresStepUp = true;
+        } else {
+          // Strict Hardware Lock: Standard browser with Bluetooth support that is turned OFF or out of range
+          bleMatchStatus = 'STRICT_BEACON_MISSING';
+          riskScore += 85;
+          unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
+          reasonCodes.push('L3_BLE_STRICT_REJECTED');
+        }
       } else if (bleMode === 'SOFT_ANCHOR') {
         // Soft Anchor allows smart fallback: iOS Safari or devices without BLE do Photometric Step-Up
         bleMatchStatus = isIOSWeb ? 'IOS_SAFARI_ADAPTIVE_ANCHOR' : 'SOFT_ANCHOR_MISSING';
