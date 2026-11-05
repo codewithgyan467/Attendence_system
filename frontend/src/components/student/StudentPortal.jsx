@@ -1486,6 +1486,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     {checkinStep === 'failed' && (() => {
                       const errLower = (checkinError || '').toLowerCase();
                       const isLocationOff = errLower.includes('location_switch_off') || errLower.includes('switch is turned off');
+                      const isRateLimit = errLower.includes('too many') || errLower.includes('slow down') || errLower.includes('rate limit');
                       const isEnrollError = errLower.includes('facial embeddings') || errLower.includes('face profile') || errLower.includes('onboarding');
                       const isLockError = errLower.includes('locked');
                       const isBleError = errLower.includes('layer 2') || errLower.includes('bluetooth') || errLower.includes('beacon') || errLower.includes('esp32') || errLower.includes('hardware presence') || errLower.includes('strict');
@@ -1609,12 +1610,30 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                                 <RefreshCw size={14} /> Try Face Verification Again
                               </button>
                             </div>
+                          ) : isRateLimit ? (
+                            /* CASE E: Rate Limiting & Cooldown */
+                            <div className="d-flex flex-column align-items-center gap-2">
+                              <div className="card bg-warning-subtle border-warning border-opacity-25 p-3.5 rounded-3 mb-2 text-start shadow-sm" style={{ maxWidth: '440px' }}>
+                                <div className="fw-bold text-dark small mb-1.5 d-flex align-items-center gap-1.5">
+                                  <Clock size={16} className="text-warning" /> Rate Limit Cooldown Active
+                                </div>
+                                <div className="small text-dark mb-1">
+                                  Too many rapid check-in requests. Please wait 10 seconds and tap Retry below.
+                                </div>
+                              </div>
+                              <button
+                                className="btn btn-primary btn-sm px-4 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
+                                onClick={handleVerifyLocation}
+                              >
+                                <RefreshCw size={14} /> Retry Check-In
+                              </button>
+                            </div>
                           ) : (
-                            /* CASE E: Layer 1 - Outside Geofence Perimeter */
+                            /* CASE F: Layer 1 - Outside Geofence Perimeter / General Error */
                             <div className="d-flex flex-column align-items-center gap-2">
                               <div className="card bg-danger-subtle border-danger border-opacity-25 p-3.5 rounded-3 mb-2 text-start shadow-sm" style={{ maxWidth: '440px' }}>
                                 <div className="fw-bold text-danger small mb-1.5 d-flex align-items-center gap-1.5">
-                                  <MapPin size={16} /> Layer 1: Geofence Perimeter Alert
+                                  <MapPin size={16} /> Location & Boundary Notice
                                 </div>
                                 <div className="small text-danger mb-2">
                                   {checkinError || 'You are outside the permitted hostel boundary. Please physically move inside the campus perimeter.'}

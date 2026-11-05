@@ -180,11 +180,15 @@ class BleBeaconService {
     // 5-Slot Window: [-2, -1, 0, +1, +2] gives ±60s clock drift absorption for bare ESP32
     const candidateSlots = [currentSlot - 2, currentSlot - 1, currentSlot, currentSlot + 1, currentSlot + 2];
 
-    // If client supplied its observed slot, prioritize it if within plausible range
-    if (timestampSlot && Math.abs(timestampSlot - currentSlot) <= 4) {
+    // Support both online NTP-synchronized anchors and standalone offline boards (monotonic hardware slots)
+    if (timestampSlot !== null && typeof timestampSlot !== 'undefined') {
       const slotNum = Number(timestampSlot);
-      if (!candidateSlots.includes(slotNum)) {
-        candidateSlots.push(slotNum);
+      if (!isNaN(slotNum)) {
+        for (let s = slotNum - 1; s <= slotNum + 1; s++) {
+          if (!candidateSlots.includes(s)) {
+            candidateSlots.push(s);
+          }
+        }
       }
     }
 

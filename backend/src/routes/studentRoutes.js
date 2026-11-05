@@ -691,6 +691,9 @@ router.get('/dashboard', async (req, res) => {
       lifetime: summary.lifetime,
       geofence: activeGeofence,
       beacons: activeBeacons || [],
+      ble_time_sync_packet: (activeBeacons && activeBeacons[0]?.shared_secret_ref)
+        ? bleBeaconService.generateTimeSyncPacket(activeBeacons[0].beacon_public_id, activeBeacons[0].shared_secret_ref)
+        : null,
       recentHistory: history
     });
   } catch (err) {

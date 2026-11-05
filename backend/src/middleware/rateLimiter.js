@@ -13,10 +13,10 @@ const authLimiter = rateLimit({
   }
 });
 
-// Attendance verification limiter: max 40 attempts per minute
+// Attendance verification limiter: relaxed for active floor check-in testing
 const attendanceLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 40,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -25,10 +25,10 @@ const attendanceLimiter = rateLimit({
   }
 });
 
-// General API limiter: max 300 requests per 15 minutes
+// General API limiter: relaxed for high-cadence testing & telemetry polling
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: 3000,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
