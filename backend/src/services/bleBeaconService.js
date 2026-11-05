@@ -102,7 +102,8 @@ class BleBeaconService {
   }
 
   /**
-   * Resolves a beacon from BeaconCache (O(1)) with automatic DB fallback
+   * Resolves a beacon from BeaconCache (O(1)) with automatic DB fallback.
+   * Supports both full canonical IDs (HG-BEACON-BLKA-01) and 29-byte short broadcast IDs (HG-A01, HG-A02).
    * @param {string} publicIdOrId
    * @returns {Promise<Object|null>}
    */
@@ -110,14 +111,23 @@ class BleBeaconService {
     if (!publicIdOrId) return null;
     const cleanId = String(publicIdOrId).trim();
 
+    // Alias mapping for 29-byte legacy BLE advertisement frames (Fix 9)
+    const ALIAS_MAP = {
+      'HG-A01': 'HG-BEACON-BLKA-01',
+      'HG-A02': 'HG-BEACON-BLKA-02',
+      'HG-BEACON-BLKA-01': 'HG-BEACON-BLKA-01',
+      'HG-BEACON-BLKA-02': 'HG-BEACON-BLKA-02'
+    };
+    const lookupId = ALIAS_MAP[cleanId] || cleanId;
+
     // 1. Fast RAM check
-    let beacon = beaconCache.get(cleanId) || beaconCache.getById(cleanId);
+    let beacon = beaconCache.get(lookupId) || beaconCache.getById(lookupId) || beaconCache.get(cleanId);
     if (beacon) return beacon;
 
     // 2. Database Fallback (if newly added or not yet in RAM)
     beacon = await getQuery(
-      `SELECT * FROM site_ble_beacons WHERE (beacon_public_id = ? OR id = ? OR block_name = ?) LIMIT 1`,
-      [cleanId, cleanId, cleanId]
+      `SELECT * FROM site_ble_beacons WHERE (beacon_public_id = ? OR beacon_public_id = ? OR id = ? OR block_name = ?) LIMIT 1`,
+      [lookupId, cleanId, cleanId, cleanId]
     );
 
     if (beacon) {
@@ -136,11 +146,23 @@ class BleBeaconService {
     const {
       beaconPublicId,
       rollingCode,
-      timestampSlot = null
+      timestampSlot = null,
+      rssi = null
     } = params;
 
     if (!beaconPublicId || !rollingCode) {
       return { isValid: false, reason: 'MISSING_BEACON_OR_ROLLING_CODE' };
+    }
+
+    // Fix 10: Multi-Floor Concrete Radio Bleed-Through Filter (-78 dBm threshold)
+    if (rssi !== null && typeof rssi !== 'undefined' && Number(rssi) < -78) {
+      return {
+        isValid: false,
+        reason: 'BEACON_SIGNAL_TOO_WEAK',
+        message: `Beacon signal is too weak (${rssi} dBm). Please stand within 10-12m of your floor beacon.`,
+        rssi: Number(rssi),
+        beaconPublicId
+      };
     }
 
     const cleanCode = String(rollingCode).trim().toUpperCase();

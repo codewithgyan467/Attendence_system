@@ -275,7 +275,9 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         setBleScanningStatus('Layer 2 Check: Connecting to nearby hostel ESP32 Bluetooth beacon (~15m range)...');
 
         const bleRes = await scanHostelBleBeacon({
-          onProgress: (p) => setBleScanningStatus(p.message)
+          onProgress: (p) => setBleScanningStatus(p.message),
+          timeSyncPacket: dashboard?.ble_time_sync_packet || dashboard?.schedule?.ble_time_sync_packet,
+          localHttpsAnchorUrl: dashboard?.geofence?.local_https_anchor_url || null
         });
 
         if (!bleRes.success) {
@@ -1483,6 +1485,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
                     {checkinStep === 'failed' && (() => {
                       const errLower = (checkinError || '').toLowerCase();
+                      const isLocationOff = errLower.includes('location_switch_off') || errLower.includes('switch is turned off');
                       const isEnrollError = errLower.includes('facial embeddings') || errLower.includes('face profile') || errLower.includes('onboarding');
                       const isLockError = errLower.includes('locked');
                       const isBleError = errLower.includes('layer 2') || errLower.includes('bluetooth') || errLower.includes('beacon') || errLower.includes('esp32') || errLower.includes('hardware presence') || errLower.includes('strict');
@@ -1493,8 +1496,28 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           <AlertTriangle size={52} className="text-danger mb-3" />
                           <h5 className="fw-bold text-danger mb-3">Check-In Verification Failed</h5>
 
-                          {/* CASE A: Identity Enrollment Required */}
-                          {isEnrollError ? (
+                          {/* CASE 0: Android Master Location Toggle OFF */}
+                          {isLocationOff ? (
+                            <div className="d-flex flex-column align-items-center gap-2">
+                              <div className="card bg-warning-subtle border-warning border-opacity-25 p-3.5 rounded-3 mb-2 text-start shadow-sm" style={{ maxWidth: '460px' }}>
+                                <div className="fw-bold text-dark small mb-1.5 d-flex align-items-center gap-1.5">
+                                  <MapPin size={18} className="text-warning" /> Android Master Location Switch is OFF
+                                </div>
+                                <div className="small text-dark mb-2 fw-medium">
+                                  Android OS requires your phone's system <strong>Location (GPS)</strong> toggle to be turned ON in quick settings to scan for nearby Bluetooth beacons and verify attendance.
+                                </div>
+                                <div className="small text-muted border-top border-warning border-opacity-15 pt-2">
+                                  💡 Swipe down from the top of your screen, tap the <strong>Location</strong> icon to turn it ON, then tap Retry below.
+                                </div>
+                              </div>
+                              <button
+                                className="btn btn-primary btn-sm px-4 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
+                                onClick={handleVerifyLocation}
+                              >
+                                <RefreshCw size={14} /> Retry Location & Presence Check
+                              </button>
+                            </div>
+                          ) : isEnrollError ? (
                             <div className="d-flex flex-column align-items-center gap-2">
                               <div className="card bg-warning-subtle border-warning border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
                                 <div className="fw-bold text-dark small mb-1">📸 Identity Verification Required</div>

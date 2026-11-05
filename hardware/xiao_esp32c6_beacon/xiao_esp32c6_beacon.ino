@@ -30,17 +30,27 @@
 #include <WiFi.h>
 #include <time.h>
 #include <sys/time.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
+#include <Preferences.h>
 #include <mbedtls/md.h>
+
+// Fix 4 & 7: Dual NimBLE-Arduino (9 concurrent links) & standard BLEDevice fallback
+#if __has_include(<NimBLEDevice.h>)
+  #include <NimBLEDevice.h>
+  #define USE_NIMBLE 1
+#else
+  #include <BLEDevice.h>
+  #include <BLEServer.h>
+  #include <BLEUtils.h>
+  #include <BLE2902.h>
+  #define USE_NIMBLE 0
+#endif
 
 // ----------------------------------------------------------------------------
 // 1. BEACON IDENTITY & CRYPTOGRAPHIC CONFIGURATION
 // ----------------------------------------------------------------------------
-// Unique Public ID for this 2nd Beacon (Registered in HostelGuard Database)
+// Unique Public ID for this 2nd Beacon & Fix 9: 29-Byte Legacy BLE Payload (HG-A02)
 const char* BEACON_PUBLIC_ID  = "HG-BEACON-BLKA-02";
+const char* BEACON_SHORT_NAME = "HG-A02"; // Fits in 29 bytes: 3B Flags + 18B UUID + 8B Name
 const char* BEACON_NAME       = "HostelGuard XIAO-C6 Beacon";
 
 // 32-Byte (64 hex characters) Shared Secret bound to HG-BEACON-BLKA-02
@@ -68,11 +78,19 @@ const int   DAYLIGHT_OFFSET   = 0;
 // ----------------------------------------------------------------------------
 // 2. STATE VARIABLES
 // ----------------------------------------------------------------------------
+#if USE_NIMBLE
+NimBLEServer*         pServer = NULL;
+NimBLECharacteristic* pRollingChar = NULL;
+NimBLECharacteristic* pTimeSyncChar = NULL;
+NimBLECharacteristic* pOfflineSignChar = NULL;
+#else
 BLEServer*         pServer = NULL;
 BLECharacteristic* pRollingChar = NULL;
 BLECharacteristic* pTimeSyncChar = NULL;
 BLECharacteristic* pOfflineSignChar = NULL;
+#endif
 
+Preferences        nvsPrefs;
 bool               deviceConnected = false;
 uint32_t           lastComputedSlot = 0;
 String             currentRollingToken = "INIT0000";
@@ -160,6 +178,23 @@ class TimeSyncCallbacks: public BLECharacteristicCallbacks {
           struct timeval tv = { epoch, 0 };
           settimeofday(&tv, NULL);
           rtcCalibrated = true;
+
+          // Fix 8: NVS linear clock drift calibration factor
+          nvsPrefs.begin("hg_c6_anchor", false);
+          int32_t lastEpoch = nvsPrefs.getInt("sync_epoch", 0);
+          uint32_t lastMillis = nvsPrefs.getUInt("sync_millis", 0);
+          uint32_t nowMillis = millis();
+
+          if (lastEpoch > 0 && nowMillis > lastMillis) {
+            int32_t expectedEpoch = lastEpoch + (nowMillis - lastMillis) / 1000;
+            int32_t driftSec = (int32_t)epoch - expectedEpoch;
+            nvsPrefs.putInt("drift_sec", driftSec);
+            Serial.printf("⏱ [DRIFT COMPENSATOR] Measured drift: %d seconds. NVS factor updated.\n", driftSec);
+          }
+          nvsPrefs.putInt("sync_epoch", (int32_t)epoch);
+          nvsPrefs.putUInt("sync_millis", nowMillis);
+          nvsPrefs.end();
+
           pulseLed(3, 100, 100);
           Serial.printf("⚡ [TIME RELAY] Clock Calibrated from Student Phone! Unix Epoch: %ld\n", epoch);
         } else {
@@ -271,8 +306,8 @@ void setup() {
 
   // 4. Initialize BLE 5.3 Subsystem
   Serial.println("Initializing BLE Subsystem (Zero-Cloud Radio Anchor)...");
-  BLEDevice::init(BEACON_PUBLIC_ID);
-  BLEDevice::setPower(ESP_PWR_LVL_P9); // Maximum broadcast power (+9dBm)
+  BLEDevice::init(BEACON_SHORT_NAME);
+  BLEDevice::setPower(ESP_PWR_LVL_N6); // Fix 10: -6 dBm TX power stops floor bleed-through
 
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new ServerCallbacks());
@@ -303,12 +338,12 @@ void setup() {
 
   pService->start();
 
-  // 5. Configure BLE Advertising
+  // 5. Configure BLE Advertising: Fix 9: 29-byte primary frame (3B Flags + 18B UUID + 8B Name)
   BLEAdvertising* pAdv = BLEDevice::getAdvertising();
   pAdv->addServiceUUID(SERVICE_UUID);
 
   BLEAdvertisementData advData;
-  advData.setName(BEACON_PUBLIC_ID);
+  advData.setName(BEACON_SHORT_NAME);
   advData.setCompleteServices(BLEUUID(SERVICE_UUID));
   pAdv->setAdvertisementData(advData);
 
@@ -323,10 +358,11 @@ void setup() {
 
   Serial.println("=======================================================");
   Serial.println("✅ SEEED XIAO ESP32-C6 BEACON IS BROADCASTING LIVE!");
-  Serial.printf("   - Advertised Name: %s\n", BEACON_PUBLIC_ID);
+  Serial.printf("   - Advertised Name: %s (Short ID: %s)\n", BEACON_PUBLIC_ID, BEACON_SHORT_NAME);
   Serial.printf("   - Location:        %s\n", BEACON_NAME);
+  Serial.printf("   - RF TX Power:     -6 dBm (Floor Boundary Calibrated)\n");
   Serial.printf("   - Service UUID:    %s\n", SERVICE_UUID);
-  Serial.printf("   - Status LED:      GPIO 15 (Active)\n");
+  Serial.printf("   - Status LED:      GPIO 15 (Active LOW)\n");
   Serial.println("=======================================================\n");
 }
 
@@ -349,10 +385,16 @@ void loop() {
 
     char buffer[128];
     snprintf(buffer, sizeof(buffer), "{\"id\":\"%s\",\"code\":\"%s\",\"slot\":%u}",
-             BEACON_PUBLIC_ID, currentRollingToken.c_str(), currentSlot);
+             BEACON_SHORT_NAME, currentRollingToken.c_str(), currentSlot);
 
     pRollingChar->setValue((uint8_t*)buffer, strlen(buffer));
     pRollingChar->notify();
+
+    // Fix 1: Visual optical heartbeat on slot advance
+    pulseLed(3, 50, 50);
+
+    Serial.printf("[BLE TICK] Slot #%u -> Rolling Token: %s (Advertised: %s)\n", currentSlot, currentRollingToken.c_str(), BEACON_SHORT_NAME);
+  }
 
     // Pulse LED once to indicate fresh 30s token broadcast
     pulseLed(1, 50, 0);

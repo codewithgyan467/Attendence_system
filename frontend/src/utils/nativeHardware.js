@@ -86,7 +86,13 @@ export async function getNativeOrBrowserLocation(options = {}) {
               source: 'BROWSER_HTML5_GPS'
             });
           },
-          (err) => reject(new Error(`GPS sensor error: ${err.message}`)),
+          (err) => {
+            // Fix 5: Detect Android OS master Location toggle turned off
+            if (err && err.code === 2) {
+              return reject(new Error('LOCATION_SWITCH_OFF: Android Location (GPS) switch is turned OFF. Please turn ON Location in your phone\'s quick-settings shade to enable Bluetooth & GPS verification.'));
+            }
+            reject(new Error(`GPS sensor error: ${err.message}`));
+          },
           { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
         );
       }
@@ -118,7 +124,15 @@ export async function getNativeOrBrowserLocation(options = {}) {
             finalize();
           }
         },
-        () => {
+        (err) => {
+          // Fix 5: Detect Android OS master Location toggle turned off
+          if (err && err.code === 2) {
+            if (timer) clearTimeout(timer);
+            if (watchId !== null) {
+              try { navigator.geolocation.clearWatch(watchId); } catch (_) {}
+            }
+            return reject(new Error('LOCATION_SWITCH_OFF: Android Location (GPS) switch is turned OFF. Please turn ON Location in your phone\'s quick-settings shade to enable Bluetooth & GPS verification.'));
+          }
           // In case of error in watchPosition, finalize immediately
           finalize();
         },
@@ -311,60 +325,121 @@ export const LocationAndEnvironmentEvidenceService = {
  * - Beacon 2: HG-BEACON-BLKA-02 (1st Floor, Seeed Studio XIAO ESP32-C6)
  */
 export async function scanHostelBleBeacon(options = {}) {
-  const { timeoutMs = 12000, onProgress = null } = options;
+  const { timeoutMs = 12000, onProgress = null, timeSyncPacket = null, localHttpsAnchorUrl = null } = options;
 
   if (typeof navigator === 'undefined' || !navigator.bluetooth) {
     const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+    // Fix 1 & 2: Local Wi-Fi HTTPS Probe for iOS Safari PWA (DuckDNS / Local Anchor)
+    if (localHttpsAnchorUrl) {
+      try {
+        if (onProgress) onProgress({ status: 'PROBING_WIFI', message: 'Checking floor ESP32 local anchor over secure Wi-Fi...' });
+        const controller = new AbortController();
+        const probeTimeout = setTimeout(() => controller.abort(), 2500);
+        const probeRes = await fetch(localHttpsAnchorUrl, {
+          method: 'GET',
+          signal: controller.signal,
+          mode: 'cors'
+        });
+        clearTimeout(probeTimeout);
+        if (probeRes.ok) {
+          const probeData = await probeRes.json();
+          if (probeData && probeData.code && (probeData.id || probeData.beaconPublicId)) {
+            return {
+              success: true,
+              beaconPublicId: probeData.id || probeData.beaconPublicId,
+              rollingCode: probeData.code || probeData.rollingCode,
+              slot: probeData.slot || Math.floor(Date.now() / 30000),
+              method: 'LOCAL_HTTPS_PROBE',
+              deviceName: probeData.name || probeData.id,
+              timestamp: Date.now()
+            };
+          }
+        }
+      } catch (_) {
+        // Fallback to unsupported notice
+      }
+    }
+
     return {
       success: false,
       reason: 'BLUETOOTH_API_UNSUPPORTED',
+      isIOS,
       message: isIOS
-        ? 'Physical Presence Lock Active: Apple Safari blocks Web Bluetooth. To detect the hostel ESP32 beacon on iPhone, open HostelGuard in "Bluefy - Web BLE Browser" (free on App Store) or use an Android phone.'
+        ? 'Physical Presence Lock Active: Apple Safari blocks Web Bluetooth. To detect the hostel ESP32 beacon on iPhone, open HostelGuard in "Bluefy - Web BLE Browser" (free on App Store), use the floor secure Wi-Fi anchor, or use an Android phone.'
         : 'Web Bluetooth is not supported on this browser. On Android/PC, please use Google Chrome, Microsoft Edge, or Samsung Internet.'
     };
   }
 
   const HOSTEL_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
   const ROLLING_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+  const TIME_SYNC_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a9';
 
   if (onProgress) onProgress({ status: 'REQUESTING_DEVICE', message: 'Scanning for nearby hostel ESP32 beacons...' });
 
   let device = null;
   const isIOSDevice = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
-  try {
-    device = await navigator.bluetooth.requestDevice({
-      filters: [
-        { namePrefix: 'HG-BEACON' },
-        { namePrefix: 'HG-' },
-        { namePrefix: 'HostelGuard' },
-        { namePrefix: 'Hostel' },
-        { services: [HOSTEL_SERVICE_UUID] }
-      ],
-      optionalServices: [HOSTEL_SERVICE_UUID]
-    });
-  } catch (err) {
-    if (err.name === 'NotFoundError') {
+  // Fix 6: Check navigator.bluetooth.getDevices() first to reconnect silently without opening the chooser dialog
+  if (navigator.bluetooth && typeof navigator.bluetooth.getDevices === 'function') {
+    try {
+      const permittedDevices = await navigator.bluetooth.getDevices();
+      if (Array.isArray(permittedDevices) && permittedDevices.length > 0) {
+        const knownBeacon = permittedDevices.find(d =>
+          d.name && (
+            d.name.startsWith('HG-') ||
+            d.name.startsWith('HG-A') ||
+            d.name.startsWith('Hostel') ||
+            d.name.includes('BEACON')
+          )
+        );
+        if (knownBeacon) {
+          device = knownBeacon;
+          if (onProgress) onProgress({ status: 'RECONNECTING', message: `Silently connecting to saved beacon (${device.name})...` });
+        }
+      }
+    } catch (_) {
+      // Fallback to interactive requestDevice chooser
+    }
+  }
+
+  // If not previously paired, open interactive device chooser with broadened 29-byte short filters
+  if (!device) {
+    try {
+      device = await navigator.bluetooth.requestDevice({
+        filters: [
+          { namePrefix: 'HG-A' },
+          { namePrefix: 'HG-' },
+          { namePrefix: 'HG-BEACON' },
+          { namePrefix: 'HostelGuard' },
+          { namePrefix: 'Hostel' },
+          { services: [HOSTEL_SERVICE_UUID] }
+        ],
+        optionalServices: [HOSTEL_SERVICE_UUID]
+      });
+    } catch (err) {
+      if (err.name === 'NotFoundError') {
+        return {
+          success: false,
+          reason: 'BLUETOOTH_DEVICE_NOT_SELECTED',
+          message: 'No hostel beacon was selected, or Bluetooth pairing was cancelled. Please ensure your floor ESP32 board is plugged into power and Bluetooth is enabled on your phone.'
+        };
+      }
+      if (err.name === 'SecurityError') {
+        return {
+          success: false,
+          reason: 'BLUETOOTH_SECURITY_RESTRICTION',
+          message: 'Bluetooth access blocked. Please check browser site permissions and ensure HTTPS or localhost is active.'
+        };
+      }
       return {
         success: false,
-        reason: 'BLUETOOTH_DEVICE_NOT_SELECTED',
-        message: 'No hostel beacon was selected, or Bluetooth pairing was cancelled. Please ensure your floor ESP32 board is plugged into power and Bluetooth is enabled on your phone.'
+        reason: 'BLUETOOTH_REQUEST_ERROR',
+        message: isIOSDevice
+          ? 'Physical Presence Lock Active: Apple Safari blocks Web Bluetooth. To detect the hostel ESP32 beacon on iPhone, open HostelGuard in "Bluefy - Web BLE Browser" (free on App Store) or use an Android phone running Chrome.'
+          : (err.message || 'Failed to initialize Bluetooth scan. Please ensure Bluetooth is ON in Android Settings.')
       };
     }
-    if (err.name === 'SecurityError') {
-      return {
-        success: false,
-        reason: 'BLUETOOTH_SECURITY_RESTRICTION',
-        message: 'Bluetooth access blocked. Please check browser site permissions and ensure HTTPS or localhost is active.'
-      };
-    }
-    return {
-      success: false,
-      reason: 'BLUETOOTH_REQUEST_ERROR',
-      message: isIOSDevice
-        ? 'Physical Presence Lock Active: Apple Safari blocks Web Bluetooth. To detect the hostel ESP32 beacon on iPhone, open HostelGuard in "Bluefy - Web BLE Browser" (free on App Store) or use an Android phone running Chrome.'
-        : (err.message || 'Failed to initialize Bluetooth scan. Please ensure Bluetooth is ON in Android Settings.')
-    };
   }
 
   if (!device) {
@@ -389,11 +464,32 @@ export async function scanHostelBleBeacon(options = {}) {
     if (onProgress) onProgress({ status: 'READING_TOKEN', message: 'Reading 30-second rolling token...' });
 
     const service = await server.getPrimaryService(HOSTEL_SERVICE_UUID);
+
+    // Fix 8: Phone Time-Mule write - write server-signed time sync packet to keep offline ESP32 clock calibrated
+    if (timeSyncPacket) {
+      try {
+        const timeChar = await service.getCharacteristic(TIME_SYNC_CHAR_UUID);
+        if (timeChar) {
+          const encoder = new TextEncoder();
+          await timeChar.writeValue(encoder.encode(String(timeSyncPacket)));
+        }
+      } catch (_) {
+        // Non-blocking time calibration relay
+      }
+    }
+
     const characteristic = await service.getCharacteristic(ROLLING_CHAR_UUID);
     const valueDataView = await characteristic.readValue();
 
     const decoder = new TextDecoder('utf-8');
     const rawPayload = decoder.decode(valueDataView);
+
+    // Fix 4 & 7: 150ms fast client release to prevent GATT slot starvation for other students
+    setTimeout(() => {
+      try {
+        if (server && server.connected) server.disconnect();
+      } catch (_) {}
+    }, 150);
 
     let parsed = null;
     try {

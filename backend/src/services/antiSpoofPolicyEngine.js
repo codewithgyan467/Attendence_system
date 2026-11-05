@@ -158,7 +158,8 @@ class AntiSpoofPolicyEngine {
       const beaconRes = await bleBeaconService.verifyBleBeaconProof({
         beaconPublicId: bleProof.beaconPublicId,
         rollingCode: bleProof.rollingCode || bleProof.hmac || bleProof.code,
-        timestampSlot: bleProof.timestampSlot || bleProof.slot
+        timestampSlot: bleProof.timestampSlot || bleProof.slot,
+        rssi: bleProof.rssi ?? null
       });
 
       if (beaconRes.isValid) {
@@ -170,7 +171,7 @@ class AntiSpoofPolicyEngine {
           // Strict Hardware Lock: Physical ESP32 radio signal mandatory for ALL devices
           riskScore += 85;
           unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
-          reasonCodes.push('L3_BLE_STRICT_REJECTED');
+          reasonCodes.push(beaconRes.reason === 'BEACON_SIGNAL_TOO_WEAK' ? 'L3_BLE_SIGNAL_WEAK' : 'L3_BLE_STRICT_REJECTED');
         } else if (bleMode === 'SOFT_ANCHOR') {
           riskScore += 45;
           requiresStepUp = true;

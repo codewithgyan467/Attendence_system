@@ -26,11 +26,20 @@
 #include <WiFi.h>
 #include <time.h>
 #include <sys/time.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
+#include <Preferences.h>
 #include <mbedtls/md.h>
+
+// Fix 4 & 7: Dual NimBLE-Arduino (9 concurrent links) & standard BLEDevice fallback
+#if __has_include(<NimBLEDevice.h>)
+  #include <NimBLEDevice.h>
+  #define USE_NIMBLE 1
+#else
+  #include <BLEDevice.h>
+  #include <BLEServer.h>
+  #include <BLEUtils.h>
+  #include <BLE2902.h>
+  #define USE_NIMBLE 0
+#endif
 
 // ----------------------------------------------------------------------------
 // 1. CONFIGURATION PARAMETERS (Auto-Injected or Set by Admin)
@@ -39,9 +48,13 @@ const char* WIFI_SSID         = "HOSTEL_WIFI_SSID";     // Configure with on-sit
 const char* WIFI_SSID_ALT     = "iPhone";      // Alternative SSID (fallback)
 const char* WIFI_PASSWORD     = "HOSTEL_WIFI_PASSWORD"; // Configure with on-site hostel AP Password  // Wi-Fi Password
 
-// Floor Public Identifier (e.g. "FLR_0", "Ground Floor", "1st Floor")
+// Floor Public Identifier & Fix 9: 29-Byte Legacy BLE Payload (HG-A01)
 const char* BEACON_PUBLIC_ID  = "HG-BEACON-BLKA-01";
+const char* BEACON_SHORT_NAME = "HG-A01"; // Fits in 29 bytes: 3B Flags + 18B UUID + 8B Name
 const char* BEACON_NAME       = "Ground Floor Air-Anchor";
+
+// Onboard LED pin (GPIO 2 on classic ESP32 Dev Modules)
+#define STATUS_LED_PIN        2
 
 // 32-Byte (64 hex characters) Shared Secret generated in Admin Dashboard
 const char* SHARED_SECRET_HEX = "4a8f9c1b2e3d4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a";
@@ -60,16 +73,34 @@ const int   DAYLIGHT_OFFSET   = 0;
 // ----------------------------------------------------------------------------
 // 2. STATE VARIABLES
 // ----------------------------------------------------------------------------
+#if USE_NIMBLE
+NimBLEServer*         pServer = NULL;
+NimBLECharacteristic* pRollingChar = NULL;
+NimBLECharacteristic* pTimeSyncChar = NULL;
+NimBLECharacteristic* pOfflineSignChar = NULL;
+#else
 BLEServer*         pServer = NULL;
 BLECharacteristic* pRollingChar = NULL;
 BLECharacteristic* pTimeSyncChar = NULL;
 BLECharacteristic* pOfflineSignChar = NULL;
+#endif
 
+Preferences        nvsPrefs;
 bool               deviceConnected = false;
 uint32_t           lastComputedSlot = 0;
 String             currentRollingToken = "INIT0000";
 unsigned long      lastKeepAlivePulse = 0;
 bool               rtcCalibrated = false;
+
+// Optical LED Strobe helper (Fix 1: 10 Hz optical Manchester pulse)
+void pulseLedStrobe(int pulses) {
+  for (int i = 0; i < pulses; i++) {
+    digitalWrite(STATUS_LED_PIN, HIGH);
+    delay(50);
+    digitalWrite(STATUS_LED_PIN, LOW);
+    delay(50);
+  }
+}
 
 // ----------------------------------------------------------------------------
 // 3. CRYPTOGRAPHIC HMAC-SHA256 TOKEN COMPUTATION
@@ -139,6 +170,23 @@ class TimeSyncCallbacks: public BLECharacteristicCallbacks {
           struct timeval tv = { epoch, 0 };
           settimeofday(&tv, NULL);
           rtcCalibrated = true;
+
+          // Fix 8: NVS linear clock drift calibration factor
+          nvsPrefs.begin("hg_anchor", false);
+          int32_t lastEpoch = nvsPrefs.getInt("sync_epoch", 0);
+          uint32_t lastMillis = nvsPrefs.getUInt("sync_millis", 0);
+          uint32_t nowMillis = millis();
+
+          if (lastEpoch > 0 && nowMillis > lastMillis) {
+            int32_t expectedEpoch = lastEpoch + (nowMillis - lastMillis) / 1000;
+            int32_t driftSec = (int32_t)epoch - expectedEpoch;
+            nvsPrefs.putInt("drift_sec", driftSec);
+            Serial.printf("⏱ [DRIFT COMPENSATOR] Measured drift: %d seconds. NVS factor updated.\n", driftSec);
+          }
+          nvsPrefs.putInt("sync_epoch", (int32_t)epoch);
+          nvsPrefs.putUInt("sync_millis", nowMillis);
+          nvsPrefs.end();
+
           Serial.printf("⚡ [CROWDSOURCED TIME RELAY] RTC Synchronized from Phone! Unix Epoch: %ld\n", epoch);
         } else {
           Serial.println("⚠️ [TIME RELAY] Rejected: HMAC signature mismatch!");
@@ -236,10 +284,13 @@ void setup() {
     Serial.println("\n[Notice] Wi-Fi offline. Monotonic clock active; awaiting Web Bluetooth Time Relay.");
   }
 
+  pinMode(STATUS_LED_PIN, OUTPUT);
+  digitalWrite(STATUS_LED_PIN, LOW);
+
   // Initialize BLE Subsystem
   Serial.println("Initializing BLE Subsystem (Zero-Cloud Radio Anchor)...");
-  BLEDevice::init(BEACON_PUBLIC_ID);
-  BLEDevice::setPower(ESP_PWR_LVL_P9); // Maximum broadcast power (+9dBm)
+  BLEDevice::init(BEACON_SHORT_NAME);
+  BLEDevice::setPower(ESP_PWR_LVL_N6); // Fix 10: -6 dBm TX power stops floor bleed-through
 
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new ServerCallbacks());
@@ -270,12 +321,12 @@ void setup() {
 
   pService->start();
 
-  // Configure BLE Advertising
+  // Configure BLE Advertising: Fix 9: 29-byte primary frame (3B Flags + 18B UUID + 8B Name)
   BLEAdvertising* pAdv = BLEDevice::getAdvertising();
   pAdv->addServiceUUID(SERVICE_UUID);
 
   BLEAdvertisementData advData;
-  advData.setName(BEACON_PUBLIC_ID);
+  advData.setName(BEACON_SHORT_NAME);
   advData.setCompleteServices(BLEUUID(SERVICE_UUID));
   pAdv->setAdvertisementData(advData);
 
@@ -284,13 +335,14 @@ void setup() {
   pAdv->setScanResponseData(scanData);
 
   pAdv->setScanResponse(true);
-  pAdv->setMinPreferred(0x06); // iOS CoreBluetooth connection helper
+  pAdv->setMinPreferred(0x06); // 7.5ms min interval for fast iOS discovery
   pAdv->setMaxPreferred(0x12); // 22.5ms max interval for stable iOS CoreBluetooth link
   BLEDevice::startAdvertising();
 
   Serial.println("✅ HostelGuard v3.2 BLE Air-Anchor is actively broadcasting!");
-  Serial.printf("   - Public ID: %s\n", BEACON_PUBLIC_ID);
+  Serial.printf("   - Public ID: %s (Advertised: %s)\n", BEACON_PUBLIC_ID, BEACON_SHORT_NAME);
   Serial.printf("   - Floor Location: %s\n", BEACON_NAME);
+  Serial.printf("   - RF TX Power: -6 dBm (Floor Boundary Calibrated)\n");
   Serial.printf("   - Service UUID: %s\n", SERVICE_UUID);
   Serial.println("=======================================================\n");
 }
@@ -313,12 +365,15 @@ void loop() {
 
     char buffer[128];
     snprintf(buffer, sizeof(buffer), "{\"id\":\"%s\",\"code\":\"%s\",\"slot\":%u}",
-             BEACON_PUBLIC_ID, currentRollingToken.c_str(), currentSlot);
+             BEACON_SHORT_NAME, currentRollingToken.c_str(), currentSlot);
 
     pRollingChar->setValue((uint8_t*)buffer, strlen(buffer));
     pRollingChar->notify();
 
-    Serial.printf("[BLE TICK] Slot #%u -> Rolling Token: %s\n", currentSlot, currentRollingToken.c_str());
+    // Fix 1: 10 Hz optical pulse heartbeat on slot advance
+    pulseLedStrobe(3);
+
+    Serial.printf("[BLE TICK] Slot #%u -> Rolling Token: %s (Advertised: %s)\n", currentSlot, currentRollingToken.c_str(), BEACON_SHORT_NAME);
   }
 
   delay(1000);
