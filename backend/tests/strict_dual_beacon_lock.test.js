@@ -179,4 +179,111 @@ describe('HostelGuard Strict Mode: Dual ESP32 Hardware Presence Lock Enforcement
     expect(student.failed_attempts).toBe(0);
     expect(student.is_flagged_forge).toBe(0);
   });
+
+  test('8. Admin dynamically registers Beacon 3 (Block A 2nd Floor) -> System immediately adapts in Strict Mode without restart', async () => {
+    const beacon3Id = 'test-beacon-floor-3-uuid';
+    const beacon3PublicId = 'HG-BEACON-BLKA-03';
+    const beacon3Secret = bleBeaconService.generateBeaconSecret();
+
+    // Insert new 3rd beacon dynamically (simulating Admin Portal "+ Register New ESP32 Beacon")
+    await runQuery(`
+      INSERT OR REPLACE INTO site_ble_beacons (id, geofence_id, beacon_public_id, shared_secret_ref, block_name, is_active)
+      VALUES (?, ?, ?, ?, 'Block A 2nd Floor (Dynamic ESP32)', 1)
+    `, [beacon3Id, geofence.id, beacon3PublicId, beacon3Secret]);
+
+    // Fast RAM cache update
+    beaconCache.set({
+      id: beacon3Id,
+      geofence_id: geofence.id,
+      beacon_public_id: beacon3PublicId,
+      shared_secret_ref: beacon3Secret,
+      block_name: 'Block A 2nd Floor (Dynamic ESP32)',
+      is_active: 1
+    });
+
+    // Compute rolling code for the newly added 3rd beacon
+    const slot = Math.floor(Date.now() / 30000);
+    const token3 = bleBeaconService.computeRollingToken(beacon3Secret, beacon3PublicId, slot);
+
+    // Verify rolling proof directly
+    const proofRes = await bleBeaconService.verifyBleBeaconProof({
+      beaconPublicId: beacon3PublicId,
+      rollingCode: token3,
+      slot
+    });
+    expect(proofRes.isValid).toBe(true);
+    expect(proofRes.beaconPublicId).toBe(beacon3PublicId);
+    expect(proofRes.blockName).toBe('Block A 2nd Floor (Dynamic ESP32)');
+
+    // Verify attendance location check in STRICT_REQUIRED mode with Beacon 3
+    const evaluation = await antiSpoofPolicyEngine.evaluateLocationAndEnvironment({
+      student: { id: testStudentId, roll_number: 'BEACON_TEST_01', failed_attempts: 0 },
+      geofence,
+      clientLat: 28.5455,
+      clientLon: 77.1930,
+      accuracy: 10,
+      bleProof: {
+        beaconPublicId: beacon3PublicId,
+        rollingCode: token3,
+        slot
+      }
+    });
+
+    expect(evaluation.decisionOutcome).not.toBe('DENY');
+    expect(evaluation.bleMatchStatus).toBe('VERIFIED_BEACON_PROXIMITY');
+    expect(evaluation.unfairMeansFlags).not.toContain('STRICT_BLE_ANCHOR_FAILED');
+
+    // Clean up test beacon 3
+    await runQuery(`DELETE FROM site_ble_beacons WHERE id = ?`, [beacon3Id]);
+    beaconCache.deactivate(beacon3Id);
+  });
+
+  test('9. Kill switch revocation on a beacon immediately blocks check-ins in Strict Mode', async () => {
+    const beaconRevokeId = 'test-beacon-revoke-uuid';
+    const beaconRevokePublicId = 'HG-BEACON-REVOKE-01';
+    const secret = bleBeaconService.generateBeaconSecret();
+
+    // Register active beacon
+    await runQuery(`
+      INSERT OR REPLACE INTO site_ble_beacons (id, geofence_id, beacon_public_id, shared_secret_ref, block_name, is_active)
+      VALUES (?, ?, ?, ?, 'Revocation Test Beacon', 1)
+    `, [beaconRevokeId, geofence.id, beaconRevokePublicId, secret]);
+
+    beaconCache.set({
+      id: beaconRevokeId,
+      geofence_id: geofence.id,
+      beacon_public_id: beaconRevokePublicId,
+      shared_secret_ref: secret,
+      block_name: 'Revocation Test Beacon',
+      is_active: 1
+    });
+
+    const slot = Math.floor(Date.now() / 30000);
+    const token = bleBeaconService.computeRollingToken(secret, beaconRevokePublicId, slot);
+
+    // Deactivate beacon via Admin Kill-Switch
+    await runQuery(`UPDATE site_ble_beacons SET is_active = 0 WHERE id = ?`, [beaconRevokeId]);
+    beaconCache.deactivate(beaconRevokeId);
+
+    // Try check-in with deactivated beacon in STRICT_REQUIRED mode
+    const evaluation = await antiSpoofPolicyEngine.evaluateLocationAndEnvironment({
+      student: { id: testStudentId, roll_number: 'BEACON_TEST_01', failed_attempts: 0 },
+      geofence,
+      clientLat: 28.5455,
+      clientLon: 77.1930,
+      accuracy: 10,
+      bleProof: {
+        beaconPublicId: beaconRevokePublicId,
+        rollingCode: token,
+        slot
+      }
+    });
+
+    expect(evaluation.decisionOutcome).toBe('DENY');
+    expect(evaluation.bleMatchStatus).toBe('INVALID_BEACON_PROOF');
+    expect(evaluation.unfairMeansFlags).toContain('STRICT_BLE_ANCHOR_FAILED');
+
+    // Clean up
+    await runQuery(`DELETE FROM site_ble_beacons WHERE id = ?`, [beaconRevokeId]);
+  });
 });

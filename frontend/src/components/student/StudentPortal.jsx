@@ -81,6 +81,11 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [activeChallenge, setActiveChallenge] = useState('HOLD_STILL');
   const [activeChallengeInstruction, setActiveChallengeInstruction] = useState('Fit face into oval and hold steady');
 
+  // Dynamic beacon list from active admin configuration
+  const activeBeaconList = Array.isArray(dashboard?.beacons) && dashboard.beacons.length > 0
+    ? dashboard.beacons.map(b => b.block_name || b.beacon_public_id).join(', ')
+    : 'authorized floor ESP32 beacon';
+
   // Robust multi-layer enrollment fallback to eliminate reload flicker
   const isFaceEnrolled = Boolean(
     dashboard?.hasFaceRegistered ||
@@ -237,7 +242,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           // Strict Lock rejection - Block check-in completely
           setCheckinError(
             bleRes.message ||
-            'Hardware Presence Lock: You must be physically within range of an authorized hostel ESP32 Bluetooth beacon (HG-BEACON-BLKA-01 / HG-BEACON-BLKA-02) to mark attendance. Ensure Bluetooth is ON and you are near the corridor beacon.'
+            `Hardware Presence Lock: You must be physically within range of an authorized hostel ESP32 Bluetooth beacon (${activeBeaconList}) to mark attendance. Ensure Bluetooth is ON and you are near your floor beacon.`
           );
           setCheckinStep('failed');
           return;
@@ -1118,7 +1123,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                               <div className="alert alert-danger d-flex align-items-center gap-2 p-2.5 rounded-3 mb-3 text-start small border-danger-subtle mx-auto" style={{ maxWidth: '480px' }}>
                                 <ShieldCheck size={18} className="text-danger flex-shrink-0" />
                                 <div>
-                                  <strong>Strict Hardware Lock Enforced:</strong> Physical presence near an authorized hostel ESP32 Bluetooth beacon (Ground Floor or 1st Floor) + GPS boundary required.
+                                  <strong>Strict Hardware Lock Enforced:</strong> Physical presence near an authorized hostel ESP32 Bluetooth beacon ({activeBeaconList}) + GPS boundary required.
                                 </div>
                               </div>
                             )}
@@ -1171,7 +1176,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                         </div>
                         <h6 className="fw-semibold mb-1">Connecting to Hostel ESP32 Beacon...</h6>
                         <p className="text-muted small mb-2 mx-auto" style={{ maxWidth: '420px' }}>
-                          {bleScanningStatus || 'Strict Hardware Lock active: Please select your floor beacon (Block A Ground Floor or 1st Floor) in the browser dialog.'}
+                          {bleScanningStatus || `Strict Hardware Lock active: Please select your floor beacon (${activeBeaconList}) in the browser dialog.`}
                         </p>
                         <span className="badge bg-danger bg-opacity-10 text-danger border border-danger-subtle px-3 py-1 rounded-pill small">
                           <ShieldCheck size={13} className="me-1" /> Physical Presence Required
@@ -1498,7 +1503,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                                 <strong className="text-dark">Strict Mode Requirements:</strong>
                                 <ul className="mb-0 ps-3 mt-1 text-muted" style={{ fontSize: '12px' }}>
                                   <li>Turn <strong>ON</strong> Bluetooth on your phone/laptop.</li>
-                                  <li>Stand within ~15 meters of the floor beacon (Block A Ground Floor or 1st Floor).</li>
+                                  <li>Stand within ~15 meters of an authorized floor beacon ({activeBeaconList}).</li>
                                   <li>Ensure the ESP32 board is plugged into USB power and LED is pulsing.</li>
                                   <li>On Android, use Chrome or Edge. On iOS, use the Bluefy BLE browser.</li>
                                 </ul>
