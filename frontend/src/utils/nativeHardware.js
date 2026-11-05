@@ -342,6 +342,85 @@ export const LocationAndEnvironmentEvidenceService = {
 export async function scanHostelBleBeacon(options = {}) {
   const { timeoutMs = 12000, onProgress = null, timeSyncPacket = null, localHttpsAnchorUrl = null } = options;
 
+  const HOSTEL_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+  const ROLLING_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+  const TIME_SYNC_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a9';
+
+  // 1. Native Mobile App Flow (Capacitor on iOS & Android via native CoreBluetooth & Android BLE)
+  if (isNativeMobile()) {
+    try {
+      const { BleClient, numbersToDataView, dataViewToText } = await import('@capacitor-community/bluetooth-le');
+      if (onProgress) onProgress({ status: 'INITIALIZING_BLE', message: 'Initializing native Bluetooth...' });
+      await BleClient.initialize();
+
+      if (onProgress) onProgress({ status: 'SCANNING', message: 'Scanning for floor ESP32 anchor...' });
+
+      let foundDevice = null;
+      await BleClient.requestLEScan(
+        { services: [HOSTEL_SERVICE_UUID] },
+        (result) => {
+          if (result && result.device) {
+            foundDevice = result.device;
+            BleClient.stopLEScan().catch(() => {});
+          }
+        }
+      );
+
+      const startScan = Date.now();
+      while (!foundDevice && (Date.now() - startScan < 4000)) {
+        await new Promise(r => setTimeout(r, 150));
+      }
+      try { await BleClient.stopLEScan(); } catch (_) {}
+
+      if (foundDevice) {
+        if (onProgress) onProgress({ status: 'CONNECTING', message: `Connecting to ${foundDevice.name || 'ESP32'}...` });
+        await BleClient.connect(foundDevice.deviceId);
+
+        if (timeSyncPacket) {
+          try {
+            await BleClient.write(
+              foundDevice.deviceId,
+              HOSTEL_SERVICE_UUID,
+              TIME_SYNC_CHAR_UUID,
+              numbersToDataView(new TextEncoder().encode(String(timeSyncPacket)))
+            );
+          } catch (_) {}
+        }
+
+        const dataView = await BleClient.read(foundDevice.deviceId, HOSTEL_SERVICE_UUID, ROLLING_CHAR_UUID);
+        const rawPayload = dataViewToText(dataView);
+
+        // Fast release to avoid slot starvation
+        setTimeout(async () => {
+          try { await BleClient.disconnect(foundDevice.deviceId); } catch (_) {}
+        }, 150);
+
+        let parsed = null;
+        try { parsed = JSON.parse(rawPayload); } catch (_) {
+          const parts = rawPayload.split(':');
+          if (parts.length >= 3) {
+            parsed = { id: parts[0], code: parts[1], slot: parseInt(parts[2], 10) };
+          }
+        }
+
+        if (parsed && parsed.id && parsed.code) {
+          return {
+            success: true,
+            beaconPublicId: parsed.id,
+            rollingCode: parsed.code,
+            slot: parsed.slot || Math.floor(Date.now() / 30000),
+            deviceName: foundDevice.name || parsed.id,
+            rawPayload,
+            timestamp: Date.now()
+          };
+        }
+      }
+    } catch (nativeBleErr) {
+      console.warn('Native BLE scanner exception, falling back to Web Bluetooth:', nativeBleErr);
+    }
+  }
+
+  // 2. Standard Web Browser Flow (Web Bluetooth API in Chrome, Edge, Bluefy)
   if (typeof navigator === 'undefined' || !navigator.bluetooth) {
     const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
@@ -385,10 +464,6 @@ export async function scanHostelBleBeacon(options = {}) {
         : 'Web Bluetooth is not supported on this browser. On Android/PC, please use Google Chrome, Microsoft Edge, or Samsung Internet.'
     };
   }
-
-  const HOSTEL_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-  const ROLLING_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
-  const TIME_SYNC_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a9';
 
   if (onProgress) onProgress({ status: 'REQUESTING_DEVICE', message: 'Scanning for nearby hostel ESP32 beacons...' });
 
