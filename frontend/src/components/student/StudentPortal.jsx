@@ -1,13 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
-import {
-  getNativeOrBrowserLocation,
-  isNativeMobile,
-  scanHostelBleBeacon,
-  openNativeBluetoothSettings,
-  openNativeLocationSettings
-} from '../../utils/nativeHardware';
+import { getNativeOrBrowserLocation, isNativeMobile, scanHostelBleBeacon } from '../../utils/nativeHardware';
 import { Line } from 'react-chartjs-2';
 import {
   UserCheck,
@@ -1564,22 +1558,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                                   </ul>
                                 </div>
                               </div>
-                              <div className="d-flex gap-2 flex-wrap justify-content-center">
-                                <button
-                                  className="btn btn-primary btn-sm px-4 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
-                                  onClick={handleVerifyLocation}
-                                >
-                                  <RefreshCw size={14} /> Retry Hardware Presence Check
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-outline-secondary btn-sm px-3 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
-                                  onClick={openNativeBluetoothSettings}
-                                  title="Open your device's native Bluetooth settings toggle"
-                                >
-                                  <Settings size={14} /> Open Bluetooth Settings
-                                </button>
-                              </div>
+                              <button
+                                className="btn btn-primary btn-sm px-4 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
+                                onClick={handleVerifyLocation}
+                              >
+                                <RefreshCw size={14} /> Retry Hardware Presence Check
+                              </button>
                             </div>
                           ) : isFaceError ? (
                             /* CASE D: Face Verification Notice */
@@ -1613,22 +1597,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                                   {checkinError || 'You are outside the permitted hostel boundary. Please physically move inside the campus perimeter.'}
                                 </div>
                               </div>
-                              <div className="d-flex gap-2 flex-wrap justify-content-center">
-                                <button
-                                  className="btn btn-primary btn-sm px-4 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
-                                  onClick={handleVerifyLocation}
-                                >
-                                  <RefreshCw size={14} /> Check Location Again
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-outline-secondary btn-sm px-3 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
-                                  onClick={openNativeLocationSettings}
-                                  title="Open device Location / GPS settings"
-                                >
-                                  <Settings size={14} /> Open GPS Settings
-                                </button>
-                              </div>
+                              <button
+                                className="btn btn-primary btn-sm px-4 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
+                                onClick={handleVerifyLocation}
+                              >
+                                <RefreshCw size={14} /> Check Location Again
+                              </button>
                               <div className="text-muted small mt-1" style={{ fontSize: '11px', maxWidth: '380px' }}>
                                 💡 <strong>Tip:</strong> Turning on your phone's Wi-Fi helps your GPS lock onto campus location instantly.
                               </div>

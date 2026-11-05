@@ -146,22 +146,6 @@ export function openNativeLocationSettings() {
 }
 
 /**
- * Directly launches native Android Bluetooth Settings or iOS Settings with 1 click.
- */
-export function openNativeBluetoothSettings() {
-  if (typeof window !== 'undefined') {
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || '');
-    if (isIOS) {
-      window.location.href = 'app-settings:';
-    } else {
-      try {
-        window.location.href = 'intent:#Intent;action=android.settings.BLUETOOTH_SETTINGS;end';
-      } catch (_) {}
-    }
-  }
-}
-
-/**
  * Capture photo via native Capacitor Camera dialog (front-facing selfie)
  */
 export async function captureNativePhoto() {
