@@ -233,7 +233,11 @@ class AntiSpoofPolicyEngine {
     if (primaryAcc > 65 && distanceMeters <= allowedRadius * 2 && !isMock) {
       decisionOutcome = 'RETRY';
       reasonCodes.push('POOR_GPS_ACCURACY');
-    } else if (riskScore >= 85) {
+    } else if (
+      unfairMeansFlags.includes('OUTSIDE_HOSTEL_PERIMETER') ||
+      unfairMeansFlags.includes('STRICT_BLE_ANCHOR_FAILED') ||
+      riskScore >= 85
+    ) {
       decisionOutcome = 'DENY';
     } else if (riskScore >= 65) {
       decisionOutcome = 'MANUAL_REVIEW';

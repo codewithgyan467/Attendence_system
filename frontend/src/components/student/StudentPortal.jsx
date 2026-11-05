@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
-import { getNativeOrBrowserLocation, isNativeMobile } from '../../utils/nativeHardware';
+import { getNativeOrBrowserLocation, isNativeMobile, scanHostelBleBeacon } from '../../utils/nativeHardware';
 import { Line } from 'react-chartjs-2';
 import {
   UserCheck,
@@ -18,6 +18,9 @@ import {
   RefreshCw,
   Clock,
   ShieldAlert,
+  ShieldCheck,
+  Radio,
+  Bluetooth,
   Send,
   Navigation,
   Sparkles,
@@ -73,6 +76,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [verifiedDistance, setVerifiedDistance] = useState(null);
   const [checkinError, setCheckinError] = useState(null);
   const [studentCoords, setStudentCoords] = useState(null);
+  const [bleScanningStatus, setBleScanningStatus] = useState(null);
+  const [verifiedBeaconInfo, setVerifiedBeaconInfo] = useState(null);
   const [activeChallenge, setActiveChallenge] = useState('HOLD_STILL');
   const [activeChallengeInstruction, setActiveChallengeInstruction] = useState('Fit face into oval and hold steady');
 
@@ -187,18 +192,23 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     }
   };
 
-  // Check-In Step 1: GPS Verification
+  // Check-In Step 1: Physical GPS & ESP32 BLE Beacon Verification
   const handleVerifyLocation = async () => {
     if (scheduleStatus?.enforced && !scheduleStatus.isOpen) {
       setCheckinError(scheduleStatus.message || 'Attendance window is currently closed.');
       setCheckinStep('failed');
       return;
     }
+
+    const bleMode = dashboard?.geofence?.ble_mode || 'STANDBY_OPTIONAL';
+
     setCheckinStep('verifying_gps');
     setCheckinError(null);
     setGpsLiveAccuracy(null);
+    setBleScanningStatus(null);
 
     try {
+      // 1. Acquire Physical Device GPS Location
       const pos = await getNativeOrBrowserLocation({
         onProgress: (acc) => setGpsLiveAccuracy(acc),
         maxWaitMs: 3500,
@@ -212,6 +222,55 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         accuracy: pos.accuracy || 10
       });
 
+      let bleProof = null;
+
+      // 2. Hardware Presence Lock Check (ESP32 Bluetooth Beacon)
+      if (bleMode === 'STRICT_REQUIRED') {
+        setCheckinStep('verifying_ble');
+        setBleScanningStatus('Connecting to nearby hostel ESP32 Bluetooth beacon...');
+
+        const bleRes = await scanHostelBleBeacon({
+          onProgress: (p) => setBleScanningStatus(p.message)
+        });
+
+        if (!bleRes.success) {
+          // Strict Lock rejection - Block check-in completely
+          setCheckinError(
+            bleRes.message ||
+            'Hardware Presence Lock: You must be physically within range of an authorized hostel ESP32 Bluetooth beacon (HG-BEACON-BLKA-01 / HG-BEACON-BLKA-02) to mark attendance. Ensure Bluetooth is ON and you are near the corridor beacon.'
+          );
+          setCheckinStep('failed');
+          return;
+        }
+
+        bleProof = {
+          beaconPublicId: bleRes.beaconPublicId,
+          rollingCode: bleRes.rollingCode,
+          slot: bleRes.slot
+        };
+        setVerifiedBeaconInfo(bleRes);
+      } else if (bleMode === 'SOFT_ANCHOR') {
+        // Soft Anchor: Optional scan for fast pass
+        if (typeof navigator !== 'undefined' && navigator.bluetooth) {
+          try {
+            setBleScanningStatus('Scanning for nearby hostel beacon for fast-pass...');
+            const bleRes = await scanHostelBleBeacon({ timeoutMs: 5000 });
+            if (bleRes.success) {
+              bleProof = {
+                beaconPublicId: bleRes.beaconPublicId,
+                rollingCode: bleRes.rollingCode,
+                slot: bleRes.slot
+              };
+              setVerifiedBeaconInfo(bleRes);
+            }
+          } catch (_) {
+            // Soft anchor allows proceeding without BLE
+          }
+        }
+      }
+
+      setCheckinStep('verifying_policy');
+
       const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
       const isSafari = typeof navigator !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
@@ -222,6 +281,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         accuracy: pos.accuracy || 10,
         is_mock_location: pos.isMockLocation || false,
         samples: pos.samples || [],
+        ble_proof: bleProof,
         device_info: {
           ...(pos.device_info || {}),
           isIOS,
@@ -1054,6 +1114,30 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           </div>
                         ) : (
                           <div>
+                            {dashboard?.geofence?.ble_mode === 'STRICT_REQUIRED' && (
+                              <div className="alert alert-danger d-flex align-items-center gap-2 p-2.5 rounded-3 mb-3 text-start small border-danger-subtle mx-auto" style={{ maxWidth: '480px' }}>
+                                <ShieldCheck size={18} className="text-danger flex-shrink-0" />
+                                <div>
+                                  <strong>Strict Hardware Lock Enforced:</strong> Physical presence near an authorized hostel ESP32 Bluetooth beacon (Ground Floor or 1st Floor) + GPS boundary required.
+                                </div>
+                              </div>
+                            )}
+                            {dashboard?.geofence?.ble_mode === 'SOFT_ANCHOR' && (
+                              <div className="alert alert-warning d-flex align-items-center gap-2 p-2.5 rounded-3 mb-3 text-start small border-warning-subtle mx-auto" style={{ maxWidth: '480px' }}>
+                                <Radio size={18} className="text-warning flex-shrink-0" />
+                                <div>
+                                  <strong>Smart Proximity Active:</strong> Detect nearby ESP32 beacon for instant fast-pass attendance.
+                                </div>
+                              </div>
+                            )}
+                            {verifiedBeaconInfo && (
+                              <div className="alert alert-success d-flex align-items-center gap-2 p-2.5 rounded-3 mb-3 text-start small border-success-subtle mx-auto" style={{ maxWidth: '480px' }}>
+                                <CheckCircle2 size={18} className="text-success flex-shrink-0" />
+                                <div>
+                                  <strong>ESP32 Radio Anchor Linked:</strong> Signal verified from <code>{verifiedBeaconInfo.beaconPublicId}</code>
+                                </div>
+                              </div>
+                            )}
                             <h5 className="fw-bold mb-1">Confirm Your Hostel Location</h5>
                             <p className="text-muted small mx-auto mb-3" style={{ maxWidth: '440px' }}>
                               Please verify your device is inside the hostel attendance area to start verification.
@@ -1070,11 +1154,37 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     )}
 
                     {checkinStep === 'verifying_gps' && (
-                      <div className="py-4">
+                      <div className="py-4 text-center">
                         <div className="spinner-border text-primary mb-3" role="status"></div>
-                        <h6 className="fw-semibold mb-1">Confirming Location...</h6>
+                        <h6 className="fw-semibold mb-1">Confirming GPS Location...</h6>
                         <p className="text-muted small">
-                          Verifying that you are physically inside the hostel attendance area.
+                          Verifying that you are physically inside the hostel attendance perimeter.
+                        </p>
+                      </div>
+                    )}
+
+                    {checkinStep === 'verifying_ble' && (
+                      <div className="py-4 text-center">
+                        <div className="position-relative d-inline-block mb-3">
+                          <div className="spinner-grow text-primary" style={{ width: '3.2rem', height: '3.2rem', opacity: 0.25 }}></div>
+                          <Bluetooth size={26} className="text-primary position-absolute top-50 start-50 translate-middle" />
+                        </div>
+                        <h6 className="fw-semibold mb-1">Connecting to Hostel ESP32 Beacon...</h6>
+                        <p className="text-muted small mb-2 mx-auto" style={{ maxWidth: '420px' }}>
+                          {bleScanningStatus || 'Strict Hardware Lock active: Please select your floor beacon (Block A Ground Floor or 1st Floor) in the browser dialog.'}
+                        </p>
+                        <span className="badge bg-danger bg-opacity-10 text-danger border border-danger-subtle px-3 py-1 rounded-pill small">
+                          <ShieldCheck size={13} className="me-1" /> Physical Presence Required
+                        </span>
+                      </div>
+                    )}
+
+                    {checkinStep === 'verifying_policy' && (
+                      <div className="py-4 text-center">
+                        <div className="spinner-border text-primary mb-3" role="status"></div>
+                        <h6 className="fw-semibold mb-1">Validating Anti-Spoof Policy & Hardware Token...</h6>
+                        <p className="text-muted small">
+                          Cryptographically checking GPS perimeter and ESP32 30-second rolling HMAC proof.
                         </p>
                       </div>
                     )}
@@ -1372,6 +1482,33 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                               }}
                             >
                               <LifeBuoy size={14} /> Submit Strike Appeal to Warden
+                            </button>
+                          </div>
+                        ) : (checkinError?.toLowerCase().includes('bluetooth') || checkinError?.toLowerCase().includes('beacon') || checkinError?.toLowerCase().includes('esp32') || checkinError?.toLowerCase().includes('hardware presence') || checkinError?.toLowerCase().includes('strict hardware lock')) ? (
+                          /* CASE BLE: Hardware Presence Lock Notice (ESP32 Beacon) */
+                          <div className="d-flex flex-column align-items-center gap-2">
+                            <div className="card bg-danger-subtle border-danger border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '460px' }}>
+                              <div className="fw-bold text-danger small mb-1 d-flex align-items-center gap-1.5">
+                                <Bluetooth size={16} /> Hardware Presence Lock Notice
+                              </div>
+                              <div className="small text-danger mb-2">
+                                {checkinError}
+                              </div>
+                              <div className="small text-muted border-top border-danger border-opacity-10 pt-2">
+                                <strong className="text-dark">Strict Mode Requirements:</strong>
+                                <ul className="mb-0 ps-3 mt-1 text-muted" style={{ fontSize: '12px' }}>
+                                  <li>Turn <strong>ON</strong> Bluetooth on your phone/laptop.</li>
+                                  <li>Stand within ~15 meters of the floor beacon (Block A Ground Floor or 1st Floor).</li>
+                                  <li>Ensure the ESP32 board is plugged into USB power and LED is pulsing.</li>
+                                  <li>On Android, use Chrome or Edge. On iOS, use the Bluefy BLE browser.</li>
+                                </ul>
+                              </div>
+                            </div>
+                            <button
+                              className="btn btn-primary btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
+                              onClick={handleVerifyLocation}
+                            >
+                              <RefreshCw size={14} /> Retry Hardware Presence Check
                             </button>
                           </div>
                         ) : (checkinError?.toLowerCase().includes('physically present') || checkinError?.toLowerCase().includes('anti-spoof') || checkinError?.toLowerCase().includes('liveness') || checkinError?.toLowerCase().includes('match') || checkinError?.toLowerCase().includes('camera') || checkinError?.toLowerCase().includes('facial') || checkinError?.toLowerCase().includes('photo')) ? (

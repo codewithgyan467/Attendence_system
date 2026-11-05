@@ -21,15 +21,18 @@ async function recordFailedLocationAttempt(
     return { flagged: false, currentFailedAttempts: 0 };
   }
 
-  const newFailedCount = (student.failed_attempts || 0) + 1;
-  const isNowFlagged = newFailedCount >= MAX_FAILED_ATTEMPTS;
+  const shouldIncrement = extra.incrementStrike !== false && incidentType !== 'STRICT_BLE_ANCHOR_FAILED';
+  const newFailedCount = shouldIncrement ? (student.failed_attempts || 0) + 1 : (student.failed_attempts || 0);
+  const isNowFlagged = shouldIncrement && (newFailedCount >= MAX_FAILED_ATTEMPTS);
 
-  // 2. Update student state
-  await runQuery(`
-    UPDATE students
-    SET failed_attempts = ?, is_flagged_forge = ?
-    WHERE id = ?
-  `, [newFailedCount, isNowFlagged ? 1 : student.is_flagged_forge, student.id]);
+  // 2. Update student state if strike incremented
+  if (shouldIncrement) {
+    await runQuery(`
+      UPDATE students
+      SET failed_attempts = ?, is_flagged_forge = ?
+      WHERE id = ?
+    `, [newFailedCount, isNowFlagged ? 1 : student.is_flagged_forge, student.id]);
+  }
 
   // 3. Log security incident with v3.0 risk scoring & decision outcome
   const logId = uuidv4();

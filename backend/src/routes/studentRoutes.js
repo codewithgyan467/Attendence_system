@@ -612,6 +612,11 @@ router.get('/dashboard', async (req, res) => {
     `, [student.id]);
 
     const activeGeofence = await getQuery(`SELECT * FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
+    const activeBeacons = await allQuery(`
+      SELECT beacon_public_id, block_name, is_active, last_seen_at
+      FROM site_ble_beacons
+      WHERE is_active = 1
+    `);
 
     const faceEmbeddingsCount = await getQuery(`
       SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ? OR student_id = ?
@@ -685,6 +690,7 @@ router.get('/dashboard', async (req, res) => {
       monthlyBreakdown: summary.monthlyBreakdown,
       lifetime: summary.lifetime,
       geofence: activeGeofence,
+      beacons: activeBeacons || [],
       recentHistory: history
     });
   } catch (err) {

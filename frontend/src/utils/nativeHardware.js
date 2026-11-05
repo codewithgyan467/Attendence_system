@@ -299,3 +299,139 @@ export const LocationAndEnvironmentEvidenceService = {
   }
 };
 
+/**
+ * Scans for nearby authorized HostelGuard ESP32 Bluetooth Beacons via Web Bluetooth API.
+ * Connects to the GATT service, reads the 30-second rolling TOTP token, and disconnects immediately.
+ * 
+ * Target Service UUID: 4fafc201-1fb5-459e-8fcc-c5c9c331914b
+ * Target Characteristic UUID: beb5483e-36e1-4688-b7f5-ea07361b26a8
+ * 
+ * Supports:
+ * - Beacon 1: HG-BEACON-BLKA-01 (Ground Floor)
+ * - Beacon 2: HG-BEACON-BLKA-02 (1st Floor, Seeed Studio XIAO ESP32-C6)
+ */
+export async function scanHostelBleBeacon(options = {}) {
+  const { timeoutMs = 12000, onProgress = null } = options;
+
+  if (typeof navigator === 'undefined' || !navigator.bluetooth) {
+    return {
+      success: false,
+      reason: 'BLUETOOTH_API_UNSUPPORTED',
+      message: 'Web Bluetooth is not supported on this browser. On Android/PC, please use Google Chrome, Microsoft Edge, or Samsung Internet. On iOS, please use the Bluefy Web BLE browser or the HostelGuard native app.'
+    };
+  }
+
+  const HOSTEL_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+  const ROLLING_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+
+  if (onProgress) onProgress({ status: 'REQUESTING_DEVICE', message: 'Scanning for nearby hostel ESP32 beacons...' });
+
+  let device = null;
+  try {
+    device = await navigator.bluetooth.requestDevice({
+      filters: [
+        { namePrefix: 'HG-BEACON' },
+        { services: [HOSTEL_SERVICE_UUID] }
+      ],
+      optionalServices: [HOSTEL_SERVICE_UUID]
+    });
+  } catch (err) {
+    if (err.name === 'NotFoundError') {
+      return {
+        success: false,
+        reason: 'BLUETOOTH_DEVICE_NOT_SELECTED',
+        message: 'No hostel beacon was selected, or Bluetooth pairing was cancelled. Please ensure your floor ESP32 board is powered ON and nearby.'
+      };
+    }
+    if (err.name === 'SecurityError') {
+      return {
+        success: false,
+        reason: 'BLUETOOTH_SECURITY_RESTRICTION',
+        message: 'Bluetooth access blocked. Please check browser site permissions and ensure HTTPS or localhost is active.'
+      };
+    }
+    return {
+      success: false,
+      reason: 'BLUETOOTH_REQUEST_ERROR',
+      message: err.message || 'Failed to initialize Bluetooth scan.'
+    };
+  }
+
+  if (!device) {
+    return {
+      success: false,
+      reason: 'NO_DEVICE_SELECTED',
+      message: 'No authorized HostelGuard Bluetooth beacon selected.'
+    };
+  }
+
+  if (onProgress) onProgress({ status: 'CONNECTING', message: `Connecting to ${device.name || 'ESP32 Beacon'}...` });
+
+  let server = null;
+  try {
+    const connectPromise = device.gatt.connect();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Connection to ESP32 beacon timed out.')), timeoutMs)
+    );
+
+    server = await Promise.race([connectPromise, timeoutPromise]);
+
+    if (onProgress) onProgress({ status: 'READING_TOKEN', message: 'Reading 30-second rolling token...' });
+
+    const service = await server.getPrimaryService(HOSTEL_SERVICE_UUID);
+    const characteristic = await service.getCharacteristic(ROLLING_CHAR_UUID);
+    const valueDataView = await characteristic.readValue();
+
+    const decoder = new TextDecoder('utf-8');
+    const rawPayload = decoder.decode(valueDataView);
+
+    let parsed = null;
+    try {
+      parsed = JSON.parse(rawPayload);
+    } catch (_) {
+      const parts = rawPayload.split(':');
+      if (parts.length >= 3) {
+        parsed = {
+          id: parts[0],
+          code: parts[1],
+          slot: parseInt(parts[2], 10)
+        };
+      }
+    }
+
+    if (!parsed || !parsed.id || !parsed.code) {
+      return {
+        success: false,
+        reason: 'MALFORMED_BEACON_PAYLOAD',
+        message: `Invalid rolling code format received from beacon: ${rawPayload}`
+      };
+    }
+
+    if (onProgress) onProgress({ status: 'SUCCESS', message: `Verified signal from ${parsed.id}` });
+
+    return {
+      success: true,
+      beaconPublicId: parsed.id,
+      rollingCode: parsed.code,
+      slot: parsed.slot || Math.floor(Date.now() / 30000),
+      deviceName: device.name || parsed.id,
+      rawPayload,
+      timestamp: Date.now()
+    };
+  } catch (err) {
+    return {
+      success: false,
+      reason: 'GATT_COMMUNICATION_ERROR',
+      message: `Failed to read beacon token: ${err.message}`
+    };
+  } finally {
+    // Release ESP32 GATT connection slots immediately for other students
+    if (server && server.connected) {
+      try { server.disconnect(); } catch (_) {}
+    } else if (device?.gatt?.connected) {
+      try { device.gatt.disconnect(); } catch (_) {}
+    }
+  }
+}
+
+

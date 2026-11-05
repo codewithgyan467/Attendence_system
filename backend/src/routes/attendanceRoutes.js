@@ -206,7 +206,7 @@ const verifyLocationHandler = async (req, res) => {
       const detailsMsg = isMockDetected
         ? 'Mock location app / GPS spoofer detected on device. Real hardware GPS required.'
         : (isStrictBleFailed
-            ? 'Hardware Bluetooth Beacon token missing. Strict Hardware Lock is active, but your mobile browser did not provide a verified ESP32 radio token. Switch to Soft Anchor in Admin or enable Bluetooth.'
+            ? 'Hardware Bluetooth Beacon token missing or out of range. Strict Physical Presence Lock is active: your device must be within physical radio range of an authorized hostel ESP32 board (HG-BEACON-BLKA-01 / HG-BEACON-BLKA-02) with Bluetooth enabled.'
             : `Location rejected: You are ${evaluation.distanceMeters}m away from the hostel. Permitted boundary is ${evaluation.allowedRadius}m.`);
 
       const fraudRecord = await recordFailedLocationAttempt(
@@ -219,7 +219,8 @@ const verifyLocationHandler = async (req, res) => {
           riskScore: evaluation.totalRiskScore,
           decisionOutcome: 'DENY',
           reasonCodes: evaluation.reasonCodes,
-          ipAddress: clientIp
+          ipAddress: clientIp,
+          incrementStrike: !isStrictBleFailed
         }
       );
 
