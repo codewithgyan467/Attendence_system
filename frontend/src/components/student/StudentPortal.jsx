@@ -227,22 +227,49 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         accuracy: pos.accuracy || 10
       });
 
+      // Layer 1 Check: Geofence Perimeter Verification
+      const centerLat = Number(dashboard?.geofence?.latitude) || 26.140462;
+      const centerLng = Number(dashboard?.geofence?.longitude) || 91.656606;
+      const permittedRadius = Number(dashboard?.geofence?.radius_meters) || 150;
+
+      const lat1 = centerLat * (Math.PI / 180);
+      const lon1 = centerLng * (Math.PI / 180);
+      const lat2 = pos.latitude * (Math.PI / 180);
+      const lon2 = pos.longitude * (Math.PI / 180);
+      const dLat = lat2 - lat1;
+      const dLon = lon2 - lon1;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const clientDistance = Math.round(6371000 * c * 10) / 10;
+
+      if (clientDistance > permittedRadius) {
+        // Layer 1 Rejection: Outside the permitted geofence boundary circle
+        setVerifiedDistance(clientDistance);
+        setCheckinError(
+          `Layer 1 Check Failed (Outside Geofence Perimeter): You are ${clientDistance}m away from the hostel center. Permitted boundary is ${permittedRadius}m. Please physically move inside the hostel campus boundary before proceeding.`
+        );
+        setCheckinStep('failed');
+        return;
+      }
+
       let bleProof = null;
 
-      // 2. Hardware Presence Lock Check (ESP32 Bluetooth Beacon)
+      // Layer 2 Check: ESP32 Hardware Radio Anchor Range Verification (Inside Geofence)
       if (bleMode === 'STRICT_REQUIRED') {
         setCheckinStep('verifying_ble');
-        setBleScanningStatus('Connecting to nearby hostel ESP32 Bluetooth beacon...');
+        setBleScanningStatus('Layer 2 Check: Connecting to nearby hostel ESP32 Bluetooth beacon (~15m range)...');
 
         const bleRes = await scanHostelBleBeacon({
           onProgress: (p) => setBleScanningStatus(p.message)
         });
 
         if (!bleRes.success) {
-          // Strict Lock rejection - Block check-in completely
+          // Layer 2 Rejection: Inside geofence, but ESP32 beacon signal is missing or student is out of range
           setCheckinError(
             bleRes.message ||
-            `Hardware Presence Lock: You must be physically within range of an authorized hostel ESP32 Bluetooth beacon (${activeBeaconList}) to mark attendance. Ensure Bluetooth is ON and you are near your floor beacon.`
+            `Layer 2 Check Failed (ESP32 Beacon Range Required): You are inside the campus perimeter (${clientDistance}m from center), but you are not within physical range of an authorized hostel ESP32 beacon (${activeBeaconList}) or the board is powered OFF. Please walk near your floor beacon (~15m corridor zone) and ensure it is plugged into power to proceed to face verification.`
           );
           setCheckinStep('failed');
           return;

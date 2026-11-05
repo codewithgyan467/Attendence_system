@@ -202,12 +202,24 @@ const verifyLocationHandler = async (req, res) => {
     if (evaluation.decisionOutcome === 'DENY') {
       const isMockDetected = evaluation.mockFlagStatus === 'MOCK_DETECTED';
       const isStrictBleFailed = evaluation.reasonCodes?.includes('L3_BLE_STRICT_REJECTED') || evaluation.unfairMeansFlags?.includes('STRICT_BLE_ANCHOR_FAILED');
-      const reasonCode = isMockDetected ? 'MOCK_LOCATION_ACTIVE' : (isStrictBleFailed ? 'STRICT_BLE_ANCHOR_FAILED' : 'OUTSIDE_GEOFENCE');
-      const detailsMsg = isMockDetected
-        ? 'Mock location app / GPS spoofer detected on device. Real hardware GPS required.'
-        : (isStrictBleFailed
-            ? 'Hardware Bluetooth Beacon token missing or out of range. Strict Physical Presence Lock is active: your device must be within physical radio range of an authorized hostel ESP32 board with Bluetooth enabled.'
-            : `Location rejected: You are ${evaluation.distanceMeters}m away from the hostel. Permitted boundary is ${evaluation.allowedRadius}m.`);
+      const isOutsideGeofence = evaluation.unfairMeansFlags?.includes('OUTSIDE_HOSTEL_PERIMETER') || evaluation.reasonCodes?.includes('L2_OUTSIDE_GEOFENCE') || (evaluation.distanceMeters > evaluation.allowedRadius);
+
+      let reasonCode = 'OUTSIDE_GEOFENCE';
+      let detailsMsg = '';
+
+      if (isMockDetected) {
+        reasonCode = 'MOCK_LOCATION_ACTIVE';
+        detailsMsg = 'Mock location app / GPS spoofer detected on device. Real hardware GPS required.';
+      } else if (isOutsideGeofence) {
+        reasonCode = 'OUTSIDE_GEOFENCE';
+        detailsMsg = `Layer 1 Rejected (Outside Geofence Perimeter): You are ${evaluation.distanceMeters}m away from the hostel center. Permitted boundary is ${evaluation.allowedRadius}m. Please return inside the hostel perimeter.`;
+      } else if (isStrictBleFailed) {
+        reasonCode = 'STRICT_BLE_ANCHOR_FAILED';
+        detailsMsg = `Layer 2 Rejected (Hardware Bluetooth Beacon Range Required): You are inside the hostel perimeter (${evaluation.distanceMeters}m from center), but outside the physical radio range of an authorized hostel ESP32 beacon (~15m) or the board is powered OFF. Please walk near your floor ESP32 anchor and ensure it is powered ON to proceed to face verification.`;
+      } else {
+        reasonCode = 'LOCATION_POLICY_DENIED';
+        detailsMsg = `Location rejected: Policy risk score (${evaluation.totalRiskScore}/100) exceeded safety threshold.`;
+      }
 
       const fraudRecord = await recordFailedLocationAttempt(
         student.id,
