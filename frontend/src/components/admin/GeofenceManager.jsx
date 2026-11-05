@@ -527,6 +527,8 @@ export default function GeofenceManager() {
                     interactive={true}
                     onLocationChange={handleMapLocationChange}
                     height="380px"
+                    beacons={beacons || []}
+                    bleMode={bleMode || 'STANDBY_OPTIONAL'}
                   />
                   <div className="form-text small mt-1">
                     Click anywhere on the map or drag the boundary marker to update the center anchor coordinates.

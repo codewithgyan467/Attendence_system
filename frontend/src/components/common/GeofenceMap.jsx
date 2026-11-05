@@ -48,14 +48,24 @@ export default function GeofenceMap({
   height = '360px',
   showLegend = true,
   showDistanceBanner = true,
+  beacons = [],
+  bleMode = 'STANDBY_OPTIONAL',
+  beaconRadius = 15,
+  showBeaconZone = true,
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const centerMarkerRef = useRef(null);
   const geofenceCircleRef = useRef(null);
+  const beaconCircleRef = useRef(null);
   const studentMarkerRef = useRef(null);
   const accuracyCircleRef = useRef(null);
   const polylineRef = useRef(null);
+
+  // Active beacon calculations (Glowing Yellow Radio Anchor Coverage)
+  const activeBeaconsList = Array.isArray(beacons) ? beacons.filter((b) => b.is_active === 1) : [];
+  const hasActiveBeacons = activeBeaconsList.length > 0;
+  const hasAnyBeacons = Array.isArray(beacons) && beacons.length > 0;
 
   // Robust prop fallback: accept both centerLat/centerLng and latitude/longitude
   const rawLat = centerLat !== null && centerLat !== undefined ? centerLat : latitude;
@@ -91,6 +101,10 @@ export default function GeofenceMap({
     calculatedDistance = Math.round(6371000 * c * 10) / 10;
     isStudentInside = calculatedDistance <= validRadius;
   }
+
+  // Specific physical Bluetooth radio range covered by the ESP32 inside the geofence (~15m corridor zone)
+  const effectiveBeaconRadius = Math.min(Math.max(8, Number(beaconRadius) || 15), Math.max(10, validRadius * 0.85));
+  const isStudentInBeaconRange = hasStudentPos && calculatedDistance !== null && calculatedDistance <= effectiveBeaconRadius;
 
   // 1. Initialize Map instance on mount
   useEffect(() => {
@@ -159,6 +173,10 @@ export default function GeofenceMap({
 
     return () => {
       clearTimeout(resizeTimer);
+      if (beaconCircleRef.current) {
+        try { beaconCircleRef.current.remove(); } catch (_) {}
+        beaconCircleRef.current = null;
+      }
       if (mapRef.current) {
         try {
           mapRef.current.remove();
@@ -219,6 +237,81 @@ export default function GeofenceMap({
       map.setView(centerLatLng, map.getZoom() || 17, { animate: true });
     }
   }, [validCenterLat, validCenterLng, validRadius, resolvedName, hasStudentPos]);
+
+  // 3b. Update glowing yellow ESP32 Bluetooth beacon circle inside geofence perimeter
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const centerLatLng = [validCenterLat, validCenterLng];
+    const shouldShow = showBeaconZone && (hasAnyBeacons || bleMode === 'STRICT_REQUIRED' || bleMode === 'SOFT_ANCHOR');
+
+    if (!shouldShow) {
+      if (beaconCircleRef.current) {
+        beaconCircleRef.current.remove();
+        beaconCircleRef.current = null;
+      }
+      return;
+    }
+
+    const beaconNames = activeBeaconsList.map(b => b.block_name || b.beacon_public_id).join(', ') || 'No active beacons broadcasting';
+    const popupContent = `
+      <div class="beacon-map-popup">
+        <div class="beacon-popup-header">
+          <span class="${hasActiveBeacons ? 'beacon-popup-pulse-dot' : 'beacon-popup-off-dot'}"></span>
+          <strong>Hostel ESP32 Bluetooth Anchor</strong>
+        </div>
+        <div class="beacon-popup-status">
+          Status: <span class="${hasActiveBeacons ? 'badge-status-on' : 'badge-status-off'}">
+            ${hasActiveBeacons ? '● ACTIVE (Signal Broadcasting)' : '✕ OFF / Inactive'}
+          </span>
+        </div>
+        <div class="beacon-popup-details">
+          <div>Physical Range: <b>~${effectiveBeaconRadius}m corridor zone</b></div>
+          <div>Active Beacons: <b>${beaconNames}</b></div>
+          ${bleMode === 'STRICT_REQUIRED'
+            ? '<div class="strict-lock-notice">🔒 Strict Lock: Device must be physically inside this yellow circle to mark attendance</div>'
+            : '<div style="color:#15803d; font-size:11px; margin-top:2px;">✓ Smart Proximity Anchor Active</div>'}
+        </div>
+      </div>
+    `;
+
+    if (!beaconCircleRef.current) {
+      const beaconCircle = L.circle(centerLatLng, {
+        radius: effectiveBeaconRadius,
+        color: hasActiveBeacons ? '#eab308' : '#94a3b8',
+        weight: hasActiveBeacons ? 2.5 : 1.5,
+        fillColor: hasActiveBeacons ? '#f59e0b' : '#64748b',
+        fillOpacity: hasActiveBeacons ? 0.26 : 0.08,
+        dashArray: hasActiveBeacons ? null : '4, 4',
+        className: hasActiveBeacons ? 'glowing-beacon-radio-circle' : 'muted-beacon-circle',
+      }).addTo(map);
+
+      beaconCircle.bindPopup(popupContent);
+      beaconCircleRef.current = beaconCircle;
+    } else {
+      beaconCircleRef.current.setLatLng(centerLatLng);
+      beaconCircleRef.current.setRadius(effectiveBeaconRadius);
+      beaconCircleRef.current.setStyle({
+        color: hasActiveBeacons ? '#eab308' : '#94a3b8',
+        weight: hasActiveBeacons ? 2.5 : 1.5,
+        fillColor: hasActiveBeacons ? '#f59e0b' : '#64748b',
+        fillOpacity: hasActiveBeacons ? 0.26 : 0.08,
+        dashArray: hasActiveBeacons ? null : '4, 4',
+        className: hasActiveBeacons ? 'glowing-beacon-radio-circle' : 'muted-beacon-circle',
+      });
+      beaconCircleRef.current.setPopupContent(popupContent);
+    }
+  }, [
+    validCenterLat,
+    validCenterLng,
+    effectiveBeaconRadius,
+    hasActiveBeacons,
+    hasAnyBeacons,
+    showBeaconZone,
+    bleMode,
+    activeBeaconsList
+  ]);
 
   // 4. Update student position, GPS accuracy, and connecting guide polyline
   useEffect(() => {
@@ -326,6 +419,13 @@ export default function GeofenceMap({
           <span className={`map-distance-badge ${isStudentInside ? 'inside' : 'outside'}`}>
             {isStudentInside ? '✓ Inside Geofence' : `✕ Exceeds ${validRadius}m Limit`}
           </span>
+          {hasActiveBeacons && (
+            <span className={`map-beacon-badge ${isStudentInBeaconRange ? 'beacon-in-range' : 'beacon-out-range'}`}>
+              {isStudentInBeaconRange
+                ? `📡 In ESP32 Beacon Zone (~${effectiveBeaconRadius}m)`
+                : `📡 Outside Beacon Range (~${effectiveBeaconRadius}m)`}
+            </span>
+          )}
         </div>
       )}
 
@@ -335,6 +435,21 @@ export default function GeofenceMap({
             <span className="legend-dot center-dot"></span>
             <span>Permitted Radius ({validRadius}m)</span>
           </div>
+          {hasActiveBeacons ? (
+            <div className="legend-item">
+              <span className="legend-dot beacon-active-dot"></span>
+              <span>
+                ESP32 Anchor (~{effectiveBeaconRadius}m): <b style={{ color: '#d97706' }}>ACTIVE (ON)</b>
+              </span>
+            </div>
+          ) : hasAnyBeacons ? (
+            <div className="legend-item">
+              <span className="legend-dot beacon-inactive-dot"></span>
+              <span style={{ color: '#64748b' }}>
+                ESP32 Anchor: <b>OFF (Inactive)</b>
+              </span>
+            </div>
+          ) : null}
           {hasStudentPos && (
             <div className="legend-item">
               <span className={`legend-dot ${isStudentInside ? 'student-inside-dot' : 'student-outside-dot'}`}></span>

@@ -225,3 +225,154 @@
 .geofence-map-wrapper .leaflet-bottom {
   z-index: 300 !important;
 }
+
+/* =========================================================
+   HostelGuard Glowing Yellow ESP32 Beacon Radio Range Layer
+   ========================================================= */
+
+.glowing-beacon-radio-circle {
+  stroke: #eab308 !important;
+  stroke-width: 2.5px !important;
+  animation: hg-beacon-glow-pulse 2.4s infinite ease-in-out !important;
+}
+
+@keyframes hg-beacon-glow-pulse {
+  0%, 100% {
+    stroke-opacity: 0.9;
+    fill-opacity: 0.22;
+    filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.7));
+  }
+  50% {
+    stroke-opacity: 1;
+    fill-opacity: 0.38;
+    filter: drop-shadow(0 0 20px rgba(234, 179, 8, 0.95));
+  }
+}
+
+.muted-beacon-circle {
+  stroke: #94a3b8 !important;
+  stroke-width: 1.5px !important;
+  stroke-opacity: 0.6 !important;
+  fill-opacity: 0.08 !important;
+}
+
+/* Map Distance Beacon Range Badge */
+.map-beacon-badge {
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.map-beacon-badge.beacon-in-range {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
+}
+
+.map-beacon-badge.beacon-out-range {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+
+/* Legend Dots for ESP32 Beacon */
+.legend-dot.beacon-active-dot {
+  background: #f59e0b;
+  border: 2px solid #fde68a;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.9);
+  animation: hg-legend-pulse 1.8s infinite;
+}
+
+.legend-dot.beacon-inactive-dot {
+  background: #94a3b8;
+  border: 2px solid #cbd5e1;
+}
+
+@keyframes hg-legend-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+/* Rich Beacon Map Popup */
+.beacon-map-popup {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  min-width: 220px;
+  line-height: 1.4;
+}
+
+.beacon-popup-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.beacon-popup-pulse-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #10b981;
+  display: inline-block;
+  box-shadow: 0 0 6px #10b981;
+  flex-shrink: 0;
+}
+
+.beacon-popup-off-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ef4444;
+  display: inline-block;
+  box-shadow: 0 0 6px #ef4444;
+  flex-shrink: 0;
+}
+
+.beacon-popup-status {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.badge-status-on {
+  color: #15803d;
+  font-weight: 700;
+}
+
+.badge-status-off {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.beacon-popup-details {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 11px;
+  color: #475569;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.strict-lock-notice {
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: #fef2f2;
+  border-radius: 6px;
+  color: #b91c1c;
+  font-weight: 600;
+  font-size: 10.5px;
+  border: 1px solid #fecaca;
+}
+

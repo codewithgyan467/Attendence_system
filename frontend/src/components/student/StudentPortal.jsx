@@ -1038,6 +1038,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           height="290px"
                           showLegend={true}
                           showDistanceBanner={true}
+                          beacons={dashboard?.beacons || []}
+                          bleMode={dashboard?.geofence?.ble_mode || 'STANDBY_OPTIONAL'}
                         />
                       )}
                     </div>
