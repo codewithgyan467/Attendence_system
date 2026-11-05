@@ -87,13 +87,28 @@ export async function getNativeOrBrowserLocation(options = {}) {
             });
           },
           (err) => {
-            // Fix 5: Detect Android OS master Location toggle turned off
-            if (err && err.code === 2) {
-              return reject(new Error('LOCATION_SWITCH_OFF: Android Location (GPS) switch is turned OFF. Please turn ON Location in your phone\'s quick-settings shade to enable Bluetooth & GPS verification.'));
-            }
-            reject(new Error(`GPS sensor error: ${err.message}`));
+            // Resilient Fallback: If raw satellite GPS times out indoors, use cell/Wi-Fi assisted fix
+            navigator.geolocation.getCurrentPosition(
+              (posFallback) => {
+                resolve({
+                  latitude: parseFloat(posFallback.coords.latitude.toFixed(6)),
+                  longitude: parseFloat(posFallback.coords.longitude.toFixed(6)),
+                  accuracy: posFallback.coords.accuracy || 25,
+                  isMockLocation: false,
+                  source: 'BROWSER_HTML5_GPS_ASSISTED'
+                });
+              },
+              (errFallback) => {
+                // Fix 5: Detect Android OS master Location toggle turned off
+                if (err && err.code === 2) {
+                  return reject(new Error('LOCATION_SWITCH_OFF: Android Location (GPS) switch is turned OFF. Please turn ON Location in your phone\'s quick-settings shade to enable Bluetooth & GPS verification.'));
+                }
+                reject(new Error(`GPS sensor error: ${err.message}`));
+              },
+              { enableHighAccuracy: false, timeout: 6000, maximumAge: 30000 }
+            );
           },
-          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+          { enableHighAccuracy: true, timeout: 6000, maximumAge: 15000 }
         );
       }
     };
