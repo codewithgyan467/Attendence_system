@@ -1040,6 +1040,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           showDistanceBanner={true}
                           beacons={dashboard?.beacons || []}
                           bleMode={dashboard?.geofence?.ble_mode || 'STANDBY_OPTIONAL'}
+                          isBeaconDetected={Boolean(verifiedBeaconInfo)}
+                          verifiedBeacon={verifiedBeaconInfo}
                         />
                       )}
                     </div>

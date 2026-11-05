@@ -52,6 +52,8 @@ export default function GeofenceMap({
   bleMode = 'STANDBY_OPTIONAL',
   beaconRadius = 15,
   showBeaconZone = true,
+  isBeaconDetected = false,
+  verifiedBeacon = null,
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -255,20 +257,29 @@ export default function GeofenceMap({
     }
 
     const beaconNames = activeBeaconsList.map(b => b.block_name || b.beacon_public_id).join(', ') || 'No active beacons broadcasting';
+    const statusLabel = isBeaconDetected
+      ? '<span class="badge-status-on">● LIVE SIGNAL VERIFIED (Board Powered ON)</span>'
+      : hasActiveBeacons
+      ? '<span style="color:#d97706; font-weight:700;">● ANCHOR CONFIGURED (Physical Scan on Check-in)</span>'
+      : '<span class="badge-status-off">✕ INACTIVE (Disabled in Admin)</span>';
+
+    const detectionNote = isBeaconDetected
+      ? `<div style="color:#15803d; font-size:11px; margin-top:2px;">✓ Verified by local Bluetooth scan from <b>${verifiedBeacon?.beaconPublicId || 'Corridor ESP32'}</b></div>`
+      : `<div style="color:#64748b; font-size:11px; margin-top:2px;">📡 Hardware Detection: The ESP32 is offline hardware. Your phone senses if it is powered ON by scanning Bluetooth during check-in.</div>`;
+
     const popupContent = `
       <div class="beacon-map-popup">
         <div class="beacon-popup-header">
-          <span class="${hasActiveBeacons ? 'beacon-popup-pulse-dot' : 'beacon-popup-off-dot'}"></span>
+          <span class="${isBeaconDetected ? 'beacon-popup-pulse-dot' : hasActiveBeacons ? 'beacon-popup-amber-dot' : 'beacon-popup-off-dot'}"></span>
           <strong>Hostel ESP32 Bluetooth Anchor</strong>
         </div>
         <div class="beacon-popup-status">
-          Status: <span class="${hasActiveBeacons ? 'badge-status-on' : 'badge-status-off'}">
-            ${hasActiveBeacons ? '● ACTIVE (Signal Broadcasting)' : '✕ OFF / Inactive'}
-          </span>
+          Status: ${statusLabel}
         </div>
         <div class="beacon-popup-details">
           <div>Physical Range: <b>~${effectiveBeaconRadius}m corridor zone</b></div>
-          <div>Active Beacons: <b>${beaconNames}</b></div>
+          <div>Configured Anchors: <b>${beaconNames}</b></div>
+          ${detectionNote}
           ${bleMode === 'STRICT_REQUIRED'
             ? '<div class="strict-lock-notice">🔒 Strict Lock: Device must be physically inside this yellow circle to mark attendance</div>'
             : '<div style="color:#15803d; font-size:11px; margin-top:2px;">✓ Smart Proximity Anchor Active</div>'}
@@ -420,10 +431,12 @@ export default function GeofenceMap({
             {isStudentInside ? '✓ Inside Geofence' : `✕ Exceeds ${validRadius}m Limit`}
           </span>
           {hasActiveBeacons && (
-            <span className={`map-beacon-badge ${isStudentInBeaconRange ? 'beacon-in-range' : 'beacon-out-range'}`}>
-              {isStudentInBeaconRange
-                ? `📡 In ESP32 Beacon Zone (~${effectiveBeaconRadius}m)`
-                : `📡 Outside Beacon Range (~${effectiveBeaconRadius}m)`}
+            <span className={`map-beacon-badge ${isBeaconDetected ? 'beacon-verified' : isStudentInBeaconRange ? 'beacon-in-range' : 'beacon-out-range'}`}>
+              {isBeaconDetected
+                ? `📡 ESP32 Live Signal Verified`
+                : isStudentInBeaconRange
+                ? `📍 In ESP32 Anchor Zone (~${effectiveBeaconRadius}m)`
+                : `📍 Outside Anchor Zone (~${effectiveBeaconRadius}m)`}
             </span>
           )}
         </div>
@@ -435,18 +448,25 @@ export default function GeofenceMap({
             <span className="legend-dot center-dot"></span>
             <span>Permitted Radius ({validRadius}m)</span>
           </div>
-          {hasActiveBeacons ? (
+          {isBeaconDetected ? (
+            <div className="legend-item">
+              <span className="legend-dot beacon-detected-dot"></span>
+              <span>
+                ESP32 Anchor (~{effectiveBeaconRadius}m): <b style={{ color: '#16a34a' }}>Live Signal Verified (ON)</b>
+              </span>
+            </div>
+          ) : hasActiveBeacons ? (
             <div className="legend-item">
               <span className="legend-dot beacon-active-dot"></span>
               <span>
-                ESP32 Anchor (~{effectiveBeaconRadius}m): <b style={{ color: '#d97706' }}>ACTIVE (ON)</b>
+                ESP32 Anchor (~{effectiveBeaconRadius}m): <b style={{ color: '#d97706' }}>Configured (~15m BLE Zone)</b>
               </span>
             </div>
           ) : hasAnyBeacons ? (
             <div className="legend-item">
               <span className="legend-dot beacon-inactive-dot"></span>
               <span style={{ color: '#64748b' }}>
-                ESP32 Anchor: <b>OFF (Inactive)</b>
+                ESP32 Anchor: <b>Disabled in Admin</b>
               </span>
             </div>
           ) : null}

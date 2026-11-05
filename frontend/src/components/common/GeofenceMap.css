@@ -274,6 +274,13 @@
   box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
 }
 
+.map-beacon-badge.beacon-verified {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.25);
+}
+
 .map-beacon-badge.beacon-out-range {
   background: #f1f5f9;
   color: #64748b;
@@ -281,6 +288,13 @@
 }
 
 /* Legend Dots for ESP32 Beacon */
+.legend-dot.beacon-detected-dot {
+  background: #16a34a;
+  border: 2px solid #bbf7d0;
+  box-shadow: 0 0 10px rgba(22, 163, 74, 0.9);
+  animation: hg-legend-pulse 1.8s infinite;
+}
+
 .legend-dot.beacon-active-dot {
   background: #f59e0b;
   border: 2px solid #fde68a;
@@ -326,6 +340,16 @@
   background: #10b981;
   display: inline-block;
   box-shadow: 0 0 6px #10b981;
+  flex-shrink: 0;
+}
+
+.beacon-popup-amber-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #f59e0b;
+  display: inline-block;
+  box-shadow: 0 0 6px #f59e0b;
   flex-shrink: 0;
 }
 
