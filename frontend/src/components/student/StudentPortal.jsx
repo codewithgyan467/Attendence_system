@@ -205,7 +205,20 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       return;
     }
 
-    const bleMode = dashboard?.geofence?.ble_mode || 'STANDBY_OPTIONAL';
+    // 1. Fetch fresh dashboard state to ensure latest authoritative geofence & BLE policy
+    let currentBleMode = dashboard?.geofence?.ble_mode;
+    let currentGeofence = dashboard?.geofence;
+    try {
+      const freshDash = await api.student.getDashboard();
+      if (freshDash?.geofence) {
+        currentGeofence = freshDash.geofence;
+        currentBleMode = freshDash.geofence.ble_mode;
+        setDashboard(freshDash);
+      }
+    } catch (_) {
+      // Fallback to cached dashboard
+    }
+    const bleMode = currentBleMode || 'STRICT_REQUIRED';
 
     setCheckinStep('verifying_gps');
     setCheckinError(null);
@@ -1468,133 +1481,136 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                       </div>
                     )}
 
-                    {checkinStep === 'failed' && (
-                      <div className="py-4">
-                        <AlertTriangle size={56} className="text-danger mb-3" />
-                        <h5 className="fw-bold text-danger mb-2">Check-In Verification Failed</h5>
-                        <div className="alert alert-danger py-2 px-3 small mx-auto mb-3" style={{ maxWidth: '460px' }}>
-                          {checkinError || 'Verification was rejected.'}
-                        </div>
+                    {checkinStep === 'failed' && (() => {
+                      const errLower = (checkinError || '').toLowerCase();
+                      const isEnrollError = errLower.includes('facial embeddings') || errLower.includes('face profile') || errLower.includes('onboarding');
+                      const isLockError = errLower.includes('locked');
+                      const isBleError = errLower.includes('layer 2') || errLower.includes('bluetooth') || errLower.includes('beacon') || errLower.includes('esp32') || errLower.includes('hardware presence') || errLower.includes('strict');
+                      const isFaceError = errLower.includes('physically present') || errLower.includes('anti-spoof') || errLower.includes('liveness') || errLower.includes('match') || errLower.includes('camera') || errLower.includes('facial') || errLower.includes('photo');
 
-                        {/* CASE A: Missing Facial Registration / Onboarding */}
-                        {(checkinError?.toLowerCase().includes('facial embeddings') || checkinError?.toLowerCase().includes('face profile') || checkinError?.toLowerCase().includes('onboarding')) ? (
-                          <div className="d-flex flex-column align-items-center gap-2">
-                            <div className="card bg-warning-subtle border-warning border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
-                              <div className="fw-bold text-dark small mb-1">📸 Identity Verification Required</div>
-                              <div className="small text-muted">
-                                Your facial profile is not yet registered in the hostel system. Please complete your face enrollment to mark attendance.
+                      return (
+                        <div className="py-4">
+                          <AlertTriangle size={52} className="text-danger mb-3" />
+                          <h5 className="fw-bold text-danger mb-3">Check-In Verification Failed</h5>
+
+                          {/* CASE A: Identity Enrollment Required */}
+                          {isEnrollError ? (
+                            <div className="d-flex flex-column align-items-center gap-2">
+                              <div className="card bg-warning-subtle border-warning border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
+                                <div className="fw-bold text-dark small mb-1">📸 Identity Verification Required</div>
+                                <div className="small text-muted">
+                                  Your facial profile is not yet registered in the hostel system. Please complete your face enrollment to mark attendance.
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn-warning px-4 py-2 fw-semibold d-inline-flex align-items-center gap-2 shadow-sm text-dark"
+                                onClick={() => {
+                                  setShowEnrollModal(true);
+                                  startEnrollCamera();
+                                }}
+                              >
+                                <Camera size={18} /> Enroll Face Identity (10s)
+                              </button>
+                            </div>
+                          ) : isLockError ? (
+                            /* CASE B: Security Lockout */
+                            <div className="d-flex flex-column align-items-center gap-2">
+                              <div className="card bg-danger-subtle border-danger border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
+                                <div className="fw-bold text-danger small mb-1">🔒 Security Lockout Active</div>
+                                <div className="small text-muted">
+                                  Your account is locked from roll call check-in. The hostel administrator or warden must clear your strikes in the Admin Security Desk.
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn-danger btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
+                                onClick={() => {
+                                  if (onSelectTab) onSelectTab('student_support');
+                                  setTicketForm({
+                                    category: 'ATTENDANCE',
+                                    subject: `Strike Reset Appeal - Roll ${student.roll_number || user?.username}`,
+                                    message: 'My check-in triggered a strike lockout. Please reset my strikes in the Security Incident Desk so I can complete roll call.'
+                                  });
+                                }}
+                              >
+                                <LifeBuoy size={14} /> Submit Strike Appeal to Warden
+                              </button>
+                            </div>
+                          ) : isBleError ? (
+                            /* CASE C: Layer 2 - ESP32 Hardware Presence Lock */
+                            <div className="d-flex flex-column align-items-center gap-2">
+                              <div className="card bg-danger-subtle border-danger border-opacity-25 p-3.5 rounded-3 mb-2 text-start shadow-sm" style={{ maxWidth: '460px' }}>
+                                <div className="fw-bold text-danger small mb-1.5 d-flex align-items-center gap-1.5">
+                                  <Bluetooth size={18} /> Layer 2: Hardware Presence Lock Notice
+                                </div>
+                                <div className="small text-danger mb-2.5 fw-medium" style={{ lineHeight: '1.45' }}>
+                                  {checkinError}
+                                </div>
+                                <div className="small text-muted border-top border-danger border-opacity-15 pt-2">
+                                  <strong className="text-dark">Strict Mode Troubleshooting:</strong>
+                                  <ul className="mb-0 ps-3 mt-1 text-muted" style={{ fontSize: '12px', lineHeight: '1.5' }}>
+                                    <li>Ensure <strong>Bluetooth is turned ON</strong> in your device settings.</li>
+                                    <li>Walk within <strong>~15 meters</strong> of an authorized floor beacon ({activeBeaconList}).</li>
+                                    <li>Ensure the ESP32 board is plugged into USB power and LED is glowing.</li>
+                                    <li>On Android, use Google Chrome. In the Bluetooth prompt, tap your beacon and click <strong>Pair</strong>.</li>
+                                    <li>On iPhone, Apple Safari blocks Bluetooth. Open this page in <strong>Bluefy BLE Browser</strong> (free on App Store).</li>
+                                  </ul>
+                                </div>
+                              </div>
+                              <button
+                                className="btn btn-primary btn-sm px-4 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
+                                onClick={handleVerifyLocation}
+                              >
+                                <RefreshCw size={14} /> Retry Hardware Presence Check
+                              </button>
+                            </div>
+                          ) : isFaceError ? (
+                            /* CASE D: Face Verification Notice */
+                            <div className="d-flex flex-column align-items-center gap-2">
+                              <div className="card bg-warning-subtle border-warning border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
+                                <div className="fw-bold text-dark small mb-1 d-flex align-items-center gap-1">
+                                  <AlertTriangle size={15} className="text-warning" /> Face Verification Notice
+                                </div>
+                                <div className="small text-dark">
+                                  {checkinError || "We couldn't verify that you're physically present. Please look directly at the camera in good lighting and try again."}
+                                </div>
+                              </div>
+                              <button
+                                className="btn btn-primary btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
+                                onClick={() => {
+                                  setCheckinStep('camera_active');
+                                  startCamera();
+                                }}
+                              >
+                                <RefreshCw size={14} /> Try Face Verification Again
+                              </button>
+                            </div>
+                          ) : (
+                            /* CASE E: Layer 1 - Outside Geofence Perimeter */
+                            <div className="d-flex flex-column align-items-center gap-2">
+                              <div className="card bg-danger-subtle border-danger border-opacity-25 p-3.5 rounded-3 mb-2 text-start shadow-sm" style={{ maxWidth: '440px' }}>
+                                <div className="fw-bold text-danger small mb-1.5 d-flex align-items-center gap-1.5">
+                                  <MapPin size={16} /> Layer 1: Geofence Perimeter Alert
+                                </div>
+                                <div className="small text-danger mb-2">
+                                  {checkinError || 'You are outside the permitted hostel boundary. Please physically move inside the campus perimeter.'}
+                                </div>
+                              </div>
+                              <button
+                                className="btn btn-primary btn-sm px-4 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
+                                onClick={handleVerifyLocation}
+                              >
+                                <RefreshCw size={14} /> Check Location Again
+                              </button>
+                              <div className="text-muted small mt-1" style={{ fontSize: '11px', maxWidth: '380px' }}>
+                                💡 <strong>Tip:</strong> Turning on your phone's Wi-Fi helps your GPS lock onto campus location instantly.
                               </div>
                             </div>
-                            <button
-                              type="button"
-                              className="btn btn-warning px-4 py-2 fw-semibold d-inline-flex align-items-center gap-2 shadow-sm text-dark"
-                              onClick={() => {
-                                setShowEnrollModal(true);
-                                startEnrollCamera();
-                              }}
-                            >
-                              <Camera size={18} /> Enroll Face Identity (10s)
-                            </button>
-                          </div>
-                        ) : checkinError?.toLowerCase().includes('locked') ? (
-                          /* CASE B: Account is Locked by Security Policy */
-                          <div className="d-flex flex-column align-items-center gap-2">
-                            <div className="card bg-danger-subtle border-danger border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
-                              <div className="fw-bold text-danger small mb-1">🔒 Security Lockout Active</div>
-                              <div className="small text-muted">
-                                Your account is locked from roll call check-in. The hostel administrator or warden must clear your strikes in the Admin Security Desk.
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              className="btn btn-danger btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
-                              onClick={() => {
-                                if (onSelectTab) onSelectTab('student_support');
-                                setTicketForm({
-                                   category: 'ATTENDANCE',
-                                  subject: `Strike Reset Appeal - Roll ${student.roll_number || user?.username}`,
-                                  message: 'My check-in triggered a strike lockout due to GPS sensor variance inside the hostel room. Please reset my strikes in the Security Incident Desk so I can complete roll call.'
-                                });
-                              }}
-                            >
-                              <LifeBuoy size={14} /> Submit Strike Appeal to Warden
-                            </button>
-                          </div>
-                        ) : (checkinError?.toLowerCase().includes('bluetooth') || checkinError?.toLowerCase().includes('beacon') || checkinError?.toLowerCase().includes('esp32') || checkinError?.toLowerCase().includes('hardware presence') || checkinError?.toLowerCase().includes('strict hardware lock')) ? (
-                          /* CASE BLE: Hardware Presence Lock Notice (ESP32 Beacon) */
-                          <div className="d-flex flex-column align-items-center gap-2">
-                            <div className="card bg-danger-subtle border-danger border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '460px' }}>
-                              <div className="fw-bold text-danger small mb-1 d-flex align-items-center gap-1.5">
-                                <Bluetooth size={16} /> Hardware Presence Lock Notice
-                              </div>
-                              <div className="small text-danger mb-2">
-                                {checkinError}
-                              </div>
-                              <div className="small text-muted border-top border-danger border-opacity-10 pt-2">
-                                <strong className="text-dark">Strict Mode Requirements:</strong>
-                                <ul className="mb-0 ps-3 mt-1 text-muted" style={{ fontSize: '12px' }}>
-                                  <li>Turn <strong>ON</strong> Bluetooth on your phone/laptop.</li>
-                                  <li>Stand within ~15 meters of an authorized floor beacon ({activeBeaconList}).</li>
-                                  <li>Ensure the ESP32 board is plugged into USB power and LED is pulsing.</li>
-                                  <li>On Android, use Chrome or Edge. On iOS, use the Bluefy BLE browser.</li>
-                                </ul>
-                              </div>
-                            </div>
-                            <button
-                              className="btn btn-primary btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
-                              onClick={handleVerifyLocation}
-                            >
-                              <RefreshCw size={14} /> Retry Hardware Presence Check
-                            </button>
-                          </div>
-                        ) : (checkinError?.toLowerCase().includes('physically present') || checkinError?.toLowerCase().includes('anti-spoof') || checkinError?.toLowerCase().includes('liveness') || checkinError?.toLowerCase().includes('match') || checkinError?.toLowerCase().includes('camera') || checkinError?.toLowerCase().includes('facial') || checkinError?.toLowerCase().includes('photo')) ? (
-                          /* CASE C: Face or Liveness Verification Notice (Section 24) */
-                          <div className="d-flex flex-column align-items-center gap-2">
-                            <div className="card bg-warning-subtle border-warning border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
-                              <div className="fw-bold text-dark small mb-1 d-flex align-items-center gap-1">
-                                <AlertTriangle size={15} className="text-warning" /> Face Verification Notice
-                              </div>
-                              <div className="small text-dark">
-                                We couldn't verify that you're physically present. Please look directly at the camera in good lighting and try again.
-                              </div>
-                            </div>
-                            <button
-                              className="btn btn-primary btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
-                              onClick={() => {
-                                setCheckinStep('camera_active');
-                                startCamera();
-                              }}
-                            >
-                              <RefreshCw size={14} /> Try Face Verification Again
-                            </button>
-                            <div className="text-muted small mt-1" style={{ fontSize: '11px', maxWidth: '380px' }}>
-                              💡 <strong>Tip:</strong> Please try again in better lighting. Avoid backlighting or tilted angles.
-                            </div>
-                          </div>
-                        ) : (
-                          /* CASE D: Standard Location / Accuracy Issue */
-                          <div className="d-flex flex-column align-items-center gap-2">
-                            <div className="card bg-danger-subtle border-danger border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
-                              <div className="fw-bold text-danger small mb-1 d-flex align-items-center gap-1">
-                                <AlertTriangle size={15} /> Outside Attendance Area
-                              </div>
-                              <div className="small text-danger">
-                                You are outside the authorized hostel attendance area. Please move closer to the hostel and try again.
-                              </div>
-                            </div>
-                            <button
-                              className="btn btn-primary btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
-                              onClick={handleVerifyLocation}
-                            >
-                              <RefreshCw size={14} /> Check Location Again
-                            </button>
-                            <div className="text-muted small mt-1" style={{ fontSize: '11px', maxWidth: '380px' }}>
-                              💡 <strong>Tip:</strong> Turning on your phone's Wi-Fi helps your device lock onto campus location beacons instantly.
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          )}
+                        </div>
+                      );
+                    })()}
                   </>
                 )}
               </div>

@@ -330,10 +330,15 @@ export async function scanHostelBleBeacon(options = {}) {
   if (onProgress) onProgress({ status: 'REQUESTING_DEVICE', message: 'Scanning for nearby hostel ESP32 beacons...' });
 
   let device = null;
+  const isIOSDevice = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
   try {
     device = await navigator.bluetooth.requestDevice({
       filters: [
         { namePrefix: 'HG-BEACON' },
+        { namePrefix: 'HG-' },
+        { namePrefix: 'HostelGuard' },
+        { namePrefix: 'Hostel' },
         { services: [HOSTEL_SERVICE_UUID] }
       ],
       optionalServices: [HOSTEL_SERVICE_UUID]
@@ -343,7 +348,7 @@ export async function scanHostelBleBeacon(options = {}) {
       return {
         success: false,
         reason: 'BLUETOOTH_DEVICE_NOT_SELECTED',
-        message: 'No hostel beacon was selected, or Bluetooth pairing was cancelled. Please ensure your floor ESP32 board is powered ON and nearby.'
+        message: 'No hostel beacon was selected, or Bluetooth pairing was cancelled. Please ensure your floor ESP32 board is plugged into power and Bluetooth is enabled on your phone.'
       };
     }
     if (err.name === 'SecurityError') {
@@ -356,7 +361,9 @@ export async function scanHostelBleBeacon(options = {}) {
     return {
       success: false,
       reason: 'BLUETOOTH_REQUEST_ERROR',
-      message: err.message || 'Failed to initialize Bluetooth scan.'
+      message: isIOSDevice
+        ? 'Physical Presence Lock Active: Apple Safari blocks Web Bluetooth. To detect the hostel ESP32 beacon on iPhone, open HostelGuard in "Bluefy - Web BLE Browser" (free on App Store) or use an Android phone running Chrome.'
+        : (err.message || 'Failed to initialize Bluetooth scan. Please ensure Bluetooth is ON in Android Settings.')
     };
   }
 
