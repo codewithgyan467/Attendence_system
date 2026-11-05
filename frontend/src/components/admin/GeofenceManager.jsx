@@ -673,21 +673,20 @@ export default function GeofenceManager() {
 
             <div className="card-body p-4">
               {/* ESP32 Hardware Status & Simple Admin Quick Guide */}
-              <div className="card border-0 rounded-3 p-3 mb-4 shadow-sm bg-light border-start border-4 border-success">
+              <div className={`card border-0 rounded-3 p-3 mb-4 shadow-sm bg-light border-start border-4 ${bleMode === 'STRICT_REQUIRED' ? 'border-danger' : (bleMode === 'SOFT_ANCHOR' ? 'border-warning' : 'border-primary')}`}>
                 <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
                   <div className="d-flex align-items-center gap-2">
-                    <span className="spinner-grow spinner-grow-sm text-success" role="status" style={{ width: '10px', height: '10px' }}></span>
+                    <Radio size={16} className={bleMode === 'STRICT_REQUIRED' ? 'text-danger' : 'text-primary'} />
                     <h6 className="fw-bold mb-0 text-dark d-flex align-items-center gap-2" style={{ fontSize: '14px' }}>
-                      <Radio size={16} className="text-success" />
-                      Hostel Bluetooth Radio Anchors: Active & Broadcasting
+                      Hostel Bluetooth Radio Anchors (ESP32)
                     </h6>
                   </div>
-                  <span className="badge bg-success text-white px-2 py-1" style={{ fontSize: '11px' }}>
-                    Signal: Active
+                  <span className={`badge ${bleMode === 'STRICT_REQUIRED' ? 'bg-danger text-white' : (bleMode === 'SOFT_ANCHOR' ? 'bg-warning text-dark' : 'bg-info text-dark')} px-2 py-1`} style={{ fontSize: '11px' }}>
+                    {bleMode === 'STRICT_REQUIRED' ? 'Strict Lock: Hardware Mandatory' : (bleMode === 'SOFT_ANCHOR' ? 'Soft Anchor: Smart Proximity' : 'Standby Mode: GPS & Face')}
                   </span>
                 </div>
                 <p className="text-muted small mb-2" style={{ fontSize: '12px' }}>
-                  Students within Bluetooth range of an authorized hostel ESP32 board receive instant verified check-in. For multi-story hostels, place one ESP32 per floor or wing.
+                  <strong>Standalone Offline Hardware:</strong> ESP32 boards broadcast offline 2.4 GHz Bluetooth radio signals locally (~15m corridor range). They do not connect to Wi-Fi or the cloud. A board&apos;s physical presence and power are verified in real time when a student&apos;s phone Bluetooth antenna scans during check-in.
                 </p>
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <form onSubmit={handleVerifyLiveToken} className="d-flex gap-2 align-items-center">
@@ -784,8 +783,8 @@ export default function GeofenceManager() {
                       <th>Beacon ID</th>
                       <th>Floor / Wing Location</th>
                       <th>Security Link</th>
-                      <th>Last Signal Check</th>
-                      <th>Status</th>
+                      <th>Last Student Check-in Scan</th>
+                      <th>Policy Status</th>
                       <th className="text-end">Action</th>
                     </tr>
                   </thead>
@@ -811,12 +810,12 @@ export default function GeofenceManager() {
                           <td>
                             <span className="text-muted">
                               <Clock size={12} className="me-1 inline" />
-                              {b.last_seen_at ? new Date(b.last_seen_at).toLocaleTimeString() : 'Active (Signal Broadcasting)'}
+                              {b.last_seen_at ? new Date(b.last_seen_at).toLocaleTimeString() : 'Awaiting Student Scan'}
                             </span>
                           </td>
                           <td>
                             <span className={`badge ${b.is_active ? 'bg-success' : 'bg-secondary'}`}>
-                              {b.is_active ? 'Active' : 'Disabled'}
+                              {b.is_active ? 'Enabled' : 'Disabled'}
                             </span>
                           </td>
                           <td className="text-end">

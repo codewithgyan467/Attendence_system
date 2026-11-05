@@ -86,9 +86,13 @@ describe('HostelGuard Enterprise v3.2 - Multi-Floor BLE & Offline Store-and-Forw
 
     // Hydrate BeaconCache
     await beaconCache.hydrate();
+
+    // Isolate geofence to STANDBY_OPTIONAL during offline sync test suite
+    await runQuery(`UPDATE geofence_configs SET ble_mode = 'STANDBY_OPTIONAL' WHERE is_active = 1`);
   });
 
   afterAll(async () => {
+    await runQuery(`UPDATE geofence_configs SET ble_mode = 'STRICT_REQUIRED' WHERE is_active = 1`);
     await runQuery(`DELETE FROM attendance_evidence WHERE student_id = ?`, [TEST_STUDENT_ID]);
     await runQuery(`DELETE FROM attendance_records WHERE student_id = ?`, [TEST_STUDENT_ID]);
     await runQuery(`DELETE FROM student_face_embeddings WHERE student_id = ?`, [TEST_STUDENT_ID]);

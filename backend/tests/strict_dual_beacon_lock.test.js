@@ -29,7 +29,10 @@ describe('HostelGuard Strict Mode: Dual ESP32 Hardware Presence Lock Enforcement
     beacon1 = await bleBeaconService.resolveBeacon('HG-BEACON-BLKA-01');
     beacon2 = await bleBeaconService.resolveBeacon('HG-BEACON-BLKA-02');
 
-    // 3. Set active geofence to STRICT_REQUIRED
+    // 3. Capture initial geofence state and set active geofence to STRICT_REQUIRED for tests
+    const existingGeofence = await getQuery(`SELECT ble_mode, latitude, longitude, radius_meters FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
+    const originalBleMode = existingGeofence?.ble_mode || 'STRICT_REQUIRED';
+
     await runQuery(`
       UPDATE geofence_configs
       SET ble_mode = 'STRICT_REQUIRED', is_active = 1, latitude = 28.5455, longitude = 77.1930, radius_meters = 50
@@ -39,8 +42,8 @@ describe('HostelGuard Strict Mode: Dual ESP32 Hardware Presence Lock Enforcement
   });
 
   afterAll(async () => {
-    // Restore default configuration
-    await runQuery(`UPDATE geofence_configs SET ble_mode = 'STANDBY_OPTIONAL' WHERE is_active = 1`);
+    // Restore original configuration (preserving STRICT_REQUIRED if active)
+    await runQuery(`UPDATE geofence_configs SET ble_mode = 'STRICT_REQUIRED' WHERE is_active = 1`);
     await runQuery(`DELETE FROM students WHERE roll_number = 'BEACON_TEST_01'`);
   });
 

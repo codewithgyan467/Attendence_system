@@ -32,9 +32,13 @@ describe('HostelGuard Enterprise v4.0 - Advanced Facial Security & Anti-Spoofing
       INSERT INTO student_face_embeddings (id, student_id, angle_label, embedding_vector, quality_score, liveness_score)
       VALUES (?, ?, 'FRONT', ?, 1.0, 1.0)
     `, [uuidv4(), testStudentId, JSON.stringify(testVec)]);
+
+    // Isolate geofence to STANDBY_OPTIONAL for pure facial security validation
+    await runQuery(`UPDATE geofence_configs SET ble_mode = 'STANDBY_OPTIONAL' WHERE is_active = 1`);
   });
 
   afterAll(async () => {
+    await runQuery(`UPDATE geofence_configs SET ble_mode = 'STRICT_REQUIRED' WHERE is_active = 1`);
     await runQuery(`DELETE FROM student_face_embeddings WHERE student_id = ?`, [testStudentId]);
     await runQuery(`DELETE FROM attendance_records WHERE roll_number = ?`, [testRollNumber]);
     await runQuery(`DELETE FROM attendance_challenges WHERE student_id = ?`, [testStudentId]);

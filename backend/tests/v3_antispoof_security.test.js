@@ -70,9 +70,13 @@ describe('HostelGuard v3.0 Zero-Trust Anti-Spoof & Unfair-Means Security Suite',
       INSERT INTO student_face_embeddings (id, student_id, angle_label, embedding_vector, quality_score, liveness_score)
       VALUES (?, ?, 'FRONT', ?, 1.0, 1.0)
     `, [uuidv4(), TEST_STUDENT_ID_PEER, JSON.stringify(mockVec)]);
+
+    // Isolate geofence to STANDBY_OPTIONAL for pure anti-spoof layer baseline testing
+    await runQuery(`UPDATE geofence_configs SET ble_mode = 'STANDBY_OPTIONAL' WHERE is_active = 1`);
   });
 
   afterAll(async () => {
+    await runQuery(`UPDATE geofence_configs SET ble_mode = 'STRICT_REQUIRED' WHERE is_active = 1`);
     await runQuery(`DELETE FROM attendance_evidence WHERE student_id IN (?, ?)`, [TEST_STUDENT_ID, TEST_STUDENT_ID_PEER]);
     await runQuery(`DELETE FROM attendance_challenges WHERE student_id IN (?, ?)`, [TEST_STUDENT_ID, TEST_STUDENT_ID_PEER]);
     await runQuery(`DELETE FROM attendance_records WHERE student_id IN (?, ?)`, [TEST_STUDENT_ID, TEST_STUDENT_ID_PEER]);

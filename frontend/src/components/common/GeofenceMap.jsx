@@ -452,7 +452,14 @@ export default function GeofenceMap({
             <div className="legend-item">
               <span className="legend-dot beacon-detected-dot"></span>
               <span>
-                ESP32 Anchor (~{effectiveBeaconRadius}m): <b style={{ color: '#16a34a' }}>Live Signal Verified (ON)</b>
+                ESP32 Anchor (~{effectiveBeaconRadius}m): <b style={{ color: '#16a34a' }}>● Signal Verified (Board ON)</b>
+              </span>
+            </div>
+          ) : bleMode === 'STRICT_REQUIRED' ? (
+            <div className="legend-item">
+              <span className="legend-dot" style={{ backgroundColor: '#dc2626', boxShadow: '0 0 6px rgba(220, 38, 38, 0.6)' }}></span>
+              <span>
+                ESP32 Anchor (~{effectiveBeaconRadius}m): <b style={{ color: '#dc2626' }}>Strict BLE Signal Required</b>
               </span>
             </div>
           ) : hasActiveBeacons ? (

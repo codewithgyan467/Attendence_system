@@ -32,9 +32,13 @@ beforeAll(async () => {
       room_number, hostel_block, device_id, failed_attempts, is_flagged_forge, is_active
     ) VALUES (?, ?, ?, 'Test Automated Student', ?, 'B.Tech', 2024, 1, 'A-101', 'Block A', 'DEV-TEST-001', 0, 0, 1)
   `, [TEST_STUDENT_ID, userId, TEST_ROLL, `${TEST_ROLL}@test.local`]);
+
+  // Set geofence to STANDBY_OPTIONAL for pure GPS domain rule test
+  await runQuery(`UPDATE geofence_configs SET ble_mode = 'STANDBY_OPTIONAL' WHERE is_active = 1`);
 });
 
 afterAll(async () => {
+  await runQuery(`UPDATE geofence_configs SET ble_mode = 'STRICT_REQUIRED' WHERE is_active = 1`);
   await runQuery(`DELETE FROM attendance_challenges WHERE student_id = ?`, [TEST_STUDENT_ID]);
   await runQuery(`DELETE FROM attendance_records WHERE student_id = ?`, [TEST_STUDENT_ID]);
   await runQuery(`DELETE FROM security_audit_logs WHERE student_id = ?`, [TEST_STUDENT_ID]);

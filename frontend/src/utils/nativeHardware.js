@@ -314,10 +314,13 @@ export async function scanHostelBleBeacon(options = {}) {
   const { timeoutMs = 12000, onProgress = null } = options;
 
   if (typeof navigator === 'undefined' || !navigator.bluetooth) {
+    const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
     return {
       success: false,
       reason: 'BLUETOOTH_API_UNSUPPORTED',
-      message: 'Web Bluetooth is not supported on this browser. On Android/PC, please use Google Chrome, Microsoft Edge, or Samsung Internet. On iOS, please use the Bluefy Web BLE browser or the HostelGuard native app.'
+      message: isIOS
+        ? 'Physical Presence Lock Active: Apple Safari blocks Web Bluetooth. To detect the hostel ESP32 beacon on iPhone, open HostelGuard in "Bluefy - Web BLE Browser" (free on App Store) or use an Android phone.'
+        : 'Web Bluetooth is not supported on this browser. On Android/PC, please use Google Chrome, Microsoft Edge, or Samsung Internet.'
     };
   }
 
