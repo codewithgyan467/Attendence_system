@@ -396,12 +396,6 @@ void loop() {
     Serial.printf("[BLE TICK] Slot #%u -> Rolling Token: %s (Advertised: %s)\n", currentSlot, currentRollingToken.c_str(), BEACON_SHORT_NAME);
   }
 
-    // Pulse LED once to indicate fresh 30s token broadcast
-    pulseLed(1, 50, 0);
-
-    Serial.printf("[XIAO-C6 TICK] Slot #%u -> Rolling Token: %s\n", currentSlot, currentRollingToken.c_str());
-  }
-
   delay(1000);
 }
 
