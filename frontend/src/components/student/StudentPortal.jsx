@@ -34,7 +34,7 @@ import {
   Wifi
 } from 'lucide-react';
 import GeofenceMap from '../common/GeofenceMap';
-import { playBiometricChime, detectFaceAngle } from '../../utils/faceAngleGuide';
+import { playBiometricChime, detectFaceAngle, detectBlinkEvent, resetBlinkTracker } from '../../utils/faceAngleGuide';
 
 const formatDisplayTime12h = (timeVal) => {
   if (!timeVal) return '';
@@ -166,6 +166,26 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       videoRef.current.play().catch((err) => console.warn('Video autoPlay prevented on step change:', err));
     }
   }, [checkinStep]);
+
+  // Live Eye-Blink (EAR) Liveness & Auto-Trigger Tracker
+  useEffect(() => {
+    if (checkinStep !== 'camera_active') return;
+    resetBlinkTracker();
+
+    let triggered = false;
+    const interval = setInterval(() => {
+      if (triggered || !videoRef.current || videoRef.current.readyState < 2) return;
+      const res = detectBlinkEvent(videoRef.current);
+      if (res && res.blinkDetected) {
+        triggered = true;
+        clearInterval(interval);
+        playBiometricChime('captured');
+        handleVerifyFace();
+      }
+    }, 180);
+
+    return () => clearInterval(interval);
+  }, [checkinStep, sessionToken]);
 
   // Callback ref guarantees video stream attaches the exact microsecond the DOM node mounts
   const attachVideoRef = (node) => {
@@ -1485,6 +1505,10 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                               >
                                 <RefreshCw size={12} /> Reload Feed
                               </button>
+                            </div>
+                            <div className="text-muted small mb-2" style={{ fontSize: '12px' }}>
+                              <Sparkles size={12} className="text-success me-1 d-inline" />
+                              Blink naturally to auto-verify, or tap button below
                             </div>
                             <div>
                               <button

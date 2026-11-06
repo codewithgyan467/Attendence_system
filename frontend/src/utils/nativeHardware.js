@@ -74,6 +74,8 @@ export async function getNativeOrBrowserLocation(options = {}) {
         isMockLocation: isMock,
         mockReason: nativeMockResult?.mockReason || hardwareLoc?.mockReason || (isMock ? 'NATIVE_MOCK_DETECTED' : 'NONE'),
         detectedApps: nativeMockResult?.detectedApps || hardwareLoc?.detectedApps || [],
+        satellitesVisible: hardwareLoc?.satellitesVisible ?? nativeMockResult?.satellitesVisible ?? null,
+        satellitesUsed: hardwareLoc?.satellitesUsed ?? nativeMockResult?.satellitesUsed ?? null,
         connectedWifi: wifiInfo,
         source: hardwareLoc?.source || 'CAPACITOR_NATIVE_GPS'
       };

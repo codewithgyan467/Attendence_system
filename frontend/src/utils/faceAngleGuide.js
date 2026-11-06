@@ -263,3 +263,70 @@ export async function detectFaceAngle(videoEl, activeTargetAngle = 'FRONT') {
         : '✓ Right Angle Detected'
   };
 }
+
+// -------------------------------------------------------------
+// 3. Real-Time Physiological Eye-Blink (EAR) Gaze & Liveness Tracker
+// -------------------------------------------------------------
+let eyeBandHistory = [];
+let lastBlinkTimestamp = 0;
+
+export function resetBlinkTracker() {
+  eyeBandHistory = [];
+  lastBlinkTimestamp = 0;
+}
+
+/**
+ * Detects natural human eye blink pattern: Open Eyes -> Eyelid Closure (Dip) -> Reopening (Recovery).
+ * Static photos and printed paper lack natural micro-motion and never blink.
+ */
+export function detectBlinkEvent(videoEl) {
+  if (!videoEl || videoEl.readyState < 2 || !videoEl.videoWidth || !videoEl.videoHeight) {
+    return { blinkDetected: false, confidence: 0 };
+  }
+
+  const W = 100;
+  const H = 80;
+  const { canvas, ctx } = getOffscreenContext(W, H);
+  if (!ctx) return { blinkDetected: false, confidence: 0 };
+
+  ctx.drawImage(videoEl, 0, 0, W, H);
+  // Sample eye-band region: Y between 26% and 46% of face height, X between 24% and 76%
+  const eyeYMin = Math.floor(H * 0.26);
+  const eyeYMax = Math.floor(H * 0.46);
+  const eyeXMin = Math.floor(W * 0.24);
+  const eyeXMax = Math.floor(W * 0.76);
+
+  const frame = ctx.getImageData(eyeXMin, eyeYMin, eyeXMax - eyeXMin, eyeYMax - eyeYMin);
+  const data = frame.data;
+  let darkPixelCount = 0;
+  const totalCount = (eyeXMax - eyeXMin) * (eyeYMax - eyeYMin);
+
+  for (let i = 0; i < data.length; i += 4) {
+    const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    if (lum < 60) darkPixelCount++;
+  }
+
+  const darkRatio = darkPixelCount / (totalCount || 1);
+  const now = Date.now();
+
+  eyeBandHistory.push({ time: now, darkRatio });
+  if (eyeBandHistory.length > 7) {
+    eyeBandHistory.shift();
+  }
+
+  // Detect blink signature: sustained open eyes -> sharp momentary dip -> rapid recovery
+  if (eyeBandHistory.length >= 4 && (now - lastBlinkTimestamp > 1400)) {
+    const ratios = eyeBandHistory.map((h) => h.darkRatio);
+    const maxRatio = Math.max(...ratios);
+    const minRatio = Math.min(...ratios);
+    const latestRatio = ratios[ratios.length - 1];
+
+    if (maxRatio > 0.03 && (minRatio / maxRatio) < 0.65 && latestRatio > (minRatio * 1.25)) {
+      lastBlinkTimestamp = now;
+      eyeBandHistory = [];
+      return { blinkDetected: true, confidence: 0.95 };
+    }
+  }
+
+  return { blinkDetected: false, confidence: 0.5 };
+}

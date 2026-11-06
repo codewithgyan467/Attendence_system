@@ -47,6 +47,41 @@ public class AntiSpoofBridgePlugin extends Plugin {
         "ru.gavrikov.mocklocations"
     );
 
+    private int satellitesVisible = 0;
+    private int satellitesUsedInFix = 0;
+
+    @Override
+    public void load() {
+        super.load();
+        initGnssTracker();
+    }
+
+    private void initGnssTracker() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                LocationManager lm = (LocationManager) getContext().getSystemService(Context.LOCATION_SERVICE);
+                if (lm != null) {
+                    lm.registerGnssStatusCallback(new android.location.GnssStatus.Callback() {
+                        @Override
+                        public void onSatelliteStatusChanged(@NonNull android.location.GnssStatus status) {
+                            int total = status.getSatelliteCount();
+                            int used = 0;
+                            for (int i = 0; i < total; i++) {
+                                if (status.usedInFix(i)) {
+                                    used++;
+                                }
+                            }
+                            satellitesVisible = total;
+                            satellitesUsedInFix = used;
+                        }
+                    }, new Handler(Looper.getMainLooper()));
+                }
+            } catch (SecurityException ignored) {
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
     private boolean isLocationMocked(Location location) {
         if (location == null) return false;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -132,6 +167,8 @@ public class AntiSpoofBridgePlugin extends Plugin {
         ret.put("mockDetected", isMock);
         ret.put("mockReason", reasons.isEmpty() ? "NONE" : String.join(";", reasons));
         ret.put("detectedApps", detectedApps);
+        ret.put("satellitesVisible", satellitesVisible);
+        ret.put("satellitesUsed", satellitesUsedInFix);
         ret.put("isNativeBridge", true);
         call.resolve(ret);
     }
@@ -160,6 +197,16 @@ public class AntiSpoofBridgePlugin extends Plugin {
                     reasons.add("HARDWARE_LOCATION_IS_MOCK");
                 }
 
+                // Raw GNSS Satellite Verification: Injected mock coordinates report 0 satellites
+                if (LocationManager.GPS_PROVIDER.equals(best.getProvider())) {
+                    Bundle extras = best.getExtras();
+                    int satsInExtras = extras != null ? extras.getInt("satellites", -1) : -1;
+                    if (satsInExtras == 0 || (satellitesVisible == 0 && best.getAccuracy() < 25.0f && isLocationMocked(best))) {
+                        isMock = true;
+                        reasons.add("ZERO_GNSS_SATELLITES_IN_GPS_FIX");
+                    }
+                }
+
                 JSObject res = new JSObject();
                 res.put("latitude", best.getLatitude());
                 res.put("longitude", best.getLongitude());
@@ -169,6 +216,8 @@ public class AntiSpoofBridgePlugin extends Plugin {
                 res.put("isMock", isMock);
                 res.put("mockReason", reasons.isEmpty() ? "NONE" : String.join(";", reasons));
                 res.put("detectedApps", detectedApps);
+                res.put("satellitesVisible", satellitesVisible);
+                res.put("satellitesUsed", satellitesUsedInFix);
                 res.put("source", "NATIVE_ANDROID_LOCATION_MANAGER");
                 call.resolve(res);
                 return;
