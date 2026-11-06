@@ -129,7 +129,10 @@ void setup() {
   wifiMulti.addAP(WIFI_SSID_1, WIFI_PASS_1);
   wifiMulti.addAP(WIFI_SSID_2, WIFI_PASS_2);
   wifiMulti.addAP("Shashanka's iPhone", WIFI_PASS_2); // ASCII apostrophe fallback
-  wifiMulti.addAP(WIFI_SSID_3, WIFI_PASS_3);
+  wifiMulti.addAP("iphone", WIFI_PASS_3);
+  wifiMulti.addAP("iPhone", WIFI_PASS_3);
+  wifiMulti.addAP("iPhone", "password123");
+  wifiMulti.addAP("iphone", "password123");
 
   Serial.println("[WIFI] Scanning and connecting to authorized Wi-Fi...");
   wifiMulti.run();

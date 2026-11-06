@@ -551,17 +551,32 @@ export async function scanHostelBleBeacon(options = {}) {
 
       let foundDevice = null;
       await BleClient.requestLEScan(
-        { services: [HOSTEL_SERVICE_UUID] },
+        {
+          namePrefix: 'HG-',
+          optionalServices: [HOSTEL_SERVICE_UUID],
+          scanMode: 1, // SCAN_MODE_LOW_LATENCY
+          allowDuplicates: true
+        },
         (result) => {
           if (result && result.device) {
-            foundDevice = result.device;
-            BleClient.stopLEScan().catch(() => {});
+            const dev = result.device;
+            const name = (dev.name || result.localName || '').trim();
+            const uuids = (dev.uuids || []).map(u => String(u).toLowerCase());
+            if (
+              name.startsWith('HG-') ||
+              name.startsWith('Hostel') ||
+              name.includes('BEACON') ||
+              uuids.includes(HOSTEL_SERVICE_UUID.toLowerCase())
+            ) {
+              foundDevice = dev;
+              BleClient.stopLEScan().catch(() => {});
+            }
           }
         }
       );
 
       const startScan = Date.now();
-      while (!foundDevice && (Date.now() - startScan < 4000)) {
+      while (!foundDevice && (Date.now() - startScan < 4500)) {
         await new Promise(r => setTimeout(r, 150));
       }
       try { await BleClient.stopLEScan(); } catch (_) {}
@@ -593,7 +608,21 @@ export async function scanHostelBleBeacon(options = {}) {
         try { parsed = JSON.parse(rawPayload); } catch (_) {
           const parts = rawPayload.split(':');
           if (parts.length >= 3) {
-            parsed = { id: parts[0], code: parts[1], slot: parseInt(parts[2], 10) };
+            // Firmware sends: BEACON_ID:slot:token
+            if (/^\d+$/.test(parts[1])) {
+              parsed = {
+                id: parts[0],
+                slot: parseInt(parts[1], 10),
+                code: parts[2]
+              };
+            } else {
+              // Legacy format fallback: id:code:slot
+              parsed = {
+                id: parts[0],
+                code: parts[1],
+                slot: parseInt(parts[2], 10)
+              };
+            }
           }
         }
 
@@ -804,11 +833,19 @@ export async function scanHostelBleBeacon(options = {}) {
     } catch (_) {
       const parts = rawPayload.split(':');
       if (parts.length >= 3) {
-        parsed = {
-          id: parts[0],
-          code: parts[1],
-          slot: parseInt(parts[2], 10)
-        };
+        if (/^\d+$/.test(parts[1])) {
+          parsed = {
+            id: parts[0],
+            slot: parseInt(parts[1], 10),
+            code: parts[2]
+          };
+        } else {
+          parsed = {
+            id: parts[0],
+            code: parts[1],
+            slot: parseInt(parts[2], 10)
+          };
+        }
       }
     }
 

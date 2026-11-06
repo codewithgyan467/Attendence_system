@@ -299,8 +299,12 @@ describe('Security, Concurrency & Release Hardening Tests', () => {
       expect(isTargetHealthy).toBe(true);
 
       // Clean up test target file
-      if (fs.existsSync(testRestoreTarget)) {
-        fs.unlinkSync(testRestoreTarget);
+      try {
+        if (fs.existsSync(testRestoreTarget)) {
+          fs.unlinkSync(testRestoreTarget);
+        }
+      } catch (_) {
+        // Windows file lock safe fallback
       }
     });
   });

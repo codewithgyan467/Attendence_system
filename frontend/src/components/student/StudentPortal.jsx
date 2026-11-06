@@ -301,6 +301,16 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
             lanWifiTicket,
             ticket: lanWifiTicket
           };
+        } else if (pos.connectedWifi && pos.connectedWifi.isConnected) {
+          // Multi-Router Strict Lock: Authorized Hostel Floor Wi-Fi Anchor (Instant 1-Click Verification)
+          const ssid = (pos.connectedWifi.ssid || '').trim();
+          setBleScanningStatus(`Layer 2 Check: Floor Wi-Fi Anchor Verified (${ssid})...`);
+          bleProof = {
+            channel: 'HOSTEL_WIFI_VERIFIED',
+            method: 'HOSTEL_WIFI_VERIFIED',
+            ssid: pos.connectedWifi.ssid,
+            bssid: pos.connectedWifi.bssid
+          };
         } else if (isIOSDevice && (typeof navigator === 'undefined' || !navigator.bluetooth)) {
           // 1-Click Silent Hardware Verification for iOS (Safari & Home Screen PWA)
           // Automatically passes Layer 2 without showing any Bluetooth errors
@@ -327,8 +337,18 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           });
 
           if (!bleRes.success) {
-            // If iOS user happens to open in Bluefy and BLE fails or times out, seamlessly fallback to silent attestation
-            if (isIOSDevice) {
+            // Safety fallback: If BLE scan timed out, check if connected to floor Wi-Fi
+            if (pos.connectedWifi && pos.connectedWifi.isConnected) {
+              const ssid = (pos.connectedWifi.ssid || '').trim();
+              setBleScanningStatus(`Layer 2 Check: Floor Wi-Fi Anchor Verified (${ssid})...`);
+              bleProof = {
+                channel: 'HOSTEL_WIFI_VERIFIED',
+                method: 'HOSTEL_WIFI_VERIFIED',
+                ssid: pos.connectedWifi.ssid,
+                bssid: pos.connectedWifi.bssid
+              };
+            } else if (isIOSDevice) {
+              // Seamless iOS fallback
               setBleScanningStatus('Layer 2 Check: Genuine iOS Hardware Attested (Single Click)...');
               bleProof = {
                 channel: 'IOS_SILENT_HARDWARE_ATTESTED',
@@ -344,7 +364,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
               // Android device rejection
               setCheckinError(
                 bleRes.message ||
-                `Layer 2 Check Failed: Hardware Bluetooth beacon proximity or floor Wi-Fi is strictly required (${activeBeaconList}). Please ensure Bluetooth is ON or connect to floor Wi-Fi.`
+                `Layer 2 Check Failed: Hardware Bluetooth beacon proximity or floor Wi-Fi is strictly required (${activeBeaconList}). Please stand near the floor beacon, connect to hostel floor Wi-Fi, or ensure Bluetooth is turned ON.`
               );
               setCheckinStep('failed');
               return;

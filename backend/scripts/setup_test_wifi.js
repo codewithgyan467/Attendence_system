@@ -22,10 +22,15 @@ async function main() {
     VALUES ('shashanka-iphone-straight', ?, 'iphone-hotspot-02', "Shashanka's iPhone", 'Mobile Hotspot 1 (ASCII)', -85, 1)
   `, [geoId]);
 
-  // 4. iphone (Hotspot)
+  // 4. iphone / iPhone (Hotspot variants)
   await runQuery(`
     INSERT OR REPLACE INTO site_wifi_access_points (id, geofence_id, bssid, ssid_label, block_name, min_rssi, is_active)
     VALUES ('iphone-hotspot-generic', ?, 'iphone-hotspot-03', 'iphone', 'Mobile Hotspot 2', -85, 1)
+  `, [geoId]);
+
+  await runQuery(`
+    INSERT OR REPLACE INTO site_wifi_access_points (id, geofence_id, bssid, ssid_label, block_name, min_rssi, is_active)
+    VALUES ('iphone-hotspot-capital', ?, 'iphone-hotspot-04', 'iPhone', 'Mobile Hotspot 2 (TitleCase)', -85, 1)
   `, [geoId]);
 
   // 5. Update site_wifi_clusters
