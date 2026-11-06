@@ -47,13 +47,18 @@ class AntiSpoofPolicyEngine {
       isMockLocation === true ||
       isMockLocation === 'true' ||
       isMockLocation === 1 ||
-      deviceInfo.isMock === true
+      deviceInfo.isMock === true ||
+      deviceInfo.isMockLocation === true ||
+      deviceInfo.mockAppDetected === true ||
+      (Array.isArray(deviceInfo.detectedApps) && deviceInfo.detectedApps.length > 0) ||
+      params.syntheticTelemetry === true ||
+      deviceInfo.syntheticTelemetry === true
     );
 
     let mockFlagStatus = 'CLEAN';
     if (isMock) {
       mockFlagStatus = 'MOCK_DETECTED';
-      riskScore += 85; // Confirmed mock location triggers DENY
+      riskScore += 90; // Confirmed mock location triggers instant DENY
       unfairMeansFlags.push('MOCK_PROVIDER_ACTIVE');
       reasonCodes.push('L1_MOCK_LOCATION_DETECTED');
     }
@@ -79,13 +84,15 @@ class AntiSpoofPolicyEngine {
     const allowedRadius = geofence.radius_meters || 20.0;
     const gpsSampleCount = Array.isArray(samples) && samples.length > 0 ? samples.length : 1;
 
-    // Multi-sample trajectory checks
+    // Multi-sample trajectory & synthetic frozen coordinate checks
     if (Array.isArray(samples) && samples.length >= 2) {
       let maxSpeed = 0;
+      let totalDrift = 0;
       for (let i = 1; i < samples.length; i++) {
         const prev = samples[i - 1];
         const curr = samples[i];
         const d = calculateHaversineDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
+        totalDrift += d;
         const dtSeconds = Math.max(0.1, (curr.timestamp - prev.timestamp) / 1000);
         const speed = d / dtSeconds; // m/s
         if (speed > maxSpeed) maxSpeed = speed;
@@ -96,6 +103,15 @@ class AntiSpoofPolicyEngine {
         riskScore += 75;
         unfairMeansFlags.push('IMPOSSIBLE_TRAJECTORY_JUMP');
         reasonCodes.push('L2_VELOCITY_ANOMALY');
+      }
+
+      // Synthetic Mock GPS Injection check:
+      // If 3+ samples taken over >= 1s have exactly 0.000m drift and no altitude
+      if (samples.length >= 3 && totalDrift === 0 && (!samples[0].altitude || samples[0].altitude === 0)) {
+        riskScore += 85;
+        mockFlagStatus = 'MOCK_DETECTED';
+        unfairMeansFlags.push('SYNTHETIC_MOCK_COORDINATES');
+        reasonCodes.push('L2_SYNTHETIC_COORDINATES');
       }
     }
 

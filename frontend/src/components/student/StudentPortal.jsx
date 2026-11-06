@@ -404,7 +404,11 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           isIOS: isIOSDevice,
           isSafari,
           gpuRenderer: iosAttestation.gpuRenderer,
-          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : ''
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+          isMock: pos.isMockLocation || false,
+          mockReason: pos.mockReason || null,
+          detectedApps: pos.detectedApps || [],
+          syntheticTelemetry: pos.syntheticTelemetry || false
         }
       });
 

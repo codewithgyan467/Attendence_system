@@ -1,6 +1,8 @@
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { Camera, CameraResultType, CameraSource, CameraDirection } from '@capacitor/camera';
+
+const AntiSpoofBridge = registerPlugin('AntiSpoofBridge');
 
 /**
  * Checks whether the application is running inside a native mobile wrapper (Android / iOS)
@@ -12,8 +14,9 @@ export function isNativeMobile() {
 
 /**
  * Unified Location Provider:
- * - Uses native Android GPS hardware via @capacitor/geolocation when on mobile.
- * - Gracefully falls back to HTML5 navigator.geolocation in web browsers with progressive settling.
+ * - Uses native Android GPS hardware via AntiSpoofBridge + @capacitor/geolocation when on mobile.
+ * - Detects OS-level mock location apps, AppOps mock providers, and known Fake GPS packages.
+ * - Gracefully falls back to HTML5 navigator.geolocation in web browsers with progressive settling & synthetic telemetry analysis.
  */
 export async function getNativeOrBrowserLocation(options = {}) {
   const { onProgress = null, maxWaitMs = 3500, targetAccuracy = 20 } = options;
@@ -28,6 +31,26 @@ export async function getNativeOrBrowserLocation(options = {}) {
         }
       }
 
+      // Check Native Android Mock Location & Fake GPS App Presence
+      let nativeMockResult = null;
+      try {
+        if (AntiSpoofBridge && AntiSpoofBridge.checkMockStatus) {
+          nativeMockResult = await AntiSpoofBridge.checkMockStatus();
+        }
+      } catch (mockErr) {
+        console.warn('Native mock check warning:', mockErr);
+      }
+
+      // Query hardware location
+      let hardwareLoc = null;
+      try {
+        if (AntiSpoofBridge && AntiSpoofBridge.getHardwareLocation) {
+          hardwareLoc = await AntiSpoofBridge.getHardwareLocation();
+        }
+      } catch (locErr) {
+        console.warn('Hardware location bridge warning:', locErr);
+      }
+
       const coordinates = await Geolocation.getCurrentPosition({
         enableHighAccuracy: true,
         timeout: 10000,
@@ -35,17 +58,28 @@ export async function getNativeOrBrowserLocation(options = {}) {
       });
 
       const isMock = Boolean(
+        nativeMockResult?.isMock ||
+        nativeMockResult?.mockDetected ||
+        hardwareLoc?.isMock ||
         coordinates.coords?.isMock ||
         coordinates.coords?.mocked ||
         coordinates.coords?.isFromMockProvider
       );
 
+      const lat = hardwareLoc?.latitude ?? coordinates.coords.latitude;
+      const lon = hardwareLoc?.longitude ?? coordinates.coords.longitude;
+      const acc = hardwareLoc?.accuracy ?? coordinates.coords.accuracy ?? 10;
+      const alt = hardwareLoc?.altitude ?? coordinates.coords.altitude ?? null;
+
       return {
-        latitude: parseFloat(coordinates.coords.latitude.toFixed(6)),
-        longitude: parseFloat(coordinates.coords.longitude.toFixed(6)),
-        accuracy: coordinates.coords.accuracy || 10,
+        latitude: parseFloat(lat.toFixed(6)),
+        longitude: parseFloat(lon.toFixed(6)),
+        accuracy: acc,
+        altitude: alt,
         isMockLocation: isMock,
-        source: 'CAPACITOR_NATIVE_GPS'
+        mockReason: nativeMockResult?.mockReason || hardwareLoc?.mockReason || (isMock ? 'NATIVE_MOCK_DETECTED' : 'NONE'),
+        detectedApps: nativeMockResult?.detectedApps || hardwareLoc?.detectedApps || [],
+        source: hardwareLoc?.source || 'CAPACITOR_NATIVE_GPS'
       };
     } catch (err) {
       console.warn('Native GPS error, falling back to browser API:', err);
@@ -61,6 +95,7 @@ export async function getNativeOrBrowserLocation(options = {}) {
     let bestReading = null;
     let watchId = null;
     let timer = null;
+    const collectedSamples = [];
 
     const finalize = () => {
       if (watchId !== null) {
@@ -72,8 +107,26 @@ export async function getNativeOrBrowserLocation(options = {}) {
         timer = null;
       }
 
+      // Synthetic Telemetry Analysis: Detect frozen/zero-jitter mock locations in browsers
+      let syntheticTelemetry = false;
+      if (collectedSamples.length >= 2) {
+        const s1 = collectedSamples[0];
+        const sLast = collectedSamples[collectedSamples.length - 1];
+        const latDelta = Math.abs(s1.latitude - sLast.latitude);
+        const lonDelta = Math.abs(s1.longitude - sLast.longitude);
+        // Real satellite GPS always has nanodegree jitter (> 0.000001); mock apps inject mathematically frozen coords
+        if (latDelta === 0 && lonDelta === 0 && (!s1.altitude || s1.altitude === 0)) {
+          syntheticTelemetry = true;
+        }
+      }
+
       if (bestReading) {
-        resolve(bestReading);
+        resolve({
+          ...bestReading,
+          samples: collectedSamples,
+          syntheticTelemetry,
+          isMockLocation: syntheticTelemetry
+        });
       } else {
         // Fallback to one-shot if watch didn't yield a sample in time
         navigator.geolocation.getCurrentPosition(
@@ -82,6 +135,13 @@ export async function getNativeOrBrowserLocation(options = {}) {
               latitude: parseFloat(pos.coords.latitude.toFixed(6)),
               longitude: parseFloat(pos.coords.longitude.toFixed(6)),
               accuracy: pos.coords.accuracy || 10,
+              altitude: pos.coords.altitude ?? null,
+              samples: [{
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                accuracy: pos.coords.accuracy,
+                timestamp: Date.now()
+              }],
               isMockLocation: false,
               source: 'BROWSER_HTML5_GPS'
             });
@@ -94,12 +154,14 @@ export async function getNativeOrBrowserLocation(options = {}) {
                   latitude: parseFloat(posFallback.coords.latitude.toFixed(6)),
                   longitude: parseFloat(posFallback.coords.longitude.toFixed(6)),
                   accuracy: posFallback.coords.accuracy || 25,
+                  altitude: posFallback.coords.altitude ?? null,
+                  samples: [],
                   isMockLocation: false,
                   source: 'BROWSER_HTML5_GPS_ASSISTED'
                 });
               },
               (errFallback) => {
-                // Fix 5: Detect Android OS master Location toggle turned off
+                // Detect Android OS master Location toggle turned off
                 if (err && err.code === 2) {
                   return reject(new Error('LOCATION_SWITCH_OFF: Android Location (GPS) switch is turned OFF. Please turn ON Location in your phone\'s quick-settings shade to enable Bluetooth & GPS verification.'));
                 }
@@ -124,23 +186,31 @@ export async function getNativeOrBrowserLocation(options = {}) {
             onProgress(Math.round(acc));
           }
 
+          collectedSamples.push({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: acc,
+            altitude: pos.coords.altitude,
+            timestamp: Date.now()
+          });
+
           if (!bestReading || acc < bestReading.accuracy) {
             bestReading = {
               latitude: parseFloat(pos.coords.latitude.toFixed(6)),
               longitude: parseFloat(pos.coords.longitude.toFixed(6)),
               accuracy: acc,
-              isMockLocation: false,
+              altitude: pos.coords.altitude ?? null,
               source: 'BROWSER_HTML5_GPS_SETTLED'
             };
           }
 
           // If phone locked onto accurate satellite fix (<= targetAccuracy), finish early
-          if (acc <= targetAccuracy) {
+          if (acc <= targetAccuracy && collectedSamples.length >= 2) {
             finalize();
           }
         },
         (err) => {
-          // Fix 5: Detect Android OS master Location toggle turned off
+          // Detect Android OS master Location toggle turned off
           if (err && err.code === 2) {
             if (timer) clearTimeout(timer);
             if (watchId !== null) {
