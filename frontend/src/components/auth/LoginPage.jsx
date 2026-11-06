@@ -102,7 +102,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
           {/* Primary Credentials Form */}
           <form onSubmit={handleSubmit}>
             <div className="mb-2">
-              <label className="form-label small fw-medium text-dark mb-1" style={{ fontSize: '12px' }}>Roll Number, Email, or Username</label>
+              <label className="form-label small fw-medium text-dark mb-1" style={{ fontSize: '12px' }}>Username / Roll Number</label>
               <div className="input-group input-group-sm">
                 <span className="input-group-text bg-light border-end-0">
                   <User size={15} className="text-muted" />
@@ -110,7 +110,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
                 <input
                   type="text"
                   className="form-control border-start-0 ps-0"
-                  placeholder="e.g. 2024CS001 or admin"
+                  placeholder="username/rollno"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={loading}

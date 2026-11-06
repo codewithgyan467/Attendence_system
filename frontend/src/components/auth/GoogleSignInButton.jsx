@@ -241,22 +241,6 @@ export default function GoogleSignInButton({
                       >
                         Aarav Sharma
                       </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-light border py-1 px-2 text-primary small"
-                        style={{ fontSize: '11px' }}
-                        onClick={() => setDemoEmail('ananya.patel@student.hostel.local')}
-                      >
-                        Ananya Patel
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-light border py-1 px-2 text-primary small"
-                        style={{ fontSize: '11px' }}
-                        onClick={() => setDemoEmail('admin@hostel.local')}
-                      >
-                        Admin
-                      </button>
                     </div>
                   </div>
 
