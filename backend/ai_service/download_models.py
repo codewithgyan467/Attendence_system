@@ -7,11 +7,10 @@ logger = logging.getLogger("model_downloader")
 
 MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 
-# Official 100% Free & Open Source OpenCV Model Zoo & InsightFace models (Apache 2.0 / MIT)
+# Official 100% Free & Open Source OpenCV Model Zoo models (Apache 2.0)
 MODEL_URLS = {
     "face_detection_yunet.onnx": "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
-    "face_recognition_sface.onnx": "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
-    "face_recognition_arcface.onnx": "https://huggingface.co/danelcsb/face/resolve/main/w600k_mbf.onnx"
+    "face_recognition_sface.onnx": "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx"
 }
 
 def ensure_models_downloaded():
@@ -23,12 +22,15 @@ def ensure_models_downloaded():
             logger.info(f"Model already downloaded: {name} ({os.path.getsize(dest)} bytes)")
             paths[name] = dest
         else:
-            logger.info(f"Downloading {name} from {url}...")
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=60) as resp, open(dest, "wb") as f:
-                f.write(resp.read())
-            logger.info(f"Saved {name} ({os.path.getsize(dest)} bytes)")
-            paths[name] = dest
+            try:
+                logger.info(f"Downloading {name} from {url}...")
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=60) as resp, open(dest, "wb") as f:
+                    f.write(resp.read())
+                logger.info(f"Saved {name} ({os.path.getsize(dest)} bytes)")
+                paths[name] = dest
+            except Exception as e:
+                logger.warning(f"Download for {name} skipped: {e}")
     return paths
 
 if __name__ == "__main__":
