@@ -552,7 +552,7 @@ export default function AdminSecurityDesk() {
               <div className="alert alert-light border d-flex align-items-center gap-3 py-3 px-4 mb-0">
                 <Info size={24} className="text-primary flex-shrink-0" />
                 <div className="small text-muted">
-                  <strong className="text-dark">Zero-Cost Setup:</strong> Flash floor ESP32 boards with <code>firmware/esp32_multitask_anchor.ino</code>.
+                  <strong className="text-dark">Zero-Cost Setup:</strong> Flash floor ESP32 boards with <code>hardware/esp32_multitask_anchor/esp32_multitask_anchor.ino</code>.
                   Each board connects to its floor router and automatically registers live in this cluster table every 60 seconds.
                 </div>
               </div>

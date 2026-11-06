@@ -58,3 +58,4 @@ router.get('/endpoints', (req, res) => {
 });
 
 module.exports = router;
+
