@@ -849,6 +849,14 @@ const seedInitialData = async () => {
 
   // D2. Seed Default Site Wi-Fi AP and BLE Beacons if missing (v3.0 Zero-Trust Physical Signals)
   if (activeGeoId) {
+    const aecWifi = await getQuery(`SELECT id FROM site_wifi_access_points WHERE bssid = '8c:3b:ad:8b:d3:72' OR ssid_label = 'AEC_Student_5.0'`);
+    if (!aecWifi) {
+      await runQuery(`
+        INSERT INTO site_wifi_access_points (id, geofence_id, bssid, ssid_label, block_name, min_rssi, is_active)
+        VALUES (?, ?, '8c:3b:ad:8b:d3:72', 'AEC_Student_5.0', 'AEC Hostel 1st Floor', -85, 1)
+      `, [uuidv4(), activeGeoId]);
+    }
+
     const existingWifis = await getQuery(`SELECT COUNT(*) as count FROM site_wifi_access_points`);
     if (existingWifis && existingWifis.count === 0) {
       await runQuery(`

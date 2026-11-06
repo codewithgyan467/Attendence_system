@@ -51,6 +51,16 @@ export async function getNativeOrBrowserLocation(options = {}) {
         console.warn('Hardware location bridge warning:', locErr);
       }
 
+      // Query connected Wi-Fi info for floor router verification
+      let wifiInfo = null;
+      try {
+        if (AntiSpoofBridge && AntiSpoofBridge.getConnectedWifi) {
+          wifiInfo = await AntiSpoofBridge.getConnectedWifi();
+        }
+      } catch (wifiErr) {
+        console.warn('Wi-Fi bridge warning:', wifiErr);
+      }
+
       const coordinates = await Geolocation.getCurrentPosition({
         enableHighAccuracy: true,
         timeout: 10000,
@@ -79,6 +89,7 @@ export async function getNativeOrBrowserLocation(options = {}) {
         isMockLocation: isMock,
         mockReason: nativeMockResult?.mockReason || hardwareLoc?.mockReason || (isMock ? 'NATIVE_MOCK_DETECTED' : 'NONE'),
         detectedApps: nativeMockResult?.detectedApps || hardwareLoc?.detectedApps || [],
+        connectedWifi: wifiInfo,
         source: hardwareLoc?.source || 'CAPACITOR_NATIVE_GPS'
       };
     } catch (err) {

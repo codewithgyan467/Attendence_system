@@ -387,6 +387,16 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         }
       }
 
+      // If connected to authorized hostel Wi-Fi (e.g. AEC_Student_5.0), create a Wi-Fi physical anchor proof
+      if (!bleProof && pos.connectedWifi && pos.connectedWifi.isConnected) {
+        bleProof = {
+          channel: 'HOSTEL_WIFI_VERIFIED',
+          method: 'HOSTEL_WIFI_VERIFIED',
+          ssid: pos.connectedWifi.ssid,
+          bssid: pos.connectedWifi.bssid
+        };
+      }
+
       setCheckinStep('verifying_policy');
 
       const isSafari = typeof navigator !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
@@ -399,6 +409,9 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         is_mock_location: pos.isMockLocation || false,
         samples: pos.samples || [],
         ble_proof: bleProof,
+        wifi_scan: pos.connectedWifi?.isConnected
+          ? { status: 'SCAN_OK', bssids: [pos.connectedWifi.bssid], connectedSsid: pos.connectedWifi.ssid }
+          : (pos.wifiScan || null),
         device_info: {
           ...(pos.device_info || {}),
           isIOS: isIOSDevice,
@@ -408,7 +421,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           isMock: pos.isMockLocation || false,
           mockReason: pos.mockReason || null,
           detectedApps: pos.detectedApps || [],
-          syntheticTelemetry: pos.syntheticTelemetry || false
+          syntheticTelemetry: pos.syntheticTelemetry || false,
+          connectedWifi: pos.connectedWifi || null
         }
       });
 

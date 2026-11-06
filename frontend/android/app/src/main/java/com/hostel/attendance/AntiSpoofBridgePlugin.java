@@ -8,6 +8,8 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -222,4 +224,36 @@ public class AntiSpoofBridgePlugin extends Plugin {
         res.put("source", "NATIVE_MOCK_CHECK_ONLY");
         call.resolve(res);
     }
+
+    @PluginMethod
+    public void getConnectedWifi(PluginCall call) {
+        Context context = getContext();
+        JSObject ret = new JSObject();
+        try {
+            WifiManager wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wm != null) {
+                WifiInfo info = wm.getConnectionInfo();
+                if (info != null) {
+                    String ssid = info.getSSID();
+                    if (ssid != null && ssid.startsWith("\"") && ssid.endsWith("\"")) {
+                        ssid = ssid.substring(1, ssid.length() - 1);
+                    }
+                    String bssid = info.getBSSID();
+                    int rssi = info.getRssi();
+                    boolean isConnected = bssid != null && !bssid.equals("02:00:00:00:00:00") && !"<unknown ssid>".equalsIgnoreCase(ssid);
+                    ret.put("isConnected", isConnected);
+                    ret.put("ssid", ssid);
+                    ret.put("bssid", bssid);
+                    ret.put("rssi", rssi);
+                    call.resolve(ret);
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            ret.put("error", e.getMessage());
+        }
+        ret.put("isConnected", false);
+        call.resolve(ret);
+    }
 }
+

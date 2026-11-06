@@ -136,15 +136,17 @@ class AntiSpoofPolicyEngine {
 
     // --- Layer 3: Physical Radio Presence (Wi-Fi BSSID & BLE Challenge) ---
     let wifiMatchStatus = 'SCAN_UNAVAILABLE';
-    if (wifiScan && wifiScan.status === 'SCAN_OK' && Array.isArray(wifiScan.bssids)) {
+    if (wifiScan && (wifiScan.status === 'SCAN_OK' || Array.isArray(wifiScan.bssids) || wifiScan.connectedSsid)) {
       const activeAPs = await allQuery(
-        `SELECT bssid FROM site_wifi_access_points WHERE geofence_id = ? AND is_active = 1`,
-        [geofence.id]
+        `SELECT bssid, ssid_label FROM site_wifi_access_points WHERE is_active = 1`
       );
-      const knownBSSIDs = new Set(activeAPs.map((ap) => ap.bssid.toLowerCase()));
-      const matched = wifiScan.bssids.some((b) => knownBSSIDs.has(String(b).toLowerCase()));
+      const knownBSSIDs = new Set(activeAPs.map((ap) => (ap.bssid || '').toLowerCase()));
+      const knownSSIDs = new Set(activeAPs.map((ap) => (ap.ssid_label || '').toLowerCase()));
 
-      if (matched) {
+      const matchedBssid = Array.isArray(wifiScan.bssids) && wifiScan.bssids.some((b) => knownBSSIDs.has(String(b).toLowerCase()));
+      const matchedSsid = wifiScan.connectedSsid && knownSSIDs.has(String(wifiScan.connectedSsid).toLowerCase());
+
+      if (matchedBssid || matchedSsid) {
         wifiMatchStatus = 'MATCHED_HOSTEL_AP';
         riskScore = Math.max(0, riskScore - 20); // Confidence booster
       } else {
@@ -274,17 +276,47 @@ class AntiSpoofPolicyEngine {
           riskScore += 20;
         }
       }
+    } else if (bleProof && (bleProof.channel === 'HOSTEL_WIFI_VERIFIED' || bleProof.method === 'HOSTEL_WIFI_VERIFIED')) {
+      const activeAPs = await allQuery(
+        `SELECT bssid, ssid_label FROM site_wifi_access_points WHERE is_active = 1`
+      );
+      const knownBSSIDs = new Set(activeAPs.map((ap) => (ap.bssid || '').toLowerCase()));
+      const knownSSIDs = new Set(activeAPs.map((ap) => (ap.ssid_label || '').toLowerCase()));
+
+      const bssidMatch = bleProof.bssid && knownBSSIDs.has(String(bleProof.bssid).toLowerCase());
+      const ssidMatch = bleProof.ssid && knownSSIDs.has(String(bleProof.ssid).toLowerCase());
+
+      if (bssidMatch || ssidMatch || wifiMatchStatus === 'MATCHED_HOSTEL_AP') {
+        bleMatchStatus = 'VERIFIED_HOSTEL_WIFI_PROXIMITY';
+        riskScore = Math.max(0, riskScore - 25);
+        requiresStepUp = false;
+      } else {
+        bleMatchStatus = 'UNVERIFIED_WIFI_NETWORK';
+        if (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') {
+          riskScore += 85;
+          unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
+          reasonCodes.push('L3_BLE_STRICT_REJECTED');
+        } else {
+          riskScore += 30;
+          requiresStepUp = true;
+        }
+      }
     } else {
       // No BLE or LAN proof provided
       if (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') {
-        // Strict Hardware Lock: Physical ESP32 radio presence is mandatory.
-        // Android devices MUST NEVER skip BLE — they can use Google Chrome (which supports Web Bluetooth)
-        // or the native HostelGuard APK. Skipping BLE on Android allows Mock GPS spoofing from home!
-        bleMatchStatus = 'STRICT_BEACON_MISSING';
-        riskScore += 85;
-        unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
-        reasonCodes.push('L3_BLE_STRICT_REJECTED');
-        requiresStepUp = false;
+        // Physical anchor check: If device is connected to the authorized hostel Wi-Fi (e.g. AEC_Student_5.0)
+        if (wifiMatchStatus === 'MATCHED_HOSTEL_AP') {
+          bleMatchStatus = 'VERIFIED_HOSTEL_WIFI_PROXIMITY';
+          riskScore = Math.max(0, riskScore - 25);
+          requiresStepUp = false;
+        } else {
+          // Strict Hardware Lock: Neither BLE beacon nor hostel Wi-Fi present
+          bleMatchStatus = 'STRICT_BEACON_MISSING';
+          riskScore += 85;
+          unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
+          reasonCodes.push('L3_BLE_STRICT_REJECTED');
+          requiresStepUp = false;
+        }
       } else if (bleMode === 'SOFT_ANCHOR') {
         // Soft Anchor allows smart fallback: iOS Safari or devices without BLE do Photometric Step-Up
         bleMatchStatus = isIOSWeb ? 'IOS_SAFARI_ADAPTIVE_ANCHOR' : 'SOFT_ANCHOR_MISSING';
