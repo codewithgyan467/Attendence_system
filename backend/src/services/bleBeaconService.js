@@ -19,12 +19,12 @@ class BleBeaconService {
   }
 
   /**
-   * Cleans entries older than 10 minutes from the anti-replay cache
+   * Cleans entries older than 5 minutes from the anti-replay cache
    * @private
    */
   _cleanReplayCache() {
     const now = Date.now();
-    const TTL_MS = 10 * 60 * 1000;
+    const TTL_MS = 5 * 60 * 1000;
     for (const [key, entry] of this.tokenReplayCache.entries()) {
       if (now - entry.timestamp > TTL_MS) {
         this.tokenReplayCache.delete(key);

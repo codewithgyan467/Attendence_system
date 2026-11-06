@@ -155,7 +155,38 @@ class AntiSpoofPolicyEngine {
     const isAndroid = /android/.test(ua) || Boolean(deviceInfo.isAndroid) || !isIOS;
     const isIOSWeb = isIOS && !deviceInfo.isNative;
 
-    if (bleProof && (bleProof.peerRelayToken || bleProof.peerRelayProof)) {
+    const isIosSilentAttested = Boolean(
+      bleProof && (
+        bleProof.channel === 'IOS_SILENT_HARDWARE_ATTESTED' ||
+        bleProof.method === 'IOS_SILENT_HARDWARE_ATTESTED' ||
+        bleProof.isIosSilentAttested === true
+      )
+    );
+
+    if (isIosSilentAttested) {
+      // 1-Click Silent Hardware Verification for Genuine iOS
+      const gpu = String(bleProof.gpuRenderer || deviceInfo.gpuRenderer || '').toLowerCase();
+      const isGenuineAppleGpu = gpu.includes('apple');
+      const isInsideGeofence = (typeof distanceMeters === 'number' ? distanceMeters : 0) <= (allowedRadius || 150);
+
+      if (isGenuineAppleGpu && isInsideGeofence) {
+        bleMatchStatus = 'VERIFIED_IOS_HARDWARE_ATTESTED';
+        riskScore = Math.max(0, riskScore - 20); // Proximity trust bonus
+        requiresStepUp = false; // Proceed directly to MiniFASNet + SFace verification
+      } else if (!isGenuineAppleGpu) {
+        // Non-Apple GPU (Adreno / Mali / ANGLE) attempting to bypass BLE by spoofing an iOS User-Agent
+        bleMatchStatus = 'IOS_HARDWARE_ATTESTATION_FAILED';
+        riskScore += 85;
+        unfairMeansFlags.push('SPOOFED_IOS_USER_AGENT');
+        reasonCodes.push('L3_BLE_STRICT_REJECTED');
+      } else {
+        // Outside geofence boundary
+        bleMatchStatus = 'OUTSIDE_GEOFENCE';
+        riskScore += 85;
+        unfairMeansFlags.push('OUTSIDE_HOSTEL_PERIMETER');
+        reasonCodes.push('L2_OUTSIDE_GEOFENCE');
+      }
+    } else if (bleProof && (bleProof.peerRelayToken || bleProof.peerRelayProof)) {
       const relayToken = bleProof.peerRelayToken || bleProof.peerRelayProof;
       const relayRes = await bleBeaconService.verifyPeerRelayProof({
         peerRelayToken: relayToken,

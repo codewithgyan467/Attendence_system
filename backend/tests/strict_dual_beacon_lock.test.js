@@ -398,4 +398,54 @@ describe('HostelGuard Strict Mode: Dual ESP32 Hardware Presence Lock Enforcement
     expect(selfRes.isValid).toBe(false);
     expect(selfRes.reason).toBe('SELF_RELAY_PROHIBITED');
   });
+
+  test('12. Genuine iOS Silent Attestation (Apple GPU + in geofence) passes Layer 2 in STRICT_REQUIRED', async () => {
+    const evaluation = await antiSpoofPolicyEngine.evaluateLocationAndEnvironment({
+      student: { id: testStudentId, roll_number: 'BEACON_TEST_01', failed_attempts: 0 },
+      geofence,
+      clientLat: 28.5455,
+      clientLon: 77.1930,
+      accuracy: 10,
+      bleProof: {
+        channel: 'IOS_SILENT_HARDWARE_ATTESTED',
+        isIosSilentAttested: true,
+        gpuRenderer: 'Apple GPU',
+        altitude: 215.4,
+        altitudeAccuracy: 3.2,
+        maxTouchPoints: 5
+      },
+      deviceInfo: {
+        isIOS: true,
+        gpuRenderer: 'Apple GPU'
+      }
+    });
+
+    expect(evaluation.bleMatchStatus).toBe('VERIFIED_IOS_HARDWARE_ATTESTED');
+    expect(evaluation.decisionOutcome).not.toBe('DENY');
+    expect(evaluation.unfairMeansFlags).not.toContain('STRICT_BLE_ANCHOR_FAILED');
+  });
+
+  test('13. Spoofed iOS User-Agent from Android (Adreno/Mali GPU) is REJECTED', async () => {
+    const evaluation = await antiSpoofPolicyEngine.evaluateLocationAndEnvironment({
+      student: { id: testStudentId, roll_number: 'BEACON_TEST_01', failed_attempts: 0 },
+      geofence,
+      clientLat: 28.5455,
+      clientLon: 77.1930,
+      accuracy: 10,
+      bleProof: {
+        channel: 'IOS_SILENT_HARDWARE_ATTESTED',
+        isIosSilentAttested: true,
+        gpuRenderer: 'Adreno (TM) 730', // Android GPU spoofing iOS User-Agent
+        maxTouchPoints: 5
+      },
+      deviceInfo: {
+        isIOS: true,
+        gpuRenderer: 'Adreno (TM) 730'
+      }
+    });
+
+    expect(evaluation.bleMatchStatus).toBe('IOS_HARDWARE_ATTESTATION_FAILED');
+    expect(evaluation.decisionOutcome).toBe('DENY');
+    expect(evaluation.unfairMeansFlags).toContain('SPOOFED_IOS_USER_AGENT');
+  });
 });
