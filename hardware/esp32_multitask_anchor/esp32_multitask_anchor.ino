@@ -6,23 +6,32 @@
 #include <NimBLEDevice.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <WiFiMulti.h>
 
 // ==================== FLOOR CONFIGURATION ====================
 #define BEACON_ID "HG-BEACON-BLKA-01"
-
 #define SHORT_BLE_NAME "HG-A01" // 6 bytes -> Fits 29B primary packet
 #define FLOOR_NUMBER 1
-#define WIFI_SSID "AEC_Student_5.0" // Floor router SSID
-#define WIFI_PASSWORD "password"    // Floor router password
-#define BACKEND_SYNC_URL                                                       \
-  "https://hostelguard-backend.onrender.com/api/admin/wifi-cluster/"           \
-  "esp32-heartbeat"
+
+// Multi-Wi-Fi Network Credentials (Auto-Fallback)
+#define WIFI_SSID_1 "AEC_Student_5.0"
+#define WIFI_PASS_1 "password"
+
+#define WIFI_SSID_2 "Shashanka’s iPhone"
+#define WIFI_PASS_2 "Random123"
+
+#define WIFI_SSID_3 "iphone"
+#define WIFI_PASS_3 "paword123"
+
+#define BACKEND_SYNC_URL \
+  "https://hostelguard-backend.onrender.com/api/admin/wifi-cluster/esp32-heartbeat"
 #define SHARED_SECRET "hostelguard_super_secret_32b_key"
 
 #define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define TOKEN_CHAR_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 
 WebServer lanServer(80);
+WiFiMulti wifiMulti;
 NimBLECharacteristic *pTokenChar = nullptr;
 unsigned long lastHeartbeatMs = 0;
 
@@ -37,7 +46,7 @@ String generateRollingToken(uint32_t slot, const String &prefix = "") {
                          strlen(SHARED_SECRET));
   mbedtls_md_hmac_update(&ctx, (const unsigned char *)payload.c_str(),
                          payload.length());
-  mbedtls_md_hmac_finish(&ctx, hmacResult);
+  mbedtls_md_finish(&ctx, hmacResult);
   mbedtls_md_free(&ctx);
 
   char hexToken[9];
@@ -114,8 +123,16 @@ void setup() {
   Serial.begin(115200);
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   esp_wifi_set_ps(WIFI_PS_NONE);
+
+  // Register multi-Wi-Fi APs: ESP32 connects automatically to whichever is active
+  wifiMulti.addAP(WIFI_SSID_1, WIFI_PASS_1);
+  wifiMulti.addAP(WIFI_SSID_2, WIFI_PASS_2);
+  wifiMulti.addAP("Shashanka's iPhone", WIFI_PASS_2); // ASCII apostrophe fallback
+  wifiMulti.addAP(WIFI_SSID_3, WIFI_PASS_3);
+
+  Serial.println("[WIFI] Scanning and connecting to authorized Wi-Fi...");
+  wifiMulti.run();
 
   NimBLEDevice::init(SHORT_BLE_NAME);
   NimBLEDevice::setPower(ESP_PWR_LVL_N6);
@@ -140,6 +157,10 @@ void setup() {
 
 void loop() {
   lanServer.handleClient();
+
+  if (WiFi.status() != WL_CONNECTED) {
+    wifiMulti.run();
+  }
 
   if (WiFi.status() == WL_CONNECTED &&
       (millis() - lastHeartbeatMs > 60000 || lastHeartbeatMs == 0)) {

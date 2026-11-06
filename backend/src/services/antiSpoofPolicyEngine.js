@@ -135,16 +135,25 @@ class AntiSpoofPolicyEngine {
     }
 
     // --- Layer 3: Physical Radio Presence (Wi-Fi BSSID & BLE Challenge) ---
+    const normSsid = (s) => String(s || '').replace(/[\u2018\u2019]/g, "'").trim().toLowerCase();
     let wifiMatchStatus = 'SCAN_UNAVAILABLE';
     if (wifiScan && (wifiScan.status === 'SCAN_OK' || Array.isArray(wifiScan.bssids) || wifiScan.connectedSsid)) {
       const activeAPs = await allQuery(
         `SELECT bssid, ssid_label FROM site_wifi_access_points WHERE is_active = 1`
       );
       const knownBSSIDs = new Set(activeAPs.map((ap) => (ap.bssid || '').toLowerCase()));
-      const knownSSIDs = new Set(activeAPs.map((ap) => (ap.ssid_label || '').toLowerCase()));
+      const knownSSIDs = new Set(activeAPs.map((ap) => normSsid(ap.ssid_label)));
+
+      // Also include active SSIDs from site_wifi_clusters
+      try {
+        const clusterRows = await allQuery(`SELECT ssid FROM site_wifi_clusters WHERE status = 'ONLINE'`);
+        clusterRows.forEach((c) => {
+          if (c.ssid) knownSSIDs.add(normSsid(c.ssid));
+        });
+      } catch (_) {}
 
       const matchedBssid = Array.isArray(wifiScan.bssids) && wifiScan.bssids.some((b) => knownBSSIDs.has(String(b).toLowerCase()));
-      const matchedSsid = wifiScan.connectedSsid && knownSSIDs.has(String(wifiScan.connectedSsid).toLowerCase());
+      const matchedSsid = wifiScan.connectedSsid && knownSSIDs.has(normSsid(wifiScan.connectedSsid));
 
       if (matchedBssid || matchedSsid) {
         wifiMatchStatus = 'MATCHED_HOSTEL_AP';
@@ -281,10 +290,17 @@ class AntiSpoofPolicyEngine {
         `SELECT bssid, ssid_label FROM site_wifi_access_points WHERE is_active = 1`
       );
       const knownBSSIDs = new Set(activeAPs.map((ap) => (ap.bssid || '').toLowerCase()));
-      const knownSSIDs = new Set(activeAPs.map((ap) => (ap.ssid_label || '').toLowerCase()));
+      const knownSSIDs = new Set(activeAPs.map((ap) => normSsid(ap.ssid_label)));
+
+      try {
+        const clusterRows = await allQuery(`SELECT ssid FROM site_wifi_clusters WHERE status = 'ONLINE'`);
+        clusterRows.forEach((c) => {
+          if (c.ssid) knownSSIDs.add(normSsid(c.ssid));
+        });
+      } catch (_) {}
 
       const bssidMatch = bleProof.bssid && knownBSSIDs.has(String(bleProof.bssid).toLowerCase());
-      const ssidMatch = bleProof.ssid && knownSSIDs.has(String(bleProof.ssid).toLowerCase());
+      const ssidMatch = bleProof.ssid && knownSSIDs.has(normSsid(bleProof.ssid));
 
       if (bssidMatch || ssidMatch || wifiMatchStatus === 'MATCHED_HOSTEL_AP') {
         bleMatchStatus = 'VERIFIED_HOSTEL_WIFI_PROXIMITY';
