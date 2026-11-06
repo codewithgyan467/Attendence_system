@@ -323,12 +323,12 @@ class LivenessDetectorV4:
         - Requires a minimum of 4 frames.
         """
         valid_pairs = [(img, face) for img, face in zip(bgr_frames, raw_faces) if img is not None and face is not None]
-        if len(valid_pairs) < 4:
+        if len(valid_pairs) < 3:
             return {
                 "is_consistent": False,
                 "motion_detected": False,
                 "mean_norm_delta": 0.0,
-                "reason": f"Insufficient valid temporal frames (got {len(valid_pairs)}, minimum 4 required)"
+                "reason": f"Insufficient valid temporal frames (got {len(valid_pairs)}, minimum 3 required)"
             }
 
         norm_deltas = []
