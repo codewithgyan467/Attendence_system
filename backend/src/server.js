@@ -15,6 +15,7 @@ const wardenRoutes = require('./routes/wardenRoutes');
 const studentRoutes = require('./routes/studentRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const otaRoutes = require('./routes/otaRoutes');
+const wifiClusterRoutes = require('./routes/wifiClusterRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -126,6 +127,7 @@ app.use('/api/v1/warden', wardenRoutes);
 app.use('/api/v1/students', studentRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
 app.use('/api/v1/ota', otaRoutes);
+app.use(['/api/v1/admin/wifi-cluster', '/api/admin/wifi-cluster'], wifiClusterRoutes);
 
 
 // Serve Frontend Static Assets if built

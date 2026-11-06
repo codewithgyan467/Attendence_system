@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { getQuery, allQuery, runQuery } = require('../db/database');
 const { calculateHaversineDistance } = require('./geofenceService');
 const bleBeaconService = require('./bleBeaconService');
+const wifiClusterService = require('./wifiClusterService');
 
 const POLICY_VERSION = 'v3.0';
 const DEFAULT_CHALLENGE_TTL_MS = 90 * 1000; // 90 seconds hardened TTL
@@ -209,6 +210,28 @@ class AntiSpoofPolicyEngine {
           riskScore += 20;
         }
       }
+    } else if (bleProof && (bleProof.lanWifiTicket || bleProof.lan_wifi_ticket || bleProof.ticket)) {
+      // Multi-Router Strict Lock: Local Wi-Fi Cluster Handshake Ticket
+      const ticket = bleProof.lanWifiTicket || bleProof.lan_wifi_ticket || bleProof.ticket;
+      const lanRes = await wifiClusterService.verifyLanWifiTicket(ticket, clientIp);
+
+      if (lanRes.isValid) {
+        bleMatchStatus = 'VERIFIED_LAN_WIFI_PROXIMITY';
+        riskScore = Math.max(0, riskScore - 25); // Proximity trust bonus
+        requiresStepUp = false; // Proceed directly to face biometric verification
+      } else {
+        bleMatchStatus = 'INVALID_LAN_WIFI_TICKET';
+        if (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') {
+          riskScore += 85;
+          unfairMeansFlags.push('STRICT_WIFI_CLUSTER_FAILED');
+          reasonCodes.push('L3_WIFI_CLUSTER_REJECTED');
+        } else if (bleMode === 'SOFT_ANCHOR') {
+          riskScore += 45;
+          requiresStepUp = true;
+        } else {
+          riskScore += 20;
+        }
+      }
     } else if (bleProof && bleProof.beaconPublicId) {
       const beaconRes = await bleBeaconService.verifyBleBeaconProof({
         beaconPublicId: bleProof.beaconPublicId,
@@ -223,7 +246,7 @@ class AntiSpoofPolicyEngine {
         riskScore = Math.max(0, riskScore - 25); // Proximity trust bonus
       } else {
         bleMatchStatus = 'INVALID_BEACON_PROOF';
-        if (bleMode === 'STRICT_REQUIRED') {
+        if (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') {
           // Strict Hardware Lock: Physical ESP32 radio signal mandatory for ALL devices
           riskScore += 85;
           unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
@@ -236,8 +259,8 @@ class AntiSpoofPolicyEngine {
         }
       }
     } else {
-      // No BLE proof provided
-      if (bleMode === 'STRICT_REQUIRED') {
+      // No BLE or LAN proof provided
+      if (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') {
         // Strict Hardware Lock: Physical ESP32 radio presence is mandatory.
         // Android devices MUST NEVER skip BLE — they can use Google Chrome (which supports Web Bluetooth)
         // or the native HostelGuard APK. Skipping BLE on Android allows Mock GPS spoofing from home!
@@ -286,6 +309,7 @@ class AntiSpoofPolicyEngine {
     } else if (
       unfairMeansFlags.includes('OUTSIDE_HOSTEL_PERIMETER') ||
       unfairMeansFlags.includes('STRICT_BLE_ANCHOR_FAILED') ||
+      unfairMeansFlags.includes('STRICT_WIFI_CLUSTER_FAILED') ||
       riskScore >= 85
     ) {
       decisionOutcome = 'DENY';

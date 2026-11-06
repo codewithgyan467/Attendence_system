@@ -11,6 +11,7 @@ const { authLimiter } = require('../middleware/rateLimiter');
 const aiServiceClient = require('../services/aiServiceClient');
 const embeddingCache = require('../services/embeddingCache');
 const { getStudentAttendanceSummary } = require('../services/attendanceStatsService');
+const wifiClusterService = require('../services/wifiClusterService');
 
 // 1. Privacy-First Deprecation: Public scraping of all student records is disabled to protect student privacy
 router.get('/allotment-list', async (req, res) => {
@@ -691,6 +692,7 @@ router.get('/dashboard', async (req, res) => {
       lifetime: summary.lifetime,
       geofence: activeGeofence,
       beacons: activeBeacons || [],
+      wifi_cluster_endpoints: wifiClusterService.getEndpoints(),
       ble_time_sync_packet: (activeBeacons && activeBeacons[0]?.shared_secret_ref)
         ? bleBeaconService.generateTimeSyncPacket(activeBeacons[0].beacon_public_id, activeBeacons[0].shared_secret_ref)
         : null,

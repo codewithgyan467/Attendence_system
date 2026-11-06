@@ -30,7 +30,8 @@ import {
   Volume2,
   Globe,
   Download,
-  Lock
+  Lock,
+  Wifi
 } from 'lucide-react';
 import GeofenceMap from '../common/GeofenceMap';
 import { playBiometricChime, detectFaceAngle } from '../../utils/faceAngleGuide';
@@ -129,6 +130,17 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [flashActive, setFlashActive] = useState(false);
   const isAutoSnappingRef = useRef(false);
   const autoHoldProgressRef = useRef(0);
+
+  // Multi-Router LAN Wi-Fi Cluster Handshake Ticket
+  const [lanWifiTicket, setLanWifiTicket] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const p = new URLSearchParams(window.location.search);
+        return p.get('lan_wifi_ticket') || null;
+      } catch (_) {}
+    }
+    return null;
+  });
 
   // Forms
   const [correctionForm, setCorrectionForm] = useState({ date: new Date().toISOString().split('T')[0], reason: '' });
@@ -277,10 +289,19 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       const iosAttestation = verifyGenuineIOSDevice(pos);
       const isIOSDevice = iosAttestation.isGenuineIOS || (typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)));
 
-      if (bleMode === 'STRICT_REQUIRED') {
+      if (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') {
         setCheckinStep('verifying_ble');
 
-        if (isIOSDevice && (typeof navigator === 'undefined' || !navigator.bluetooth)) {
+        if (lanWifiTicket) {
+          // Multi-Router LAN Handshake Ticket verified from floor router ESP32
+          setBleScanningStatus('Layer 2 Check: Floor Router LAN Wi-Fi Ticket Verified...');
+          bleProof = {
+            channel: 'LAN_WIFI_HANDSHAKE',
+            method: 'LAN_WIFI_HANDSHAKE',
+            lanWifiTicket,
+            ticket: lanWifiTicket
+          };
+        } else if (isIOSDevice && (typeof navigator === 'undefined' || !navigator.bluetooth)) {
           // 1-Click Silent Hardware Verification for iOS (Safari & Home Screen PWA)
           // Automatically passes Layer 2 without showing any Bluetooth errors
           setBleScanningStatus('Layer 2 Check: Genuine iOS Hardware Attested (Single Click)...');
@@ -295,13 +316,14 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
             maxTouchPoints: iosAttestation.maxTouchPoints || 5
           };
         } else {
-          // Standard BLE Scan (Android Chrome, Android APK, or Bluefy BLE on iOS)
-          setBleScanningStatus('Layer 2 Check: Connecting to nearby hostel ESP32 Bluetooth beacon (~15m range)...');
+          // Standard BLE Scan or LAN Router Handshake Probe
+          setBleScanningStatus('Layer 2 Check: Connecting to nearby hostel ESP32 anchor / floor Wi-Fi (~15m range)...');
 
           const bleRes = await scanHostelBleBeacon({
             onProgress: (p) => setBleScanningStatus(p.message),
             timeSyncPacket: dashboard?.ble_time_sync_packet || dashboard?.schedule?.ble_time_sync_packet,
-            localHttpsAnchorUrl: dashboard?.geofence?.local_https_anchor_url || null
+            localHttpsAnchorUrl: dashboard?.geofence?.local_https_anchor_url || null,
+            clusterEndpoints: dashboard?.wifi_cluster_endpoints || []
           });
 
           if (!bleRes.success) {
@@ -322,17 +344,26 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
               // Android device rejection
               setCheckinError(
                 bleRes.message ||
-                `Layer 2 Check Failed: Hardware Bluetooth beacon proximity is strictly required (${activeBeaconList}). Please ensure Bluetooth is ON or open in Google Chrome.`
+                `Layer 2 Check Failed: Hardware Bluetooth beacon proximity or floor Wi-Fi is strictly required (${activeBeaconList}). Please ensure Bluetooth is ON or connect to floor Wi-Fi.`
               );
               setCheckinStep('failed');
               return;
             }
           } else {
-            bleProof = {
-              beaconPublicId: bleRes.beaconPublicId,
-              rollingCode: bleRes.rollingCode,
-              slot: bleRes.slot
-            };
+            if (bleRes.lanWifiTicket) {
+              bleProof = {
+                channel: 'LAN_WIFI_HANDSHAKE',
+                lanWifiTicket: bleRes.lanWifiTicket,
+                beaconPublicId: bleRes.beaconPublicId,
+                slot: bleRes.slot
+              };
+            } else {
+              bleProof = {
+                beaconPublicId: bleRes.beaconPublicId,
+                rollingCode: bleRes.rollingCode,
+                slot: bleRes.slot
+              };
+            }
             setVerifiedBeaconInfo(bleRes);
           }
         }
@@ -1624,6 +1655,15 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
                               {/* Clean Android 1-Tap Solutions & Retry */}
                               <div className="d-flex flex-column gap-2 w-100" style={{ maxWidth: '460px' }}>
+                                {dashboard?.wifi_cluster_endpoints && dashboard.wifi_cluster_endpoints.length > 0 && (
+                                  <a
+                                    href={`${dashboard.wifi_cluster_endpoints[0].handshakeUrl}?returnUrl=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+                                    className="btn btn-outline-primary fw-semibold py-2.5 shadow-sm d-flex align-items-center justify-content-center gap-2"
+                                  >
+                                    <Wifi size={18} /> Verify via Floor Wi-Fi ({dashboard.wifi_cluster_endpoints[0].ssid || 'Floor Router'})
+                                  </a>
+                                )}
+
                                 {typeof window !== 'undefined' && window.location.protocol === 'http:' && (
                                   <button
                                     type="button"

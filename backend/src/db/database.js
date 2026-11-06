@@ -514,6 +514,23 @@ const initDatabase = async () => {
     )
   `);
 
+  // 20B. Multi-Router Wi-Fi Cluster Gateways (Floor ESP32 Multitasking Anchors - v3.4)
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS site_wifi_clusters (
+      id TEXT PRIMARY KEY,
+      beacon_id TEXT UNIQUE NOT NULL,
+      short_name TEXT,
+      floor_number INTEGER DEFAULT 1,
+      ssid TEXT,
+      local_ip TEXT,
+      wan_ip TEXT,
+      slot INTEGER,
+      last_heartbeat DATETIME,
+      status TEXT DEFAULT 'ONLINE',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // 21. Multi-Layer Attendance Evidence Ledger (Anti-Spoofing & Unfair-Means Audit Trail - v3.0 BCNF)
   await runQuery(`
     CREATE TABLE IF NOT EXISTS attendance_evidence (

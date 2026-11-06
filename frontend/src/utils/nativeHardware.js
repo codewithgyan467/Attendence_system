@@ -397,6 +397,42 @@ export function verifyGenuineIOSDevice(coords = null) {
 }
 
 /**
+ * Probes active floor router ESP32 LAN endpoints for zero-cost Multi-Router Strict Lock verification.
+ * @param {Array<Object|string>} endpoints
+ * @param {Function} [onProgress]
+ * @returns {Promise<Object|null>}
+ */
+export async function probeLanWifiClusterEndpoints(endpoints = [], onProgress = null) {
+  if (!Array.isArray(endpoints) || endpoints.length === 0) return null;
+  for (const ep of endpoints) {
+    const targetUrl = typeof ep === 'string' ? ep : ep.handshakeUrl;
+    if (!targetUrl) continue;
+    try {
+      if (onProgress) onProgress({ status: 'PROBING_LAN', message: `Checking floor router gateway (${ep.ssid || 'Floor Wi-Fi'})...` });
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 1800);
+      const res = await fetch(targetUrl, { method: 'GET', signal: controller.signal, mode: 'cors' });
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && (data.lanTicket || data.ticket)) {
+          return {
+            success: true,
+            beaconPublicId: data.beaconId || ep.beaconId,
+            lanWifiTicket: data.lanTicket || data.ticket,
+            slot: data.slot || Math.floor(Date.now() / 30000),
+            floor: data.floor || ep.floor,
+            method: 'LAN_WIFI_HANDSHAKE',
+            timestamp: Date.now()
+          };
+        }
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+/**
  * Scans for nearby authorized HostelGuard ESP32 Bluetooth Beacons via Web Bluetooth API.
  * Connects to the GATT service, reads the 30-second rolling TOTP token, and disconnects immediately.
  * 
@@ -408,7 +444,7 @@ export function verifyGenuineIOSDevice(coords = null) {
  * - Beacon 2: HG-BEACON-BLKA-02 (1st Floor, Seeed Studio XIAO ESP32-C6)
  */
 export async function scanHostelBleBeacon(options = {}) {
-  const { timeoutMs = 4000, onProgress = null, timeSyncPacket = null, localHttpsAnchorUrl = null } = options;
+  const { timeoutMs = 4000, onProgress = null, timeSyncPacket = null, localHttpsAnchorUrl = null, clusterEndpoints = [] } = options;
 
   const HOSTEL_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
   const ROLLING_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
@@ -513,6 +549,14 @@ export async function scanHostelBleBeacon(options = {}) {
     const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
     const isSecure = typeof window !== 'undefined' ? window.isSecureContext : false;
     const isHttp = typeof window !== 'undefined' && window.location.protocol === 'http:';
+
+    // Multi-Router Strict Lock: Probe floor router LAN handshake endpoints
+    if (Array.isArray(clusterEndpoints) && clusterEndpoints.length > 0) {
+      const lanProbeResult = await probeLanWifiClusterEndpoints(clusterEndpoints, onProgress);
+      if (lanProbeResult) {
+        return lanProbeResult;
+      }
+    }
 
     // Fix 1 & 2: Local Wi-Fi HTTPS Probe for iOS Safari PWA (DuckDNS / Local Anchor)
     if (localHttpsAnchorUrl) {

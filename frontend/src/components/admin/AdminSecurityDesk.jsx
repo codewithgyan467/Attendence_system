@@ -15,7 +15,10 @@ import {
   ShieldAlert,
   LogOut,
   Save,
-  Info
+  Info,
+  Wifi,
+  Radio,
+  RefreshCw
 } from 'lucide-react';
 
 export default function AdminSecurityDesk() {
@@ -44,6 +47,25 @@ export default function AdminSecurityDesk() {
   const [newlyGeneratedKey, setNewlyGeneratedKey] = useState('');
   const [copiedKey, setCopiedKey] = useState(false);
 
+  // Multi-Router Wi-Fi Cluster State (Strict Lock)
+  const [wifiCluster, setWifiCluster] = useState(null);
+  const [loadingCluster, setLoadingCluster] = useState(false);
+
+  const loadClusterStatus = async () => {
+    try {
+      setLoadingCluster(true);
+      const res = await fetch('/api/admin/wifi-cluster/status');
+      if (res.ok) {
+        const data = await res.json();
+        setWifiCluster(data);
+      }
+    } catch (_) {
+      // Non-blocking
+    } finally {
+      setLoadingCluster(false);
+    }
+  };
+
   const loadProfile = async () => {
     try {
       setLoading(true);
@@ -63,6 +85,7 @@ export default function AdminSecurityDesk() {
 
   useEffect(() => {
     loadProfile();
+    loadClusterStatus();
   }, []);
 
   const handleUpdateProfile = async (e) => {
@@ -429,6 +452,111 @@ export default function AdminSecurityDesk() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Section 4: Multi-Router Wi-Fi Cluster & Multitasking Floor Gateways */}
+        <div className="card border-0 shadow-sm rounded-4 overflow-hidden mt-4">
+          <div className="card-header bg-white border-bottom py-3 px-4 d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div className="d-flex align-items-center gap-2">
+              <div className="p-2 bg-primary-subtle text-primary rounded-3">
+                <Wifi size={18} />
+              </div>
+              <div>
+                <h6 className="fw-bold mb-0 text-dark">Multi-Router Wi-Fi Cluster Gateways</h6>
+                <p className="text-muted small mb-0">Floor ESP32 multitasking anchors providing local Wi-Fi verification & BLE coverage</p>
+              </div>
+            </div>
+            <div className="d-flex align-items-center gap-2">
+              <span className={`badge ${wifiCluster?.isStrictLock ? 'bg-danger' : 'bg-primary'} px-2.5 py-1.5`}>
+                Mode: {wifiCluster?.mode || 'STANDBY_OPTIONAL'}
+              </span>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                onClick={loadClusterStatus}
+                disabled={loadingCluster}
+              >
+                <RefreshCw size={12} className={loadingCluster ? 'spin' : ''} />
+                <span>Refresh</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="card-body p-4">
+            <div className="row g-3 mb-4">
+              <div className="col-md-4">
+                <div className="p-3 bg-light rounded-3 border">
+                  <div className="text-muted small fw-medium">Active Floor Gateways</div>
+                  <div className="h4 fw-bold mb-0 text-dark mt-1">
+                    {wifiCluster?.onlineGateways ?? 0} <span className="text-muted fs-6 fw-normal">/ {wifiCluster?.totalGateways ?? 0}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="col-md-4">
+                <div className="p-3 bg-light rounded-3 border">
+                  <div className="text-muted small fw-medium">Cluster Strict Lock</div>
+                  <div className={`h5 fw-bold mb-0 mt-1 ${wifiCluster?.isStrictLock ? 'text-danger' : 'text-success'}`}>
+                    {wifiCluster?.isStrictLock ? 'ENFORCED (Floor Wi-Fi / BLE Required)' : 'STANDBY (Cloud Online)'}
+                  </div>
+                </div>
+              </div>
+              <div className="col-md-4">
+                <div className="p-3 bg-light rounded-3 border">
+                  <div className="text-muted small fw-medium">Known WAN Subnets</div>
+                  <div className="h6 fw-semibold mb-0 text-dark mt-1 font-monospace">
+                    {wifiCluster?.clusterWanIps?.length ? wifiCluster.clusterWanIps.join(', ') : 'Dynamic (Render Cloud)'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {wifiCluster?.gateways && wifiCluster.gateways.length > 0 ? (
+              <div className="table-responsive">
+                <table className="table table-hover align-middle mb-0" style={{ fontSize: '13px' }}>
+                  <thead className="table-light">
+                    <tr>
+                      <th>Beacon ID</th>
+                      <th>Floor</th>
+                      <th>Router SSID</th>
+                      <th>Local Gateway IP</th>
+                      <th>Status</th>
+                      <th>Last Heartbeat</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {wifiCluster.gateways.map((gw) => (
+                      <tr key={gw.beaconId}>
+                        <td>
+                          <div className="d-flex align-items-center gap-2">
+                            <Radio size={14} className="text-primary" />
+                            <span className="fw-semibold font-monospace">{gw.beaconId}</span>
+                            <span className="badge bg-secondary-subtle text-secondary" style={{ fontSize: '10px' }}>{gw.shortName}</span>
+                          </div>
+                        </td>
+                        <td>Floor {gw.floor}</td>
+                        <td><span className="fw-medium text-dark">{gw.ssid}</span></td>
+                        <td><code className="text-primary">{gw.localIp}</code></td>
+                        <td>
+                          <span className={`badge ${gw.status === 'ONLINE' ? 'bg-success' : 'bg-secondary'}`}>
+                            {gw.status}
+                          </span>
+                        </td>
+                        <td className="text-muted">{gw.lastSeenSecondsAgo}s ago</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="alert alert-light border d-flex align-items-center gap-3 py-3 px-4 mb-0">
+                <Info size={24} className="text-primary flex-shrink-0" />
+                <div className="small text-muted">
+                  <strong className="text-dark">Zero-Cost Setup:</strong> Flash floor ESP32 boards with <code>firmware/esp32_multitask_anchor.ino</code>.
+                  Each board connects to its floor router and automatically registers live in this cluster table every 60 seconds.
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
