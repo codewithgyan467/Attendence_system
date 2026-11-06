@@ -43,6 +43,8 @@ const openSqliteConnection = () => {
           sqliteDb.run('PRAGMA busy_timeout = 5000;');
           sqliteDb.run('PRAGMA synchronous = NORMAL;');
           sqliteDb.run('PRAGMA mmap_size = 268435456;'); // 256 MB memory-mapped I/O
+          sqliteDb.run('PRAGMA cache_size = -64000;'); // 64 MB high-speed page cache
+          sqliteDb.run('PRAGMA temp_store = MEMORY;'); // Store temporary tables and indices in RAM
         });
         resolve(sqliteDb);
       }

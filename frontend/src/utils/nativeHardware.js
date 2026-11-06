@@ -31,55 +31,40 @@ export async function getNativeOrBrowserLocation(options = {}) {
         }
       }
 
-      // Check Native Android Mock Location & Fake GPS App Presence
-      let nativeMockResult = null;
-      try {
-        if (AntiSpoofBridge && AntiSpoofBridge.checkMockStatus) {
-          nativeMockResult = await AntiSpoofBridge.checkMockStatus();
-        }
-      } catch (mockErr) {
-        console.warn('Native mock check warning:', mockErr);
-      }
+      // Query native Android mock status, hardware GPS, and connected Wi-Fi in parallel
+      const [mockRes, hwLocRes, wifiRes] = await Promise.allSettled([
+        (AntiSpoofBridge && AntiSpoofBridge.checkMockStatus) ? AntiSpoofBridge.checkMockStatus() : Promise.resolve(null),
+        (AntiSpoofBridge && AntiSpoofBridge.getHardwareLocation) ? AntiSpoofBridge.getHardwareLocation() : Promise.resolve(null),
+        (AntiSpoofBridge && AntiSpoofBridge.getConnectedWifi) ? AntiSpoofBridge.getConnectedWifi() : Promise.resolve(null)
+      ]);
 
-      // Query hardware location
-      let hardwareLoc = null;
-      try {
-        if (AntiSpoofBridge && AntiSpoofBridge.getHardwareLocation) {
-          hardwareLoc = await AntiSpoofBridge.getHardwareLocation();
-        }
-      } catch (locErr) {
-        console.warn('Hardware location bridge warning:', locErr);
-      }
+      const nativeMockResult = mockRes.status === 'fulfilled' ? mockRes.value : null;
+      const hardwareLoc = hwLocRes.status === 'fulfilled' ? hwLocRes.value : null;
+      const wifiInfo = wifiRes.status === 'fulfilled' ? wifiRes.value : null;
 
-      // Query connected Wi-Fi info for floor router verification
-      let wifiInfo = null;
-      try {
-        if (AntiSpoofBridge && AntiSpoofBridge.getConnectedWifi) {
-          wifiInfo = await AntiSpoofBridge.getConnectedWifi();
-        }
-      } catch (wifiErr) {
-        console.warn('Wi-Fi bridge warning:', wifiErr);
+      // Fast-path: If native Android hardware LocationManager returned a fresh, accurate GPS fix, use it immediately
+      let coordinates = null;
+      if (!hardwareLoc || !hardwareLoc.latitude || (hardwareLoc.accuracy && hardwareLoc.accuracy > 35)) {
+        coordinates = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 6000,
+          maximumAge: 3000
+        });
       }
-
-      const coordinates = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
-      });
 
       const isMock = Boolean(
         nativeMockResult?.isMock ||
         nativeMockResult?.mockDetected ||
         hardwareLoc?.isMock ||
-        coordinates.coords?.isMock ||
-        coordinates.coords?.mocked ||
-        coordinates.coords?.isFromMockProvider
+        coordinates?.coords?.isMock ||
+        coordinates?.coords?.mocked ||
+        coordinates?.coords?.isFromMockProvider
       );
 
-      const lat = hardwareLoc?.latitude ?? coordinates.coords.latitude;
-      const lon = hardwareLoc?.longitude ?? coordinates.coords.longitude;
-      const acc = hardwareLoc?.accuracy ?? coordinates.coords.accuracy ?? 10;
-      const alt = hardwareLoc?.altitude ?? coordinates.coords.altitude ?? null;
+      const lat = hardwareLoc?.latitude ?? coordinates?.coords?.latitude;
+      const lon = hardwareLoc?.longitude ?? coordinates?.coords?.longitude;
+      const acc = hardwareLoc?.accuracy ?? coordinates?.coords?.accuracy ?? 10;
+      const alt = hardwareLoc?.altitude ?? coordinates?.coords?.altitude ?? null;
 
       return {
         latitude: parseFloat(lat.toFixed(6)),

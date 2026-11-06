@@ -7,6 +7,28 @@ const wifiClusterService = require('./wifiClusterService');
 const POLICY_VERSION = 'v3.0';
 const DEFAULT_CHALLENGE_TTL_MS = 90 * 1000; // 90 seconds hardened TTL
 
+// In-Memory Wi-Fi Metadata Cache (30s TTL) for Sub-Millisecond Policy Telemetry
+let cachedWifiMetadata = null;
+let lastWifiMetadataTimestamp = 0;
+
+async function getCachedWifiMetadata(allQueryFn) {
+  const now = Date.now();
+  if (cachedWifiMetadata && (now - lastWifiMetadataTimestamp < 30000) && process.env.NODE_ENV !== 'test') {
+    return cachedWifiMetadata;
+  }
+  const activeAPs = await allQueryFn(
+    `SELECT bssid, ssid_label FROM site_wifi_access_points WHERE is_active = 1`
+  );
+  let clusterRows = [];
+  try {
+    clusterRows = await allQueryFn(`SELECT ssid FROM site_wifi_clusters WHERE status = 'ONLINE'`);
+  } catch (_) {}
+
+  cachedWifiMetadata = { activeAPs, clusterRows };
+  lastWifiMetadataTimestamp = now;
+  return cachedWifiMetadata;
+}
+
 /**
  * HostelGuard Enterprise v3.0 Anti-Spoof & Unfair-Means Policy Engine
  * Evaluates 13 layers of physical, cryptographic, and behavioral evidence
@@ -137,21 +159,14 @@ class AntiSpoofPolicyEngine {
     // --- Layer 3: Physical Radio Presence (Wi-Fi BSSID & BLE Challenge) ---
     const normSsid = (s) => String(s || '').replace(/[\u2018\u2019]/g, "'").trim().toLowerCase();
     let wifiMatchStatus = 'SCAN_UNAVAILABLE';
+    const { activeAPs, clusterRows } = await getCachedWifiMetadata(allQuery);
+    const knownBSSIDs = new Set(activeAPs.map((ap) => (ap.bssid || '').toLowerCase()));
+    const knownSSIDs = new Set(activeAPs.map((ap) => normSsid(ap.ssid_label)));
+    clusterRows.forEach((c) => {
+      if (c.ssid) knownSSIDs.add(normSsid(c.ssid));
+    });
+
     if (wifiScan && (wifiScan.status === 'SCAN_OK' || Array.isArray(wifiScan.bssids) || wifiScan.connectedSsid)) {
-      const activeAPs = await allQuery(
-        `SELECT bssid, ssid_label FROM site_wifi_access_points WHERE is_active = 1`
-      );
-      const knownBSSIDs = new Set(activeAPs.map((ap) => (ap.bssid || '').toLowerCase()));
-      const knownSSIDs = new Set(activeAPs.map((ap) => normSsid(ap.ssid_label)));
-
-      // Also include active SSIDs from site_wifi_clusters
-      try {
-        const clusterRows = await allQuery(`SELECT ssid FROM site_wifi_clusters WHERE status = 'ONLINE'`);
-        clusterRows.forEach((c) => {
-          if (c.ssid) knownSSIDs.add(normSsid(c.ssid));
-        });
-      } catch (_) {}
-
       const matchedBssid = Array.isArray(wifiScan.bssids) && wifiScan.bssids.some((b) => knownBSSIDs.has(String(b).toLowerCase()));
       const matchedSsid = wifiScan.connectedSsid && knownSSIDs.has(normSsid(wifiScan.connectedSsid));
 
@@ -286,19 +301,6 @@ class AntiSpoofPolicyEngine {
         }
       }
     } else if (bleProof && (bleProof.channel === 'HOSTEL_WIFI_VERIFIED' || bleProof.method === 'HOSTEL_WIFI_VERIFIED')) {
-      const activeAPs = await allQuery(
-        `SELECT bssid, ssid_label FROM site_wifi_access_points WHERE is_active = 1`
-      );
-      const knownBSSIDs = new Set(activeAPs.map((ap) => (ap.bssid || '').toLowerCase()));
-      const knownSSIDs = new Set(activeAPs.map((ap) => normSsid(ap.ssid_label)));
-
-      try {
-        const clusterRows = await allQuery(`SELECT ssid FROM site_wifi_clusters WHERE status = 'ONLINE'`);
-        clusterRows.forEach((c) => {
-          if (c.ssid) knownSSIDs.add(normSsid(c.ssid));
-        });
-      } catch (_) {}
-
       const bssidMatch = bleProof.bssid && knownBSSIDs.has(String(bleProof.bssid).toLowerCase());
       const ssidMatch = bleProof.ssid && knownSSIDs.has(normSsid(bleProof.ssid));
 

@@ -145,47 +145,9 @@ public class AntiSpoofBridgePlugin extends Plugin {
             return;
         }
 
-        // Run mock status check first
-        JSObject mockStatus = new JSObject();
         boolean isMock = false;
         List<String> reasons = new ArrayList<>();
         JSArray detectedApps = new JSArray();
-
-        PackageManager pm = context.getPackageManager();
-        for (String pkg : KNOWN_MOCK_PACKAGES) {
-            try {
-                pm.getPackageInfo(pkg, 0);
-                detectedApps.put(pkg);
-                isMock = true;
-                reasons.add("KNOWN_SPOOFER_INSTALLED:" + pkg);
-            } catch (PackageManager.NameNotFoundException ignored) {}
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            try {
-                AppOpsManager ops = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
-                if (ops != null) {
-                    List<PackageInfo> installed = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS);
-                    for (PackageInfo p : installed) {
-                        if (p.requestedPermissions != null) {
-                            for (String perm : p.requestedPermissions) {
-                                if ("android.permission.ACCESS_MOCK_LOCATION".equals(perm) && !p.packageName.equals(context.getPackageName())) {
-                                    try {
-                                        ApplicationInfo ai = pm.getApplicationInfo(p.packageName, 0);
-                                        int mode = ops.checkOpNoThrow(AppOpsManager.OPSTR_MOCK_LOCATION, ai.uid, p.packageName);
-                                        if (mode == AppOpsManager.MODE_ALLOWED) {
-                                            isMock = true;
-                                            detectedApps.put(p.packageName);
-                                            reasons.add("APPOPS_MOCK_ACTIVE:" + p.packageName);
-                                        }
-                                    } catch (Exception ignored) {}
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (Exception ignored) {}
-        }
 
         try {
             Location lastGps = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);

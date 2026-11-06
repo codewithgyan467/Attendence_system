@@ -744,7 +744,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         setTimeout(() => setIsFlashing(false), 200);
       }
 
-      // High-fidelity temporal burst sequence (8 frames over ~2.0s) preserving video aspect ratio
+      // High-speed temporal burst sequence (4 frames over ~480ms) preserving video aspect ratio
       const vWidth = videoRef.current.videoWidth || 640;
       const vHeight = videoRef.current.videoHeight || 480;
       const maxDim = 480;
@@ -758,13 +758,13 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       const bctx = burstCanvas.getContext('2d');
       const temporalFrames = [];
 
-      for (let i = 0; i < 8; i++) {
-        await new Promise((r) => setTimeout(r, 220));
+      for (let i = 0; i < 4; i++) {
+        await new Promise((r) => setTimeout(r, 120));
         if (videoRef.current && videoRef.current.readyState >= 2) {
           bctx.drawImage(videoRef.current, 0, 0, targetW, targetH);
           temporalFrames.push(burstCanvas.toDataURL('image/jpeg', 0.80));
         }
-        setScanProgress(Math.min(92, 15 + (i + 1) * 10));
+        setScanProgress(Math.min(92, 25 + (i + 1) * 18));
       }
 
       const res = await api.attendance.verifyFace({
