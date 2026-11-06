@@ -3,6 +3,7 @@ const router = express.Router();
 const { getQuery, allQuery, withTransaction, runQuery } = require('../db/database');
 const { requireAuth, requireRole, recordAuditEvent } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
+const { getIstTime12h, getIstDateString } = require('../utils/istTime');
 const { getAllStudentsAttendanceSummary, getStudentAttendanceSummary, getConsecutiveAbsenceAlerts } = require('../services/attendanceStatsService');
 
 // Scoped access for Wardens and Admins
@@ -11,7 +12,7 @@ router.use(requireAuth, requireRole('WARDEN', 'ADMIN'));
 // 1. Warden Overview (Hostel Blocks, Today's Presence/Absence, Exceptions)
 router.get('/overview', async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getIstDateString();
 
     const blocks = await allQuery(`
       SELECT b.*,
@@ -54,7 +55,7 @@ router.get('/overview', async (req, res) => {
 // 2. Exception Investigation (Students who failed location or missed attendance today)
 router.get('/exceptions', async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getIstDateString();
 
     // Students with strikes or flagged for forge
     const flaggedStudents = await allQuery(`
@@ -151,8 +152,8 @@ router.post('/corrections/:id/review', async (req, res) => {
           await runQuery(`
             INSERT INTO attendance_records (
               id, student_id, roll_number, full_name, date, time_marked, status, is_override, override_reason, override_by
-            ) VALUES (?, ?, ?, ?, ?, CURRENT_TIME, ?, 1, ?, ?)
-          `, [uuidv4(), correction.student_id, correction.roll_number, student.full_name, correction.date, correction.requested_status, `Warden approved: ${correction.reason}`, req.user.username]);
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+          `, [uuidv4(), correction.student_id, correction.roll_number, student.full_name, correction.date, getIstTime12h(), correction.requested_status, `Warden approved: ${correction.reason}`, req.user.username]);
         }
       }
     });
@@ -225,7 +226,7 @@ router.get('/student-ledger/:studentId', async (req, res) => {
 // 7. Emergency Evacuation Muster Desk (Real-time safety roll call for first responders)
 router.get('/emergency-muster', async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getIstDateString();
 
     const allStudents = await allQuery(`
       SELECT s.id, s.roll_number, s.full_name, s.hostel_block, s.room_number, s.phone, s.whatsapp_no
@@ -293,7 +294,7 @@ router.get('/emergency-muster', async (req, res) => {
 // 8. Pending Physical In-Person Verifications Queue (Medical injuries, bandages, camera failure)
 router.get('/pending-physical-verifications', async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getIstDateString();
     const pending = await allQuery(`
       SELECT c.*, s.full_name, s.hostel_block, s.room_number, s.phone
       FROM attendance_corrections c
@@ -312,7 +313,7 @@ router.get('/pending-physical-verifications', async (req, res) => {
 router.post('/verify-physical-attendance', async (req, res) => {
   try {
     const { student_id, roll_number, notes } = req.body;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getIstDateString();
     const wardenIdentifier = req.user?.username || req.user?.id || 'WARDEN';
 
     const student = await getQuery(
@@ -324,7 +325,7 @@ router.post('/verify-physical-attendance', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Student not found.' });
     }
 
-    const timeMarked = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const timeMarked = getIstTime12h();
 
     await withTransaction(async ({ runQuery }) => {
       const existing = await getQuery(`SELECT id FROM attendance_records WHERE student_id = ? AND date = ?`, [student.id, today]);

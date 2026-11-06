@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
+import { formatDateIST } from '../../utils/timeUtils';
 import {
   Shield,
   Key,
@@ -436,7 +437,7 @@ export default function AdminSecurityDesk() {
                 <div>
                   <div className="fw-semibold text-dark small">Active Key Identifier: <span className="font-monospace text-primary">{rk?.hint ? `HG-MASTER-${rk.hint}` : 'Configured on Server'}</span></div>
                   <div className="text-muted" style={{ fontSize: '11px' }}>
-                    Created: {rk?.createdAt ? new Date(rk.createdAt).toLocaleDateString() : 'Active'} • Cryptographically hashed (SHA-256 / bcrypt)
+                    Created: {rk?.createdAt ? formatDateIST(rk.createdAt) : 'Active'} • Cryptographically hashed (SHA-256 / bcrypt)
                   </div>
                 </div>
               </div>

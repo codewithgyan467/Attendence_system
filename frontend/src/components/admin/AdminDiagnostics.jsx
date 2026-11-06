@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../utils/api';
+import { formatDateTime12h } from '../../utils/timeUtils';
 import {
   Activity,
   Server,
@@ -153,7 +154,7 @@ export default function AdminDiagnostics() {
             <div className="d-flex align-items-center gap-2">
               <span className="badge bg-white text-dark border px-3 py-2 fw-medium shadow-sm">
                 <Clock size={13} className="text-muted me-1 inline" />
-                Checked: {healthData?.timestamp ? new Date(healthData.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : 'Just now'}
+                Checked: {healthData?.timestamp ? formatDateTime12h(healthData.timestamp) : 'Just now'}
               </span>
             </div>
           </div>
@@ -296,7 +297,7 @@ export default function AdminDiagnostics() {
                     </div>
                     <div className="d-flex justify-content-between">
                       <span className="text-muted">Timestamp:</span>
-                      <span>{new Date(c.storage.lastBackup.createdAt).toLocaleString()}</span>
+                      <span>{formatDateTime12h(c.storage.lastBackup.createdAt)}</span>
                     </div>
                   </div>
                 ) : (

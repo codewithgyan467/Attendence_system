@@ -15,30 +15,15 @@ import {
   Trash2,
   Calendar,
   Users,
-  Building
+  Building,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportToExcel, exportToCsv } from '../../utils/exportUtils';
+import { formatTime12h, getTodayDateIST } from '../../utils/timeUtils';
 
-// Format time to 12-hour format with AM/PM
+// Format time to 12-hour format with AM/PM (IST)
 const formatDisplayTime12h = (timeVal) => {
-  if (!timeVal) return '—';
-  if (typeof timeVal === 'string' && timeVal.includes('T')) {
-    const d = new Date(timeVal);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-    }
-  }
-  const parts = String(timeVal).split(':');
-  if (parts.length >= 2) {
-    let h = parseInt(parts[0], 10);
-    const m = parseInt(parts[1], 10);
-    if (!isNaN(h) && !isNaN(m)) {
-      const ampm = h >= 12 ? 'PM' : 'AM';
-      h = h % 12 || 12;
-      const mm = m < 10 ? `0${m}` : `${m}`;
-      return `${h}:${mm} ${ampm}`;
-    }
-  }
-  return timeVal;
+  return formatTime12h(timeVal);
 };
 
 const MONTH_NAMES = [
@@ -62,7 +47,7 @@ export default function AttendanceManager() {
   const [clearingRecords, setClearingRecords] = useState(false);
 
   // Daily Filters
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayDateIST();
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedBlock, setSelectedBlock] = useState('');
@@ -220,38 +205,54 @@ export default function AttendanceManager() {
     }
   };
 
-  const handleExportCSV = () => {
-    if (!records || records.length === 0) {
-      alert('No attendance records available to export.');
-      return;
-    }
-    const headers = ['Roll No', 'Full Name', 'Block', 'Room', 'Date', 'Time', 'Status', 'Verification Method', 'Distance (m)'];
-    const rows = records.map((r) => [
-      `"${r.roll_no || r.roll_number || ''}"`,
-      `"${r.full_name || ''}"`,
-      `"${r.block_name || r.hostel_block || ''}"`,
-      `"${r.room_number || ''}"`,
-      `"${r.date || selectedDate}"`,
-      `"${r.check_in_time || r.time_marked || 'N/A'}"`,
-      `"${r.status || 'ABSENT'}"`,
-      `"${r.verification_method || 'N/A'}"`,
-      `"${r.distance_meters !== null && r.distance_meters !== undefined ? Number(r.distance_meters).toFixed(1) : (r.verified_distance !== null && r.verified_distance !== undefined ? Number(r.verified_distance).toFixed(1) : 'N/A')}"`
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Hostel_Attendance_${selectedDate || 'Export'}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const getAttendanceExportData = () => {
+    const headers = [
+      { key: 'roll_no', label: 'Roll No' },
+      { key: 'full_name', label: 'Full Name' },
+      { key: 'block_name', label: 'Hostel Block' },
+      { key: 'room_number', label: 'Room' },
+      { key: 'date', label: 'Date' },
+      { key: 'check_in_time', label: 'Check-in Time (IST)' },
+      { key: 'status', label: 'Status' },
+      { key: 'verification_method', label: 'Verification Method' },
+      { key: 'distance', label: 'Distance (m)' }
+    ];
+    const data = (records || []).map((r) => ({
+      roll_no: r.roll_no || r.roll_number || '',
+      full_name: r.full_name || '',
+      block_name: r.block_name || r.hostel_block || '',
+      room_number: r.room_number || '',
+      date: r.date || selectedDate,
+      check_in_time: r.check_in_time || r.time_marked ? formatTime12h(r.check_in_time || r.time_marked) : 'N/A',
+      status: r.status || 'ABSENT',
+      verification_method: r.verification_method || 'N/A',
+      distance: r.distance_meters !== null && r.distance_meters !== undefined ? Number(r.distance_meters).toFixed(1) : (r.verified_distance !== null && r.verified_distance !== undefined ? Number(r.verified_distance).toFixed(1) : 'N/A')
+    }));
+    return { headers, data };
   };
 
-  const handleExportLedgerCSV = () => {
+  const handleExportCSV = () => {
+    const { headers, data } = getAttendanceExportData();
+    exportToCsv({
+      filename: `Hostel_Attendance_${selectedDate || 'Export'}`,
+      headers,
+      data
+    });
+  };
+
+  const handleExportExcel = () => {
+    const { headers, data } = getAttendanceExportData();
+    exportToExcel({
+      filename: `Hostel_Attendance_${selectedDate || 'Export'}`,
+      sheetName: 'Daily Attendance',
+      headers,
+      data
+    });
+  };
+
+  const getLedgerExportData = () => {
     if (!ledgerData || !ledgerData.students || ledgerData.students.length === 0) {
-      alert('No ledger records available to export.');
-      return;
+      return { headers: [], data: [] };
     }
     const filteredStudents = (ledgerData.students || []).filter((st) => {
       const matchSearch = !ledgerSearch ||
@@ -262,59 +263,63 @@ export default function AttendanceManager() {
     });
 
     const headers = [
-      'Roll Number',
-      'Full Name',
-      'Hostel Block',
-      'Room Number',
-      'Course',
-      'Phone',
-      `Month Present (${ledgerData.monthName})`,
-      `Month Approved Leave (${ledgerData.monthName})`,
-      `Month Unauthorized Missed (${ledgerData.monthName})`,
-      'Consecutive Nights Missed',
-      'Safety Alert Status',
-      'Total Calendar Days in Month',
-      'Month Holidays Excluded',
-      'Month Net Active Days',
-      `Session Present (${ledgerData.year})`,
-      `Session Approved Leave (${ledgerData.year})`,
-      `Session Unauthorized Missed (${ledgerData.year})`,
-      'Total Calendar Days in Year',
-      'Session Holidays Excluded',
-      'Session Net Active Days'
+      { key: 'roll_number', label: 'Roll Number' },
+      { key: 'full_name', label: 'Full Name' },
+      { key: 'hostel_block', label: 'Hostel Block' },
+      { key: 'room_number', label: 'Room Number' },
+      { key: 'course', label: 'Course' },
+      { key: 'phone', label: 'Phone' },
+      { key: 'monthly_present', label: `Month Present (${ledgerData.monthName})` },
+      { key: 'monthly_leave', label: `Month Approved Leave (${ledgerData.monthName})` },
+      { key: 'monthly_absent', label: `Month Unauthorized Missed (${ledgerData.monthName})` },
+      { key: 'consecutive_absent_nights', label: 'Consecutive Nights Missed' },
+      { key: 'safety_status', label: 'Safety Alert Status' },
+      { key: 'monthly_active_days', label: 'Month Net Active Days' },
+      { key: 'yearly_present', label: `Session Present (${ledgerData.year})` },
+      { key: 'yearly_leave', label: `Session Approved Leave (${ledgerData.year})` },
+      { key: 'yearly_absent', label: `Session Unauthorized Missed (${ledgerData.year})` },
+      { key: 'yearly_active_days', label: 'Session Net Active Days' }
     ];
 
-    const rows = filteredStudents.map((s) => [
-      `"${s.roll_number || ''}"`,
-      `"${s.full_name || ''}"`,
-      `"${s.hostel_block || ''}"`,
-      `"${s.room_number || ''}"`,
-      `"${s.course || ''}"`,
-      `"${s.phone || ''}"`,
-      s.monthly_present || 0,
-      s.monthly_leave || 0,
-      s.monthly_absent || 0,
-      s.consecutive_absent_nights || 0,
-      s.is_safety_alert ? 'CRITICAL_SAFETY_ALERT' : 'NORMAL',
-      ledgerData.daysInMonth || 30,
-      ledgerData.monthlyHolidays || 0,
-      ledgerData.monthlyActiveDays || 30,
-      s.yearly_present || 0,
-      s.yearly_leave || 0,
-      s.yearly_absent || 0,
-      ledgerData.daysInYear || 365,
-      ledgerData.yearlyHolidays || 0,
-      ledgerData.yearlyActiveDays || 365
-    ]);
+    const data = filteredStudents.map((s) => ({
+      roll_number: s.roll_number || '',
+      full_name: s.full_name || '',
+      hostel_block: s.hostel_block || '',
+      room_number: s.room_number || '',
+      course: s.course || '',
+      phone: s.phone || '',
+      monthly_present: s.monthly_present || 0,
+      monthly_leave: s.monthly_leave || 0,
+      monthly_absent: s.monthly_absent || 0,
+      consecutive_absent_nights: s.consecutive_absent_nights || 0,
+      safety_status: s.is_safety_alert ? 'CRITICAL_SAFETY_ALERT' : 'NORMAL',
+      monthly_active_days: ledgerData.monthlyActiveDays || 30,
+      yearly_present: s.yearly_present || 0,
+      yearly_leave: s.yearly_leave || 0,
+      yearly_absent: s.yearly_absent || 0,
+      yearly_active_days: ledgerData.yearlyActiveDays || 365
+    }));
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Hostel_Roll_Call_Ledger_${ledgerData.year}_${String(ledgerData.month).padStart(2, '0')}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    return { headers, data };
+  };
+
+  const handleExportLedgerCSV = () => {
+    const { headers, data } = getLedgerExportData();
+    exportToCsv({
+      filename: `Hostel_Roll_Call_Ledger_${ledgerData.year}_${String(ledgerData.month).padStart(2, '0')}`,
+      headers,
+      data
+    });
+  };
+
+  const handleExportLedgerExcel = () => {
+    const { headers, data } = getLedgerExportData();
+    exportToExcel({
+      filename: `Hostel_Roll_Call_Ledger_${ledgerData.year}_${String(ledgerData.month).padStart(2, '0')}`,
+      sheetName: 'Roll Call Ledger',
+      headers,
+      data
+    });
   };
 
   const getStatusBadge = (status) => {
@@ -404,11 +409,20 @@ export default function AttendanceManager() {
               <RefreshCw size={14} /> Refresh
             </button>
             <button
-              className="btn btn-primary btn-sm d-flex align-items-center gap-1"
+              className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
               onClick={handleExportCSV}
               disabled={records.length === 0}
+              title="Export Daily Attendance as CSV"
             >
-              <Download size={14} /> Export Daily CSV
+              <Download size={14} /> Export CSV
+            </button>
+            <button
+              className="btn btn-success btn-sm d-flex align-items-center gap-1 shadow-sm"
+              onClick={handleExportExcel}
+              disabled={records.length === 0}
+              title="Export Daily Attendance as Excel (.xlsx)"
+            >
+              <FileSpreadsheet size={14} /> Export Excel (.xlsx)
             </button>
             <button
               className="btn btn-outline-danger btn-sm d-flex align-items-center gap-1"
@@ -713,11 +727,20 @@ export default function AttendanceManager() {
                 <RefreshCw size={14} /> Refresh Ledger
               </button>
               <button
-                className="btn btn-success btn-sm d-flex align-items-center gap-1 shadow-sm"
+                className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
                 onClick={handleExportLedgerCSV}
                 disabled={!ledgerData || !ledgerData.students || ledgerData.students.length === 0}
+                title="Export Roll Call Ledger as CSV"
               >
-                <Download size={14} /> Export Roll Call Ledger CSV
+                <Download size={14} /> Export CSV
+              </button>
+              <button
+                className="btn btn-success btn-sm d-flex align-items-center gap-1 shadow-sm"
+                onClick={handleExportLedgerExcel}
+                disabled={!ledgerData || !ledgerData.students || ledgerData.students.length === 0}
+                title="Export Roll Call Ledger as Excel (.xlsx)"
+              >
+                <FileSpreadsheet size={14} /> Export Excel (.xlsx)
               </button>
             </div>
           </div>

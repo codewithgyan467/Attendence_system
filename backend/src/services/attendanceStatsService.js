@@ -8,6 +8,7 @@
  */
 
 const { getQuery, allQuery } = require('../db/database');
+const { getIstDateString } = require('../utils/istTime');
 
 const isLeapYear = (year) => {
   return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
@@ -214,7 +215,7 @@ const getStudentAttendanceSummary = async (studentId, customYear = null) => {
   for (let i = 1; i <= 14; i++) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
-    past14Days.push(d.toISOString().split('T')[0]);
+    past14Days.push(getIstDateString(d));
   }
 
   const holidays14 = await allQuery(
@@ -300,7 +301,7 @@ const getConsecutiveAbsenceAlerts = async () => {
   for (let i = 1; i <= 14; i++) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
-    past14Days.push(d.toISOString().split('T')[0]);
+    past14Days.push(getIstDateString(d));
   }
 
   const holidays = await allQuery(

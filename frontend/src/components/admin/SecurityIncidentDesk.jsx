@@ -11,8 +11,12 @@ import {
   Compass,
   Clock,
   Unlock,
-  Trash2
+  Trash2,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportToExcel, exportToCsv } from '../../utils/exportUtils';
+import { formatDateTime12h, getTodayDateIST } from '../../utils/timeUtils';
 
 export default function SecurityIncidentDesk() {
   const [alerts, setAlerts] = useState({ flagged_students: [], recent_logs: [] });
@@ -198,6 +202,51 @@ export default function SecurityIncidentDesk() {
   const recentLogs = alerts.recent_logs || alerts.recentAuditLogs || [];
   const recentEvidence = alerts.recent_evidence || [];
 
+  const handleExportCsv = () => {
+    const list = recentLogs.length > 0 ? recentLogs : flaggedStudents;
+    if (list.length === 0) return;
+    const headers = [
+      { key: 'timestamp', label: 'Timestamp (IST)' },
+      { key: 'event_type', label: 'Event Type' },
+      { key: 'student_info', label: 'Student Info' },
+      { key: 'details', label: 'Details' }
+    ];
+    const data = list.map(item => ({
+      timestamp: item.timestamp || item.created_at ? formatDateTime12h(item.timestamp || item.created_at) : 'N/A',
+      event_type: item.event_type || item.incident_type || 'INCIDENT',
+      student_info: item.student_name || item.full_name || item.roll_number || item.student_id || 'N/A',
+      details: item.details || `Strikes: ${item.strike_count || 0}`
+    }));
+    exportToCsv({
+      filename: `hostelguard_security_incidents_${getTodayDateIST()}`,
+      headers,
+      data
+    });
+  };
+
+  const handleExportExcel = () => {
+    const list = recentLogs.length > 0 ? recentLogs : flaggedStudents;
+    if (list.length === 0) return;
+    const headers = [
+      { key: 'timestamp', label: 'Timestamp (IST)' },
+      { key: 'event_type', label: 'Event Type' },
+      { key: 'student_info', label: 'Student Info' },
+      { key: 'details', label: 'Details' }
+    ];
+    const data = list.map(item => ({
+      timestamp: item.timestamp || item.created_at ? formatDateTime12h(item.timestamp || item.created_at) : 'N/A',
+      event_type: item.event_type || item.incident_type || 'INCIDENT',
+      student_info: item.student_name || item.full_name || item.roll_number || item.student_id || 'N/A',
+      details: item.details || `Strikes: ${item.strike_count || 0}`
+    }));
+    exportToExcel({
+      filename: `hostelguard_security_incidents_${getTodayDateIST()}`,
+      sheetName: 'Security Incidents',
+      headers,
+      data
+    });
+  };
+
   return (
     <div className="container-fluid px-0">
       {/* Page Title */}
@@ -211,7 +260,23 @@ export default function SecurityIncidentDesk() {
             Monitoring the 3-strike Forge Location rule, out-of-boundary check-in attempts, and suspicious device signatures.
           </p>
         </div>
-        <div className="d-flex gap-2">
+        <div className="d-flex gap-2 flex-wrap">
+          <button
+            className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
+            onClick={handleExportCsv}
+            disabled={recentLogs.length === 0 && flaggedStudents.length === 0}
+            title="Export Security Incidents as CSV"
+          >
+            <Download size={14} /> Export CSV
+          </button>
+          <button
+            className="btn btn-outline-success btn-sm d-flex align-items-center gap-1"
+            onClick={handleExportExcel}
+            disabled={recentLogs.length === 0 && flaggedStudents.length === 0}
+            title="Export Security Incidents as Excel (.xlsx)"
+          >
+            <FileSpreadsheet size={14} /> Export Excel (.xlsx)
+          </button>
           {flaggedStudents.length > 0 && (
             <button
               className="btn btn-danger btn-sm d-flex align-items-center gap-1 fw-semibold shadow-sm"
@@ -344,7 +409,52 @@ export default function SecurityIncidentDesk() {
                       {flaggedStudents.map((s, idx) => {
                         const strikes = s.strike_count || s.failed_attempts || 0;
                         const isLocked = strikes >= 3 || s.is_flagged;
-                        return (
+                        const handleExportCsv = () => {
+    const list = recentLogs.length > 0 ? recentLogs : flaggedStudents;
+    if (list.length === 0) return;
+    const headers = [
+      { key: 'timestamp', label: 'Timestamp (IST)' },
+      { key: 'event_type', label: 'Event Type' },
+      { key: 'student_info', label: 'Student Info' },
+      { key: 'details', label: 'Details' }
+    ];
+    const data = list.map(item => ({
+      timestamp: item.timestamp || item.created_at ? formatDateTime12h(item.timestamp || item.created_at) : 'N/A',
+      event_type: item.event_type || item.incident_type || 'INCIDENT',
+      student_info: item.student_name || item.full_name || item.roll_number || item.student_id || 'N/A',
+      details: item.details || `Strikes: ${item.strike_count || 0}`
+    }));
+    exportToCsv({
+      filename: `hostelguard_security_incidents_${getTodayDateIST()}`,
+      headers,
+      data
+    });
+  };
+
+  const handleExportExcel = () => {
+    const list = recentLogs.length > 0 ? recentLogs : flaggedStudents;
+    if (list.length === 0) return;
+    const headers = [
+      { key: 'timestamp', label: 'Timestamp (IST)' },
+      { key: 'event_type', label: 'Event Type' },
+      { key: 'student_info', label: 'Student Info' },
+      { key: 'details', label: 'Details' }
+    ];
+    const data = list.map(item => ({
+      timestamp: item.timestamp || item.created_at ? formatDateTime12h(item.timestamp || item.created_at) : 'N/A',
+      event_type: item.event_type || item.incident_type || 'INCIDENT',
+      student_info: item.student_name || item.full_name || item.roll_number || item.student_id || 'N/A',
+      details: item.details || `Strikes: ${item.strike_count || 0}`
+    }));
+    exportToExcel({
+      filename: `hostelguard_security_incidents_${getTodayDateIST()}`,
+      sheetName: 'Security Incidents',
+      headers,
+      data
+    });
+  };
+
+  return (
                           <tr key={s.student_id || s.id || idx}>
                             <td className="ps-3 fw-medium text-dark">{s.full_name}</td>
                             <td><code>{s.roll_no || s.roll_number}</code></td>
@@ -419,7 +529,7 @@ export default function SecurityIncidentDesk() {
                         </span>
                         <div className="d-flex align-items-center gap-2">
                           <span className="text-muted" style={{ fontSize: '11px' }}>
-                            {log.timestamp ? new Date(log.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : 'Recent'}
+                            {log.timestamp ? formatDateTime12h(log.timestamp) : 'Recent'}
                           </span>
                           {log.id && (
                             <button
@@ -487,10 +597,55 @@ export default function SecurityIncidentDesk() {
                       ev.decision_outcome === 'STEP_UP' ? 'warning' :
                       ev.decision_outcome === 'MANUAL_REVIEW' ? 'secondary' : 'danger';
 
-                    return (
+                    const handleExportCsv = () => {
+    const list = recentLogs.length > 0 ? recentLogs : flaggedStudents;
+    if (list.length === 0) return;
+    const headers = [
+      { key: 'timestamp', label: 'Timestamp (IST)' },
+      { key: 'event_type', label: 'Event Type' },
+      { key: 'student_info', label: 'Student Info' },
+      { key: 'details', label: 'Details' }
+    ];
+    const data = list.map(item => ({
+      timestamp: item.timestamp || item.created_at ? formatDateTime12h(item.timestamp || item.created_at) : 'N/A',
+      event_type: item.event_type || item.incident_type || 'INCIDENT',
+      student_info: item.student_name || item.full_name || item.roll_number || item.student_id || 'N/A',
+      details: item.details || `Strikes: ${item.strike_count || 0}`
+    }));
+    exportToCsv({
+      filename: `hostelguard_security_incidents_${getTodayDateIST()}`,
+      headers,
+      data
+    });
+  };
+
+  const handleExportExcel = () => {
+    const list = recentLogs.length > 0 ? recentLogs : flaggedStudents;
+    if (list.length === 0) return;
+    const headers = [
+      { key: 'timestamp', label: 'Timestamp (IST)' },
+      { key: 'event_type', label: 'Event Type' },
+      { key: 'student_info', label: 'Student Info' },
+      { key: 'details', label: 'Details' }
+    ];
+    const data = list.map(item => ({
+      timestamp: item.timestamp || item.created_at ? formatDateTime12h(item.timestamp || item.created_at) : 'N/A',
+      event_type: item.event_type || item.incident_type || 'INCIDENT',
+      student_info: item.student_name || item.full_name || item.roll_number || item.student_id || 'N/A',
+      details: item.details || `Strikes: ${item.strike_count || 0}`
+    }));
+    exportToExcel({
+      filename: `hostelguard_security_incidents_${getTodayDateIST()}`,
+      sheetName: 'Security Incidents',
+      headers,
+      data
+    });
+  };
+
+  return (
                       <tr key={ev.id}>
                         <td className="text-muted text-nowrap" style={{ fontSize: '11px' }}>
-                          {new Date(ev.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {formatDateTime12h(ev.created_at)}
                         </td>
                         <td>
                           <div className="fw-semibold text-dark">{ev.full_name || ev.roll_number}</div>

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../utils/api';
+import { exportToExcel, exportToCsv } from '../../utils/exportUtils';
+import { getTodayDateIST } from '../../utils/timeUtils';
 import {
   Users,
   Search,
@@ -430,6 +432,90 @@ export default function StudentRosterManager() {
     showFeedback('CSV Template (.csv) downloaded with 13-column format!', 'success');
   };
 
+  // 2b. Export Current Active Roster to CSV or Excel
+  const handleExportRosterCsv = () => {
+    if (!students || students.length === 0) {
+      showFeedback('No students found to export.', 'warning');
+      return;
+    }
+    const headers = [
+      { key: 'roll_number', label: 'Roll Number' },
+      { key: 'full_name', label: 'Full Name' },
+      { key: 'course', label: 'Course' },
+      { key: 'branch', label: 'Branch' },
+      { key: 'semester', label: 'Semester' },
+      { key: 'hostel_block', label: 'Hostel Block' },
+      { key: 'floor', label: 'Floor' },
+      { key: 'room_number', label: 'Room Number' },
+      { key: 'phone', label: 'Phone' },
+      { key: 'email', label: 'Email' },
+      { key: 'admission_year', label: 'Admission Year' },
+      { key: 'biometric_status', label: 'Biometric Status' }
+    ];
+    const data = students.map(s => ({
+      roll_number: s.roll_number || '',
+      full_name: s.full_name || '',
+      course: s.course || '',
+      branch: s.branch || '',
+      semester: s.semester || '',
+      hostel_block: s.hostel_block || '',
+      floor: s.floor || '',
+      room_number: s.room_number || '',
+      phone: s.phone || '',
+      email: s.email || '',
+      admission_year: s.admission_year || '',
+      biometric_status: s.face_enrollment_status === 'ENROLLED' ? 'Enrolled' : 'Pending'
+    }));
+    exportToCsv({
+      filename: `hostelguard_student_roster_${getTodayDateIST()}`,
+      headers,
+      data
+    });
+    showFeedback('Student roster exported to CSV successfully!', 'success');
+  };
+
+  const handleExportRosterExcel = () => {
+    if (!students || students.length === 0) {
+      showFeedback('No students found to export.', 'warning');
+      return;
+    }
+    const headers = [
+      { key: 'roll_number', label: 'Roll Number' },
+      { key: 'full_name', label: 'Full Name' },
+      { key: 'course', label: 'Course' },
+      { key: 'branch', label: 'Branch' },
+      { key: 'semester', label: 'Semester' },
+      { key: 'hostel_block', label: 'Hostel Block' },
+      { key: 'floor', label: 'Floor' },
+      { key: 'room_number', label: 'Room Number' },
+      { key: 'phone', label: 'Phone' },
+      { key: 'email', label: 'Email' },
+      { key: 'admission_year', label: 'Admission Year' },
+      { key: 'biometric_status', label: 'Biometric Status' }
+    ];
+    const data = students.map(s => ({
+      roll_number: s.roll_number || '',
+      full_name: s.full_name || '',
+      course: s.course || '',
+      branch: s.branch || '',
+      semester: s.semester || '',
+      hostel_block: s.hostel_block || '',
+      floor: s.floor || '',
+      room_number: s.room_number || '',
+      phone: s.phone || '',
+      email: s.email || '',
+      admission_year: s.admission_year || '',
+      biometric_status: s.face_enrollment_status === 'ENROLLED' ? 'Enrolled' : 'Pending'
+    }));
+    exportToExcel({
+      filename: `hostelguard_student_roster_${getTodayDateIST()}`,
+      sheetName: 'Student Roster',
+      headers,
+      data
+    });
+    showFeedback('Student roster exported to Excel (.xlsx) successfully!', 'success');
+  };
+
   // 3. Download Word / Document Roster Template (.docx format preview)
   const handleDownloadDocTemplate = () => {
     const docContent =
@@ -618,6 +704,12 @@ export default function StudentRosterManager() {
           </p>
         </div>
         <div className="d-flex align-items-center gap-2 flex-wrap">
+          <button onClick={handleExportRosterCsv} className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1 shadow-sm" title="Export current student list as CSV">
+            <Download size={14} /> Export CSV
+          </button>
+          <button onClick={handleExportRosterExcel} className="btn btn-sm btn-outline-success d-flex align-items-center gap-1 shadow-sm" title="Export current student list as Excel (.xlsx)">
+            <FileSpreadsheet size={14} /> Export Excel (.xlsx)
+          </button>
           <button onClick={() => setShowManualModal(true)} className="btn btn-sm btn-success d-flex align-items-center gap-1 shadow-sm">
             <UserPlus size={14} /> + Add Student Manually
           </button>

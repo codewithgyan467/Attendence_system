@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
+const { getIstTime12h, getIstDateString } = require('../utils/istTime');
 const { runQuery, getQuery, allQuery, withTransaction } = require('../db/database');
 const { generateToken, requireAuth, requireRole, recordAuditEvent, JWT_SECRET } = require('../middleware/auth');
 const { sendEmailOtp, sendSmsOtp, maskEmail, maskPhone } = require('../services/notificationService');
@@ -590,7 +591,7 @@ router.use(requireAuth, requireRole('STUDENT'));
 // 3. Student Dashboard Overview
 router.get('/dashboard', async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getIstDateString();
     const student = await getQuery(`SELECT * FROM students WHERE id = ? OR user_id = ? OR roll_number = ?`, [req.user.student_id, req.user.id, req.user.username]);
 
     if (!student) {

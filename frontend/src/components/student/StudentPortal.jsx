@@ -35,27 +35,10 @@ import {
 } from 'lucide-react';
 import GeofenceMap from '../common/GeofenceMap';
 import { playBiometricChime, detectFaceAngle, detectBlinkEvent, resetBlinkTracker } from '../../utils/faceAngleGuide';
+import { formatTime12h, formatDateTime12h, formatDateIST, getCurrentTimeIST12h } from '../../utils/timeUtils';
 
 const formatDisplayTime12h = (timeVal) => {
-  if (!timeVal) return '';
-  if (typeof timeVal === 'string' && timeVal.includes('T')) {
-    const d = new Date(timeVal);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-    }
-  }
-  const parts = String(timeVal).split(':');
-  if (parts.length >= 2) {
-    let h = parseInt(parts[0], 10);
-    const m = parseInt(parts[1], 10);
-    if (!isNaN(h) && !isNaN(m)) {
-      const ampm = h >= 12 ? 'PM' : 'AM';
-      h = h % 12 || 12;
-      const mm = m < 10 ? `0${m}` : `${m}`;
-      return `${h}:${mm} ${ampm}`;
-    }
-  }
-  return timeVal;
+  return formatTime12h(timeVal);
 };
 
 export default function StudentPortal({ activeTab = 'student_attendance', onSelectTab }) {
@@ -912,7 +895,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           <div className="d-flex flex-wrap justify-content-between align-items-center gap-3">
             <div>
               <div className="text-primary-subtle small fw-medium text-uppercase mb-1" style={{ letterSpacing: '0.6px', fontSize: '11px' }}>
-                {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                {formatDateIST(new Date())}
               </div>
               <h3 className="fw-bold mb-1 text-white">
                 {getGreeting(student.full_name || user?.username)}
@@ -1119,7 +1102,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   Biometric Attendance Check-In
                 </h6>
                 <span className="badge bg-light text-dark">
-                  {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+                  {formatDateIST(new Date())}
                 </span>
               </div>
 
@@ -1136,11 +1119,11 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     <div className="card bg-light border-0 rounded-4 p-3 mx-auto text-start shadow-sm" style={{ maxWidth: '380px' }}>
                       <div className="d-flex justify-content-between py-1.5 border-bottom">
                         <span className="text-muted small">Date</span>
-                        <span className="fw-semibold text-dark small">{new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                        <span className="fw-semibold text-dark small">{formatDateIST(new Date())}</span>
                       </div>
                       <div className="d-flex justify-content-between py-1.5 border-bottom">
                         <span className="text-muted small">Time Recorded</span>
-                        <span className="fw-semibold text-dark small">{todayStatus.record?.time_marked || '7:18 PM'}</span>
+                        <span className="fw-semibold text-dark small">{todayStatus.record?.time_marked ? formatTime12h(todayStatus.record?.time_marked) : '7:18 PM'}</span>
                       </div>
                       <div className="d-flex justify-content-between py-1.5 border-bottom">
                         <span className="text-muted small">Location</span>
@@ -1585,7 +1568,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           <div className="d-flex justify-content-between py-1.5 border-bottom" style={{ fontSize: '12px' }}>
                             <span className="text-muted">Time Recorded:</span>
                             <span className="fw-semibold text-dark font-monospace">
-                              {new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                              {getCurrentTimeIST12h()}
                             </span>
                           </div>
                           <div className="d-flex justify-content-between py-1.5" style={{ fontSize: '12px' }}>

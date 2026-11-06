@@ -10,8 +10,12 @@ import {
   Clock,
   Code,
   Trash2,
-  CheckCircle2
+  CheckCircle2,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportToExcel, exportToCsv } from '../../utils/exportUtils';
+import { formatDateTime12h, getTodayDateIST } from '../../utils/timeUtils';
 
 export default function AuditLogViewer() {
   const [logs, setLogs] = useState([]);
@@ -96,6 +100,57 @@ export default function AuditLogViewer() {
     return <span className="badge bg-primary-subtle text-primary border border-primary-subtle">{action}</span>;
   };
 
+  const handleExportCsv = () => {
+    if (!logs || logs.length === 0) return;
+    const headers = [
+      { key: 'timestamp', label: 'Timestamp (IST)' },
+      { key: 'username', label: 'Administrator' },
+      { key: 'action', label: 'Action' },
+      { key: 'target', label: 'Target / Roll No' },
+      { key: 'details', label: 'Details' },
+      { key: 'ip_address', label: 'IP Address' }
+    ];
+    const data = logs.map(l => ({
+      timestamp: formatDateTime12h(l.created_at),
+      username: l.username || 'System Admin',
+      action: l.action || '',
+      target: l.target_student || '',
+      details: l.details || '',
+      ip_address: l.ip_address || '127.0.0.1'
+    }));
+    exportToCsv({
+      filename: `hostelguard_audit_trail_${getTodayDateIST()}`,
+      headers,
+      data
+    });
+  };
+
+  const handleExportExcel = () => {
+    if (!logs || logs.length === 0) return;
+    const headers = [
+      { key: 'timestamp', label: 'Timestamp (IST)' },
+      { key: 'username', label: 'Administrator' },
+      { key: 'action', label: 'Action' },
+      { key: 'target', label: 'Target / Roll No' },
+      { key: 'details', label: 'Details' },
+      { key: 'ip_address', label: 'IP Address' }
+    ];
+    const data = logs.map(l => ({
+      timestamp: formatDateTime12h(l.created_at),
+      username: l.username || 'System Admin',
+      action: l.action || '',
+      target: l.target_student || '',
+      details: l.details || '',
+      ip_address: l.ip_address || '127.0.0.1'
+    }));
+    exportToExcel({
+      filename: `hostelguard_audit_trail_${getTodayDateIST()}`,
+      sheetName: 'Audit Log Trail',
+      headers,
+      data
+    });
+  };
+
   return (
     <div className="container-fluid px-0">
       {/* Page Title */}
@@ -109,7 +164,23 @@ export default function AuditLogViewer() {
             Cryptographically tracked audit logs for administrative interventions, roster commits, policy changes, and overrides.
           </p>
         </div>
-        <div className="d-flex gap-2">
+        <div className="d-flex gap-2 flex-wrap">
+          <button
+            className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
+            onClick={handleExportCsv}
+            disabled={logs.length === 0}
+            title="Export Audit Trail as CSV"
+          >
+            <Download size={14} /> Export CSV
+          </button>
+          <button
+            className="btn btn-outline-success btn-sm d-flex align-items-center gap-1"
+            onClick={handleExportExcel}
+            disabled={logs.length === 0}
+            title="Export Audit Trail as Excel (.xlsx)"
+          >
+            <FileSpreadsheet size={14} /> Export Excel (.xlsx)
+          </button>
           <button
             className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
             onClick={fetchLogs}
@@ -233,7 +304,7 @@ export default function AuditLogViewer() {
                     <tr key={log.id}>
                       <td className="ps-3 small text-muted" style={{ whiteSpace: 'nowrap' }}>
                         <Clock size={12} className="me-1 inline" />
-                        {new Date(log.created_at).toLocaleString()}
+                        {formatDateTime12h(log.created_at)}
                       </td>
                       <td>
                         <span className="fw-semibold text-dark small d-flex align-items-center gap-1">

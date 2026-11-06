@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../utils/api';
+import { formatTime12h } from '../../utils/timeUtils';
 import {
   MapPin,
   Navigation,
@@ -810,7 +811,7 @@ export default function GeofenceManager() {
                           <td>
                             <span className="text-muted">
                               <Clock size={12} className="me-1 inline" />
-                              {b.last_seen_at ? new Date(b.last_seen_at).toLocaleTimeString() : 'Awaiting Student Scan'}
+                              {b.last_seen_at ? formatTime12h(b.last_seen_at) : 'Awaiting Student Scan'}
                             </span>
                           </td>
                           <td>

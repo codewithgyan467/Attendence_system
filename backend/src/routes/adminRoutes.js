@@ -14,6 +14,7 @@ const { clearForgeFlag } = require('../services/fraudService');
 const backupService = require('../services/backupService');
 const aiServiceClient = require('../services/aiServiceClient');
 const { getAttendanceWindowStatus, formatTime12h } = require('../services/scheduleService');
+const { getIstTime12h, getIstDateString } = require('../utils/istTime');
 const { createMasterRecoveryKey, getActiveRecoveryKeyMetadata } = require('../services/recoveryService');
 const embeddingCache = require('../services/embeddingCache');
 const bleBeaconService = require('../services/bleBeaconService');
@@ -74,14 +75,14 @@ router.get('/dashboard-stats', requireRole('ADMIN'), async (req, res) => {
       return res.json(adminDashboardCache);
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getIstDateString();
 
     // Build the 7-day trend date window
     const past7Days = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = getIstDateString(d);
       const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
       past7Days.push({
         date: dateStr,
@@ -265,7 +266,7 @@ router.get('/dashboard-stats', requireRole('ADMIN'), async (req, res) => {
 // 1b. Real-Time Daily Attendance Roster (Present & Absent lists for selected day)
 router.get('/today-roster', requireRole('ADMIN'), async (req, res) => {
   try {
-    const targetDate = req.query.date || new Date().toISOString().split('T')[0];
+    const targetDate = req.query.date || getIstDateString();
 
     const [rawPresent, absent] = await Promise.all([
       allQuery(`
@@ -1647,7 +1648,7 @@ router.get('/attendance-ledger', async (req, res) => {
 router.get('/reports', async (req, res) => {
   try {
     const { date, block, status, search } = req.query;
-    const targetDate = date || new Date().toISOString().split('T')[0];
+    const targetDate = date || getIstDateString();
     const upperStatus = status ? status.trim().toUpperCase() : '';
 
     let recordedAttendances = [];
@@ -1786,7 +1787,10 @@ router.get('/reports', async (req, res) => {
     }
 
     // Combine records: present/recorded attendances first, followed by un-marked absent students
-    const records = [...recordedAttendances, ...absentStudents];
+    const records = [...recordedAttendances, ...absentStudents].map(r => ({
+      ...r,
+      time_marked_12: r.time_marked ? formatTime12h(r.time_marked) : (r.check_in_time ? formatTime12h(r.check_in_time) : null)
+    }));
 
     // Compute global summary statistics for the targetDate
     const totalStudents = await getQuery(`SELECT COUNT(*) as count FROM students WHERE is_active = 1`);
@@ -1833,15 +1837,15 @@ router.post('/attendance/override', async (req, res) => {
     if (existingRecord) {
       await runQuery(`
         UPDATE attendance_records
-        SET status = ?, is_override = 1, override_reason = ?, override_by = ?, time_marked = CURRENT_TIME
+        SET status = ?, is_override = 1, override_reason = ?, override_by = ?, time_marked = ?
         WHERE id = ?
-      `, [status, reason, req.user.username, existingRecord.id]);
+      `, [status, reason, req.user.username, getIstTime12h(), existingRecord.id]);
     } else {
       await runQuery(`
         INSERT INTO attendance_records (
           id, student_id, roll_number, full_name, date, time_marked, status, is_override, override_reason, override_by
-        ) VALUES (?, ?, ?, ?, ?, CURRENT_TIME, ?, 1, ?, ?)
-      `, [uuidv4(), student.id, student.roll_number, student.full_name, date, status, reason, req.user.username]);
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+      `, [uuidv4(), student.id, student.roll_number, student.full_name, date, getIstTime12h(), status, reason, req.user.username]);
     }
 
     await recordAuditEvent(req.user.id, req.user.username, 'ATTENDANCE_OVERRIDE', 'ATTENDANCE', student.id, `Overrode ${student.roll_number} on ${date} to ${status}: ${reason}`, req);
@@ -1950,8 +1954,8 @@ router.post('/corrections/:id/review', async (req, res) => {
           await runQuery(`
             INSERT INTO attendance_records (
               id, student_id, roll_number, full_name, date, time_marked, status, is_override, override_reason, override_by
-            ) VALUES (?, ?, ?, ?, ?, CURRENT_TIME, ?, 1, ?, ?)
-          `, [uuidv4(), correction.student_id, correction.roll_number, student.full_name, correction.date, correction.requested_status, `Approved correction: ${correction.reason}`, req.user.username]);
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+          `, [uuidv4(), correction.student_id, correction.roll_number, student.full_name, correction.date, getIstTime12h(), correction.requested_status, `Approved correction: ${correction.reason}`, req.user.username]);
         }
       }
     });

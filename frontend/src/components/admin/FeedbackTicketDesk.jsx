@@ -8,8 +8,12 @@ import {
   RefreshCw,
   MessageSquare,
   Send,
-  Trash2
+  Trash2,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportToExcel, exportToCsv } from '../../utils/exportUtils';
+import { formatDateTime12h, getTodayDateIST } from '../../utils/timeUtils';
 
 export default function FeedbackTicketDesk() {
   const [tickets, setTickets] = useState([]);
@@ -113,6 +117,61 @@ export default function FeedbackTicketDesk() {
     }
   };
 
+  const handleExportCsv = () => {
+    if (!tickets || tickets.length === 0) return;
+    const headers = [
+      { key: 'roll_number', label: 'Roll Number' },
+      { key: 'full_name', label: 'Student Name' },
+      { key: 'category', label: 'Category' },
+      { key: 'message', label: 'Feedback / Issue' },
+      { key: 'status', label: 'Status' },
+      { key: 'resolution', label: 'Admin Resolution' },
+      { key: 'created_at', label: 'Submitted On (IST)' }
+    ];
+    const data = tickets.map(t => ({
+      roll_number: t.roll_number || '',
+      full_name: t.full_name || '',
+      category: t.category || '',
+      message: t.message || '',
+      status: t.status || 'OPEN',
+      resolution: t.admin_response || t.resolution_note || '',
+      created_at: t.created_at ? formatDateTime12h(t.created_at) : 'N/A'
+    }));
+    exportToCsv({
+      filename: `hostelguard_feedback_${getTodayDateIST()}`,
+      headers,
+      data
+    });
+  };
+
+  const handleExportExcel = () => {
+    if (!tickets || tickets.length === 0) return;
+    const headers = [
+      { key: 'roll_number', label: 'Roll Number' },
+      { key: 'full_name', label: 'Student Name' },
+      { key: 'category', label: 'Category' },
+      { key: 'message', label: 'Feedback / Issue' },
+      { key: 'status', label: 'Status' },
+      { key: 'resolution', label: 'Admin Resolution' },
+      { key: 'created_at', label: 'Submitted On (IST)' }
+    ];
+    const data = tickets.map(t => ({
+      roll_number: t.roll_number || '',
+      full_name: t.full_name || '',
+      category: t.category || '',
+      message: t.message || '',
+      status: t.status || 'OPEN',
+      resolution: t.admin_response || t.resolution_note || '',
+      created_at: t.created_at ? formatDateTime12h(t.created_at) : 'N/A'
+    }));
+    exportToExcel({
+      filename: `hostelguard_feedback_${getTodayDateIST()}`,
+      sheetName: 'Feedback Tickets',
+      headers,
+      data
+    });
+  };
+
   return (
     <div className="container-fluid px-0">
       {/* Page Title */}
@@ -126,7 +185,23 @@ export default function FeedbackTicketDesk() {
             Address student queries regarding hostel facilities, Wi-Fi connectivity, app troubleshooting, and room amenities.
           </p>
         </div>
-        <div className="d-flex gap-2">
+        <div className="d-flex gap-2 flex-wrap">
+          <button
+            className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
+            onClick={handleExportCsv}
+            disabled={tickets.length === 0}
+            title="Export Feedback Tickets as CSV"
+          >
+            <Download size={14} /> Export CSV
+          </button>
+          <button
+            className="btn btn-outline-success btn-sm d-flex align-items-center gap-1"
+            onClick={handleExportExcel}
+            disabled={tickets.length === 0}
+            title="Export Feedback Tickets as Excel (.xlsx)"
+          >
+            <FileSpreadsheet size={14} /> Export Excel (.xlsx)
+          </button>
           <button
             className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
             onClick={fetchFeedback}
@@ -243,7 +318,7 @@ export default function FeedbackTicketDesk() {
                       </td>
                       <td>
                         <small className="text-muted">
-                          {t.created_at ? new Date(t.created_at).toLocaleDateString() : 'N/A'}
+                          {t.created_at ? formatDateTime12h(t.created_at) : 'N/A'}
                         </small>
                       </td>
                       <td className="text-end pe-3">

@@ -18,8 +18,11 @@ import {
   X,
   Phone,
   Mail,
-  ArrowRight
+  ArrowRight,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportToExcel, exportToCsv } from '../../utils/exportUtils';
+import { formatTime12h, getCurrentTimeIST12h, formatDateIST, getTodayDateIST } from '../../utils/timeUtils';
 
 const DASHBOARD_CACHE_KEY = 'hg_cached_admin_dashboard_stats';
 
@@ -55,7 +58,7 @@ export default function AdminDashboard({ onNavigate }) {
       const res = await api.admin.getDashboardStats();
       if (res.success) {
         setData(res);
-        setLastSynced(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        setLastSynced(getCurrentTimeIST12h());
         try {
           localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(res));
         } catch (_) {}
@@ -155,40 +158,83 @@ export default function AdminDashboard({ onNavigate }) {
     )
   ).sort();
 
-  const handleExportRosterCsv = () => {
+  const getRosterExportData = () => {
     const isPresent = rosterTab === 'PRESENT';
-    const header = isPresent
-      ? 'Roll Number,Full Name,Hostel Block,Room Number,Course,Check-in Time,Status,Verified Distance,Phone,Email\n'
-      : 'Roll Number,Full Name,Hostel Block,Room Number,Course,Status,Phone,Email\n';
+    const headers = isPresent
+      ? [
+          { key: 'roll_number', label: 'Roll Number' },
+          { key: 'full_name', label: 'Full Name' },
+          { key: 'hostel_block', label: 'Hostel Block' },
+          { key: 'room_number', label: 'Room Number' },
+          { key: 'course', label: 'Course' },
+          { key: 'time_marked', label: 'Check-in Time (IST)' },
+          { key: 'status', label: 'Status' },
+          { key: 'distance', label: 'Verified Distance' },
+          { key: 'phone', label: 'Phone' },
+          { key: 'email', label: 'Email' }
+        ]
+      : [
+          { key: 'roll_number', label: 'Roll Number' },
+          { key: 'full_name', label: 'Full Name' },
+          { key: 'hostel_block', label: 'Hostel Block' },
+          { key: 'room_number', label: 'Room Number' },
+          { key: 'course', label: 'Course' },
+          { key: 'status', label: 'Status' },
+          { key: 'phone', label: 'Phone' },
+          { key: 'email', label: 'Email' }
+        ];
 
-    const rows = filteredList.map((item) => {
+    const data = filteredList.map((item) => {
       if (isPresent) {
-        return `"${item.roll_number || ''}","${item.full_name || ''}","${item.hostel_block || ''}","${item.room_number || ''}","${item.course || ''}","${item.time_marked_12 || item.time_marked || ''}","${item.status || 'PRESENT'}","${item.verified_distance !== null && item.verified_distance !== undefined ? item.verified_distance + 'm' : ''}","${item.phone || ''}","${item.email || ''}"`;
+        return {
+          roll_number: item.roll_number || '',
+          full_name: item.full_name || '',
+          hostel_block: item.hostel_block || '',
+          room_number: item.room_number || '',
+          course: item.course || '',
+          time_marked: item.time_marked_12 || item.time_marked ? formatTime12h(item.time_marked_12 || item.time_marked) : 'N/A',
+          status: item.status || 'PRESENT',
+          distance: item.verified_distance !== null && item.verified_distance !== undefined ? `${item.verified_distance}m` : 'N/A',
+          phone: item.phone || '',
+          email: item.email || ''
+        };
       } else {
-        return `"${item.roll_number || ''}","${item.full_name || ''}","${item.hostel_block || ''}","${item.room_number || ''}","${item.course || ''}","${item.status || 'ABSENT'}","${item.phone || ''}","${item.email || ''}"`;
+        return {
+          roll_number: item.roll_number || '',
+          full_name: item.full_name || '',
+          hostel_block: item.hostel_block || '',
+          room_number: item.room_number || '',
+          course: item.course || '',
+          status: item.status || 'ABSENT',
+          phone: item.phone || '',
+          email: item.email || ''
+        };
       }
     });
 
-    const csvContent = header + rows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute(
-      'download',
-      `hostel_${isPresent ? 'present' : 'absent'}_residents_${new Date().toISOString().split('T')[0]}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    return { headers, data, isPresent };
   };
 
-  const todayFormatted = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
+  const handleExportRosterCsv = () => {
+    const { headers, data, isPresent } = getRosterExportData();
+    exportToCsv({
+      filename: `hostel_${isPresent ? 'present' : 'absent'}_residents_${getTodayDateIST()}`,
+      headers,
+      data
+    });
+  };
+
+  const handleExportRosterExcel = () => {
+    const { headers, data, isPresent } = getRosterExportData();
+    exportToExcel({
+      filename: `hostel_${isPresent ? 'present' : 'absent'}_residents_${getTodayDateIST()}`,
+      sheetName: isPresent ? 'Present Residents' : 'Absent Residents',
+      headers,
+      data
+    });
+  };
+
+  const todayFormatted = formatDateIST(new Date());
 
   return (
     <div className="container-fluid px-0">
@@ -349,7 +395,7 @@ export default function AdminDashboard({ onNavigate }) {
                       <tr key={idx}>
                         <td className="font-mono fw-semibold text-primary">{act.roll_number}</td>
                         <td className="fw-medium">{act.full_name}</td>
-                        <td className="font-mono text-muted" style={{ fontSize: '12px' }}>{act.time_marked}</td>
+                        <td className="font-mono text-muted" style={{ fontSize: '12px' }}>{formatTime12h(act.time_marked)}</td>
                         <td>
                           <span className={act.status === 'PRESENT' ? 'badge-soft-success' : 'badge-soft-warning'}>
                             {act.status}
@@ -482,15 +528,24 @@ export default function AdminDashboard({ onNavigate }) {
                       </select>
                     )}
 
-                    {/* Export CSV Button */}
+                    {/* Export Buttons (CSV + Excel) */}
                     <button
                       type="button"
                       className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1.5"
                       onClick={handleExportRosterCsv}
-                      title="Download CSV"
+                      title="Export as CSV"
                     >
                       <Download size={14} />
-                      <span className="d-none d-md-inline">Export</span>
+                      <span className="d-none d-md-inline">CSV</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-success btn-sm d-flex align-items-center gap-1.5 shadow-sm"
+                      onClick={handleExportRosterExcel}
+                      title="Export as Excel (.xlsx)"
+                    >
+                      <FileSpreadsheet size={14} />
+                      <span className="d-none d-md-inline">Excel (.xlsx)</span>
                     </button>
                   </div>
                 </div>
@@ -567,7 +622,7 @@ export default function AdminDashboard({ onNavigate }) {
                                 <td>
                                   <span className="badge bg-light text-dark border font-monospace d-inline-flex align-items-center gap-1">
                                     <Clock size={11} className="text-muted" />
-                                    {st.time_marked_12 || st.time_marked || 'Recorded'}
+                                    {st.time_marked_12 || st.time_marked ? formatTime12h(st.time_marked_12 || st.time_marked) : 'Recorded'}
                                   </span>
                                 </td>
                                 <td>

@@ -20,18 +20,16 @@ import {
   Check
 } from 'lucide-react';
 
-// Format Date object to 12-hour clock format (e.g. "7:15:30 PM")
-const formatClock12h = (date) => {
+// Format Date object to 12-hour clock format in Indian Standard Time (IST)
+const formatClock12h = (date = new Date()) => {
   if (!date) return '';
-  let hours = date.getHours();
-  const minutes = date.getMinutes();
-  const seconds = date.getSeconds();
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  hours = hours % 12;
-  hours = hours ? hours : 12;
-  const mm = minutes < 10 ? `0${minutes}` : `${minutes}`;
-  const ss = seconds < 10 ? `0${seconds}` : `${seconds}`;
-  return `${hours}:${mm}:${ss} ${ampm}`;
+  return date.toLocaleTimeString('en-US', {
+    timeZone: 'Asia/Kolkata',
+    hour12: true,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
 };
 
 // Format "HH:mm" time string to 12-hour format (e.g. "19:00" -> "7:00 PM")
@@ -329,13 +327,13 @@ export default function AttendanceScheduleManager() {
               <div className="p-3 rounded-3" style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                 <div className="text-muted small text-uppercase fw-semibold d-flex align-items-center justify-content-lg-end gap-1" style={{ fontSize: '11px' }}>
                   <Clock size={12} className="text-primary" />
-                  Live System Clock
+                  Live System Clock (IST)
                 </div>
                 <div className="h4 fw-bold font-monospace text-white mb-0 mt-1">
                   {formatClock12h(currentLocalTime)}
                 </div>
                 <div className="small text-light text-opacity-75 mt-1">
-                  {currentLocalTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                  {currentLocalTime.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
                 </div>
               </div>
             </div>

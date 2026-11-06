@@ -12,10 +12,11 @@ const antiSpoofPolicyEngine = require('../services/antiSpoofPolicyEngine');
 const embeddingCache = require('../services/embeddingCache');
 const bleBeaconService = require('../services/bleBeaconService');
 const beaconCache = require('../services/beaconCache');
+const { getIstTime12h, getIstDateString } = require('../utils/istTime');
 
-// Helper to get today's date in YYYY-MM-DD
+// Helper to get today's date in YYYY-MM-DD (Indian Standard Time - IST)
 function getTodayDateString() {
-  return new Date().toISOString().split('T')[0];
+  return getIstDateString();
 }
 
 // Attach optional JWT authentication to attendance router
@@ -551,9 +552,9 @@ const verifyFaceHandler = async (req, res) => {
       });
     }
 
-    // 7. Commit Attendance and Consume Challenge Atomically in Single Transaction
+    // 7. Commit Attendance and Consume Challenge Atomically in Single Transaction (IST 12-Hour)
     const today = getTodayDateString();
-    const timeMarked = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const timeMarked = getIstTime12h();
     const recordId = uuidv4();
     const finalRiskScore = commitEval.riskScore || 0;
     const assuranceTier = challenge.requires_step_up ? 'NATIVE_STEP_UP' : 'NATIVE_HIGH';
@@ -703,9 +704,9 @@ const offlineSyncHandler = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Student not found or inactive.' });
     }
 
-    // 2. Prevent Replay Attack & Duplicate Attendance Check
+    // 2. Prevent Replay Attack & Duplicate Attendance Check (IST Date)
     const originalTimestampMs = Number(slot) * 30000;
-    const offlineDate = new Date(originalTimestampMs).toISOString().split('T')[0];
+    const offlineDate = getIstDateString(originalTimestampMs);
     const today = getTodayDateString();
     const effectiveDate = offlineDate || today;
 
@@ -795,8 +796,8 @@ const offlineSyncHandler = async (req, res) => {
       }
     }
 
-    // 6. Atomic Commit to Database (BCNF compliance)
-    const timeMarked = new Date(originalTimestampMs).toTimeString().split(' ')[0] || '19:00:00';
+    // 6. Atomic Commit to Database (BCNF compliance - IST 12-Hour)
+    const timeMarked = getIstTime12h(originalTimestampMs);
     const recordId = uuidv4();
     const challengeId = uuidv4();
 
@@ -959,7 +960,7 @@ router.post('/request-physical-verification', async (req, res) => {
       `[PHYSICAL_VERIFICATION] ${reasonText}: ${detailText}`
     ]);
 
-    const timeMarked = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const timeMarked = getIstTime12h();
     if (!existingRecord) {
       await runQuery(`
         INSERT INTO attendance_records (

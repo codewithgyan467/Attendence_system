@@ -140,6 +140,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  padding-top: 64px;
   background-color: var(--hg-bg-body);
 }
 
@@ -149,7 +150,7 @@ body {
   min-width: 0;
 }
 
-/* Header Navbar */
+/* Header Navbar - Fixed Position */
 .hg-navbar {
   background-color: #ffffff;
   border-bottom: 1px solid var(--hg-border);
@@ -158,10 +159,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  position: sticky;
+  position: fixed;
   top: 0;
-  z-index: 1020;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  right: 0;
+  left: 260px;
+  z-index: 1025;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+  transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Mobile Sidebar Backdrop Overlay */
@@ -445,9 +449,11 @@ body {
   .hg-main-layout {
     width: 100%;
     min-width: 100%;
+    padding-top: 58px;
   }
 
   .hg-navbar {
+    left: 0;
     padding: 0 16px;
     height: 58px;
   }

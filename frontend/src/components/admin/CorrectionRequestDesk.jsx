@@ -9,8 +9,12 @@ import {
   RefreshCw,
   Search,
   MessageSquare,
-  Trash2
+  Trash2,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportToExcel, exportToCsv } from '../../utils/exportUtils';
+import { formatDateTime12h, getTodayDateIST } from '../../utils/timeUtils';
 
 export default function CorrectionRequestDesk() {
   const [corrections, setCorrections] = useState([]);
@@ -115,6 +119,61 @@ export default function CorrectionRequestDesk() {
     }
   };
 
+  const handleExportCsv = () => {
+    if (!corrections || corrections.length === 0) return;
+    const headers = [
+      { key: 'roll_number', label: 'Roll Number' },
+      { key: 'full_name', label: 'Student Name' },
+      { key: 'date', label: 'Target Date' },
+      { key: 'requested_status', label: 'Requested Status' },
+      { key: 'reason', label: 'Reason' },
+      { key: 'status', label: 'Decision Status' },
+      { key: 'created_at', label: 'Submitted On (IST)' }
+    ];
+    const data = corrections.map(c => ({
+      roll_number: c.roll_number || '',
+      full_name: c.full_name || '',
+      date: c.date || '',
+      requested_status: c.requested_status || '',
+      reason: c.reason || '',
+      status: c.status || 'PENDING',
+      created_at: c.created_at ? formatDateTime12h(c.created_at) : 'N/A'
+    }));
+    exportToCsv({
+      filename: `hostelguard_corrections_${getTodayDateIST()}`,
+      headers,
+      data
+    });
+  };
+
+  const handleExportExcel = () => {
+    if (!corrections || corrections.length === 0) return;
+    const headers = [
+      { key: 'roll_number', label: 'Roll Number' },
+      { key: 'full_name', label: 'Student Name' },
+      { key: 'date', label: 'Target Date' },
+      { key: 'requested_status', label: 'Requested Status' },
+      { key: 'reason', label: 'Reason' },
+      { key: 'status', label: 'Decision Status' },
+      { key: 'created_at', label: 'Submitted On (IST)' }
+    ];
+    const data = corrections.map(c => ({
+      roll_number: c.roll_number || '',
+      full_name: c.full_name || '',
+      date: c.date || '',
+      requested_status: c.requested_status || '',
+      reason: c.reason || '',
+      status: c.status || 'PENDING',
+      created_at: c.created_at ? formatDateTime12h(c.created_at) : 'N/A'
+    }));
+    exportToExcel({
+      filename: `hostelguard_corrections_${getTodayDateIST()}`,
+      sheetName: 'Corrections',
+      headers,
+      data
+    });
+  };
+
   const getStatusBadge = (status) => {
     switch (status) {
       case 'PENDING':
@@ -141,7 +200,23 @@ export default function CorrectionRequestDesk() {
             Formal appeal workflow for students contesting attendance marks due to medical leaves, technical outages, or sanctioned absences.
           </p>
         </div>
-        <div className="d-flex gap-2">
+        <div className="d-flex gap-2 flex-wrap">
+          <button
+            className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
+            onClick={handleExportCsv}
+            disabled={corrections.length === 0}
+            title="Export Correction Requests as CSV"
+          >
+            <Download size={14} /> Export CSV
+          </button>
+          <button
+            className="btn btn-outline-success btn-sm d-flex align-items-center gap-1"
+            onClick={handleExportExcel}
+            disabled={corrections.length === 0}
+            title="Export Correction Requests as Excel (.xlsx)"
+          >
+            <FileSpreadsheet size={14} /> Export Excel (.xlsx)
+          </button>
           <button
             className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
             onClick={fetchCorrections}
@@ -265,7 +340,7 @@ export default function CorrectionRequestDesk() {
                       <td>{getStatusBadge(req.status)}</td>
                       <td>
                         <small className="text-muted">
-                          {req.created_at ? new Date(req.created_at).toLocaleDateString() : 'N/A'}
+                          {req.created_at ? formatDateTime12h(req.created_at) : 'N/A'}
                         </small>
                       </td>
                       <td className="text-end pe-3">

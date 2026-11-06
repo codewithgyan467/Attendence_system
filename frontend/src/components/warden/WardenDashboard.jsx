@@ -16,8 +16,12 @@ import {
   ShieldAlert,
   Phone,
   BedDouble,
-  Calendar
+  Calendar,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportToExcel, exportToCsv } from '../../utils/exportUtils';
+import { formatTime12h, getTodayDateIST } from '../../utils/timeUtils';
 
 export default function WardenDashboard({ subTab = 'warden_overview', onSelectTab }) {
   const [overview, setOverview] = useState(null);
@@ -377,13 +381,31 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                         </button>
                       </div>
 
-                      <button
-                        type="button"
-                        className="btn btn-outline-dark btn-sm d-flex align-items-center gap-1 shadow-sm rounded-pill px-3"
-                        onClick={() => window.print()}
-                      >
-                        🖨️ Print Muster Roll
-                      </button>
+                      <div className="d-flex align-items-center gap-2">
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1 shadow-sm rounded-pill px-3"
+                          onClick={handleExportMusterCsv}
+                          title="Export Muster Roll as CSV"
+                        >
+                          <Download size={13} /> CSV
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline-success btn-sm d-flex align-items-center gap-1 shadow-sm rounded-pill px-3"
+                          onClick={handleExportMusterExcel}
+                          title="Export Muster Roll as Excel (.xlsx)"
+                        >
+                          <FileSpreadsheet size={13} /> Excel (.xlsx)
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline-dark btn-sm d-flex align-items-center gap-1 shadow-sm rounded-pill px-3"
+                          onClick={() => window.print()}
+                        >
+                          🖨️ Print
+                        </button>
+                      </div>
                     </div>
 
                     {/* Residents Table */}
@@ -426,7 +448,7 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                                   <td><span className="badge bg-light text-dark border">{st.hostel_block}</span> Rm {st.room_number || 'N/A'}</td>
                                   <td>{st.phone || 'N/A'}</td>
                                   <td>{st.emergency_phone || 'N/A'}</td>
-                                  <td><span className="badge bg-success">✓ PRESENT ({st.time_marked || 'Verified'})</span></td>
+                                  <td><span className="badge bg-success">✓ PRESENT ({st.time_marked ? formatTime12h(st.time_marked) : 'Verified'})</span></td>
                                 </tr>
                               ))
                             )}
