@@ -106,15 +106,19 @@ export async function getNativeOrBrowserLocation(options = {}) {
       }
 
       // Synthetic Telemetry Analysis: Detect frozen/zero-jitter mock locations in browsers
+      // Only evaluate if sampled across at least 4 readings over >3s with high satellite accuracy (<15m)
+      // This prevents false positives when stationary students are indoors on Wi-Fi / cell assisted location
       let syntheticTelemetry = false;
-      if (collectedSamples.length >= 2) {
+      if (collectedSamples.length >= 4) {
         const s1 = collectedSamples[0];
         const sLast = collectedSamples[collectedSamples.length - 1];
         const latDelta = Math.abs(s1.latitude - sLast.latitude);
         const lonDelta = Math.abs(s1.longitude - sLast.longitude);
-        // Real satellite GPS always has nanodegree jitter (> 0.000001); mock apps inject mathematically frozen coords
-        if (latDelta === 0 && lonDelta === 0 && (!s1.altitude || s1.altitude === 0)) {
-          syntheticTelemetry = true;
+        const elapsed = (sLast.timestamp || Date.now()) - (s1.timestamp || Date.now());
+        if (elapsed >= 3000 && s1.accuracy && s1.accuracy < 15) {
+          if (latDelta === 0 && lonDelta === 0 && (!s1.altitude || s1.altitude === 0)) {
+            syntheticTelemetry = true;
+          }
         }
       }
 
@@ -838,11 +842,12 @@ export async function scanHostelBleBeacon(options = {}) {
     });
   } catch (err) {
     const errMsg = err?.message || (typeof err === 'string' ? err : 'Bluetooth pairing was cancelled');
-    if (err?.name === 'NotFoundError') {
+    const isCancelled = err?.name === 'NotFoundError' || /cancelled|canceled|user cancelled|picker dismissed/i.test(errMsg);
+    if (isCancelled) {
       return {
         success: false,
         reason: 'BLUETOOTH_DEVICE_NOT_SELECTED',
-        message: 'No hostel beacon was selected, or Bluetooth pairing was cancelled. Please select your floor beacon (e.g. HG-A01) in the list.'
+        message: 'Bluetooth Device Not Selected: Tap Retry and select your nearby floor beacon (e.g. HG-A01 or HG-BEACON) in the Bluetooth list.'
       };
     }
     if (err?.name === 'SecurityError') {
