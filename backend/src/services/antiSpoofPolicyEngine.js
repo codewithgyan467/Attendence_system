@@ -290,40 +290,47 @@ class AntiSpoofPolicyEngine {
           riskScore += 20;
         }
       }
-    } else if (bleProof && bleProof.beaconPublicId) {
-      const beaconRes = await bleBeaconService.verifyBleBeaconProof({
-        beaconPublicId: bleProof.beaconPublicId,
-        rollingCode: bleProof.rollingCode || bleProof.hmac || bleProof.code,
-        timestampSlot: bleProof.timestampSlot || bleProof.slot,
-        rssi: bleProof.rssi ?? null,
-        studentId: student?.id || student?.roll_number || null
-      });
-
-      if (beaconRes.isValid) {
+    } else if (bleProof && (bleProof.beaconPublicId || bleProof.compactVerified)) {
+      if (bleProof.compactVerified) {
         bleMatchStatus = 'VERIFIED_BEACON_PROXIMITY';
         riskScore = Math.max(0, riskScore - 25); // Proximity trust bonus
       } else {
-        bleMatchStatus = 'INVALID_BEACON_PROOF';
-        if (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') {
-          // Strict Hardware Lock: Physical ESP32 radio signal mandatory for ALL devices
-          riskScore += 85;
-          unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
-          if (beaconRes.reason === 'TOKEN_ALREADY_USED' || beaconRes.reason === 'SLOT_ALREADY_USED') {
-            reasonCodes.push('L3_BLE_TOKEN_REPLAY');
-          } else if (beaconRes.reason === 'BEACON_SIGNAL_TOO_WEAK') {
-            reasonCodes.push('L3_BLE_SIGNAL_WEAK');
-          } else if (beaconRes.reason === 'UNREGISTERED_OR_INACTIVE_BEACON') {
-            reasonCodes.push('L3_BLE_UNKNOWN_ANCHOR');
-          } else if (beaconRes.reason === 'ROLLING_CODE_MISMATCH' || beaconRes.reason === 'INVALID_ROLLING_CODE' || beaconRes.reason === 'INVALID_HMAC_SIGNATURE') {
-            reasonCodes.push('L3_BLE_CODE_MISMATCH');
-          } else {
-            reasonCodes.push('L3_BLE_STRICT_REJECTED');
-          }
-        } else if (bleMode === 'SOFT_ANCHOR') {
-          riskScore += 45;
-          requiresStepUp = true;
+        const beaconRes = await bleBeaconService.verifyBleBeaconProof({
+          beaconPublicId: bleProof.beaconPublicId,
+          rawAnchorId: bleProof.rawAnchorId,
+          rawPayload: bleProof.rawPayload,
+          rollingCode: bleProof.rollingCode || bleProof.hmac || bleProof.code,
+          timestampSlot: bleProof.timestampSlot || bleProof.slot,
+          rssi: bleProof.rssi ?? null,
+          studentId: student?.id || student?.roll_number || null
+        });
+
+        if (beaconRes.isValid) {
+          bleMatchStatus = 'VERIFIED_BEACON_PROXIMITY';
+          riskScore = Math.max(0, riskScore - 25); // Proximity trust bonus
         } else {
-          riskScore += 20;
+          bleMatchStatus = 'INVALID_BEACON_PROOF';
+          if (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') {
+            // Strict Hardware Lock: Physical ESP32 radio signal mandatory for ALL devices
+            riskScore += 85;
+            unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
+            if (beaconRes.reason === 'TOKEN_ALREADY_USED' || beaconRes.reason === 'SLOT_ALREADY_USED') {
+              reasonCodes.push('L3_BLE_TOKEN_REPLAY');
+            } else if (beaconRes.reason === 'BEACON_SIGNAL_TOO_WEAK') {
+              reasonCodes.push('L3_BLE_SIGNAL_WEAK');
+            } else if (beaconRes.reason === 'UNREGISTERED_OR_INACTIVE_BEACON') {
+              reasonCodes.push('L3_BLE_UNKNOWN_ANCHOR');
+            } else if (beaconRes.reason === 'ROLLING_CODE_MISMATCH' || beaconRes.reason === 'INVALID_ROLLING_CODE' || beaconRes.reason === 'INVALID_HMAC_SIGNATURE') {
+              reasonCodes.push('L3_BLE_CODE_MISMATCH');
+            } else {
+              reasonCodes.push('L3_BLE_STRICT_REJECTED');
+            }
+          } else if (bleMode === 'SOFT_ANCHOR') {
+            riskScore += 45;
+            requiresStepUp = true;
+          } else {
+            riskScore += 20;
+          }
         }
       }
     } else if (bleProof && (bleProof.channel === 'HOSTEL_WIFI_PROXIMITY_CHECK' || bleProof.channel === 'HOSTEL_WIFI_VERIFIED' || bleProof.method === 'HOSTEL_WIFI_VERIFIED')) {

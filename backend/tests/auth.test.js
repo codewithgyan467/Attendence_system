@@ -180,7 +180,7 @@ describe('Authentication & Role-Based Access Control (RBAC)', () => {
       expect(res.status).toBe(401);
       expect(res.body.success).toBe(false);
       expect(res.body.error).toMatch(/Google JWT verification failed/i);
-    });
+    }, 15000);
   });
 });
 

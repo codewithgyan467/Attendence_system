@@ -1,4 +1,5 @@
 const request = require('supertest');
+const crypto = require('crypto');
 const { app } = require('../src/server');
 const { runQuery, getQuery, allQuery } = require('../src/db/database');
 const bleBeaconService = require('../src/services/bleBeaconService');
@@ -447,5 +448,31 @@ describe('HostelGuard Strict Mode: Dual ESP32 Hardware Presence Lock Enforcement
     expect(evaluation.bleMatchStatus).toBe('IOS_HARDWARE_ATTESTATION_FAILED');
     expect(evaluation.decisionOutcome).toBe('DENY');
     expect(evaluation.unfairMeansFlags).toContain('SPOOFED_IOS_USER_AGENT');
+  });
+
+  test('14. verifyCompactEsp32Payload parses 19-byte ASCII frame and rejects replay & forge', () => {
+    const secret = 'HG_STRICT_ANCHOR_SECRET_2026';
+    const anchorId = 'A01';
+    const step = 79;
+    const stepHex = '00004F'; // 79 in hex is 0x4F
+    const hmac8 = crypto.createHmac('sha256', secret).update(`${anchorId}:${step}`).digest('hex').substring(0, 8).toUpperCase();
+    const validFrame = `${anchorId}|${stepHex}|${hmac8}`;
+
+    const res1 = bleBeaconService.verifyCompactEsp32Payload(validFrame, secret);
+    expect(res1.valid).toBe(true);
+    expect(res1.anchorId).toBe('A01');
+    expect(res1.step).toBe(79);
+
+    // Replay of older step (< step - 1)
+    const oldFrame = `${anchorId}|000010|${crypto.createHmac('sha256', secret).update(`${anchorId}:16`).digest('hex').substring(0, 8).toUpperCase()}`;
+    const resOld = bleBeaconService.verifyCompactEsp32Payload(oldFrame, secret);
+    expect(resOld.valid).toBe(false);
+    expect(resOld.reason).toBe('STALE_REPLAY_TOKEN');
+
+    // Forged HMAC
+    const forgedFrame = `${anchorId}|000050|DEADBEEF`;
+    const resForged = bleBeaconService.verifyCompactEsp32Payload(forgedFrame, secret);
+    expect(resForged.valid).toBe(false);
+    expect(resForged.reason).toBe('INVALID_HMAC_SIGNATURE');
   });
 });

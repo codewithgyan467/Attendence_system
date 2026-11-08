@@ -337,6 +337,8 @@ class BleBeaconService {
     // Support database secret, active firmware secret, and seeded defaults
     const candidateSecrets = Array.from(new Set([
       beacon.shared_secret_ref,
+      process.env.ANCHOR_HMAC_SECRET,
+      'HG_STRICT_ANCHOR_SECRET_2026',
       'hostelguard_super_secret_32b_key',
       '4a8f9c1b2e3d4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a',
       '5737e7a308d843d6d5a63d512167d7a89702853d9e8ef53195e08472cc1d2859'
@@ -345,12 +347,14 @@ class BleBeaconService {
     // Support canonical beacon public ID, short broadcast alias, and database identifiers
     const candidateIds = Array.from(new Set([
       beacon.beacon_public_id,
-      cleanCode ? beacon.beacon_public_id : null,
+      params.rawAnchorId,
       'HG-BEACON-BLKA-01',
       'HG-A01',
+      'HG-A1',
       'A01',
       'HG-BEACON-BLKA-02',
       'HG-A02',
+      'HG-A2',
       'A02'
     ].filter(Boolean)));
 
@@ -552,6 +556,51 @@ class BleBeaconService {
       beacon,
       slot30s: cleanSlot
     };
+  }
+
+  /**
+   * Fast-Pass: 19-Byte Compact ESP32 Payload Verification (0ms NTP Dependency)
+   * Format: "<ANCHOR_ID>|<STEP_HEX>|<HMAC_8HEX>" (e.g. "A01|0001A4|9F8E7D6C")
+   */
+  verifyCompactEsp32Payload(rawPayload, secret = process.env.ANCHOR_HMAC_SECRET || 'HG_STRICT_ANCHOR_SECRET_2026') {
+    if (!rawPayload || typeof rawPayload !== 'string') {
+      return { valid: false, reason: 'EMPTY_BLE_PAYLOAD' };
+    }
+
+    const parts = rawPayload.trim().split('|');
+    if (parts.length !== 3) {
+      return { valid: false, reason: 'MALFORMED_BLE_FRAME' };
+    }
+
+    const [anchorId, stepHex, receivedHmac] = parts;
+    const stepDecimal = parseInt(stepHex, 16);
+    if (Number.isNaN(stepDecimal)) {
+      return { valid: false, reason: 'INVALID_STEP_COUNTER' };
+    }
+
+    const message = `${anchorId.trim()}:${stepDecimal}`;
+    const expectedHmac = crypto
+      .createHmac('sha256', secret)
+      .update(message)
+      .digest('hex')
+      .substring(0, 8)
+      .toUpperCase();
+
+    if (expectedHmac !== receivedHmac.toUpperCase()) {
+      return { valid: false, reason: 'INVALID_HMAC_SIGNATURE' };
+    }
+
+    const lastStep = this.beaconAnchorStates.get(anchorId)?.lastVerifiedEsp32Slot;
+    if (lastStep !== undefined && stepDecimal < lastStep - 1 && stepDecimal > 10) {
+      return { valid: false, reason: 'STALE_REPLAY_TOKEN' };
+    }
+
+    this.beaconAnchorStates.set(anchorId, {
+      lastVerifiedEsp32Slot: stepDecimal,
+      lastUpdatedAt: Date.now()
+    });
+
+    return { valid: true, anchorId: anchorId.trim(), step: stepDecimal };
   }
 }
 

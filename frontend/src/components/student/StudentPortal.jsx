@@ -424,6 +424,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
             } else {
               bleProof = {
                 beaconPublicId: bleRes.beaconPublicId,
+                rawAnchorId: bleRes.rawAnchorId || bleRes.beaconPublicId,
+                rawPayload: bleRes.rawPayload || null,
                 rollingCode: bleRes.rollingCode,
                 slot: bleRes.slot
               };

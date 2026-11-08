@@ -22,6 +22,49 @@ function getTodayDateString() {
 // Attach optional JWT authentication to attendance router
 router.use(optionalAuth);
 
+// Stores the last seen monotonic step per floor anchor to block replay attacks
+const anchorLastStepMap = new Map();
+
+function verifyCompactEsp32Payload(rawPayload, secret = process.env.ANCHOR_HMAC_SECRET || 'HG_STRICT_ANCHOR_SECRET_2026') {
+  if (!rawPayload || typeof rawPayload !== 'string') {
+    return { valid: false, reason: 'EMPTY_BLE_PAYLOAD' };
+  }
+
+  // Matches "A01|0001A4|9F8E7D6C"
+  const parts = rawPayload.trim().split('|');
+  if (parts.length !== 3) {
+    return { valid: false, reason: 'MALFORMED_BLE_FRAME' };
+  }
+
+  const [anchorId, stepHex, receivedHmac] = parts;
+  const stepDecimal = parseInt(stepHex, 16);
+  if (Number.isNaN(stepDecimal)) {
+    return { valid: false, reason: 'INVALID_STEP_COUNTER' };
+  }
+
+  // Recompute HMAC-SHA256("<ANCHOR_ID>:<STEP_DECIMAL>")
+  const message = `${anchorId.trim()}:${stepDecimal}`;
+  const expectedHmac = crypto
+    .createHmac('sha256', secret)
+    .update(message)
+    .digest('hex')
+    .substring(0, 8)
+    .toUpperCase();
+
+  if (expectedHmac !== receivedHmac.toUpperCase()) {
+    return { valid: false, reason: 'INVALID_HMAC_SIGNATURE' };
+  }
+
+  // Anti-replay window: allow current step or step-1, or reset if ESP32 rebooted (step < 10)
+  const lastStep = anchorLastStepMap.get(anchorId);
+  if (lastStep !== undefined && stepDecimal < lastStep - 1 && stepDecimal > 10) {
+    return { valid: false, reason: 'STALE_REPLAY_TOKEN' };
+  }
+
+  anchorLastStepMap.set(anchorId, stepDecimal);
+  return { valid: true, anchorId: anchorId.trim(), step: stepDecimal };
+}
+
 // Public / Authenticated Live Attendance Schedule Status
 router.get('/schedule', async (req, res) => {
   try {
@@ -158,6 +201,16 @@ const verifyLocationHandler = async (req, res) => {
     // 5. Evaluate Multi-Layer Anti-Spoof & Unfair-Means Policy (13 Layers + 5-State Decision Matrix)
     const effectiveDeviceId = device_id || device_info.deviceId || student.device_id;
     const clientIp = (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) || req.ip || req.connection.remoteAddress || '127.0.0.1';
+
+    // Optional Fast-Pass: 19-Byte Compact ESP32 Payload Verification (0ms NTP Dependency)
+    if (ble_proof && typeof ble_proof.rawPayload === 'string') {
+      const compactRes = verifyCompactEsp32Payload(ble_proof.rawPayload);
+      if (compactRes.valid) {
+        ble_proof.compactVerified = true;
+        ble_proof.slot = compactRes.step;
+        ble_proof.rawAnchorId = compactRes.anchorId;
+      }
+    }
 
     const userAgentHeader = req.headers['user-agent'] || device_info.userAgent || '';
     const evaluation = await antiSpoofPolicyEngine.evaluateLocationAndEnvironment({
