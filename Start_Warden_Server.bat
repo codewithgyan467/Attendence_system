@@ -64,3 +64,4 @@ echo [i] Starting HostelGuard Core Server on http://0.0.0.0:5000 ...
 node src/server.js
 
 pause
+

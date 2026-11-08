@@ -1407,245 +1407,185 @@ router.get('/ble/beacons/:id/sketch', requireRole('ADMIN'), async (req, res) => 
       return res.status(404).json({ success: false, error: 'Beacon not found' });
     }
 
+    const anchorId = (beacon.beacon_public_id || 'A01').replace(/^HG-BEACON-|^HG-/, '').substring(0, 3).toUpperCase() || 'A01';
+    const deviceName = beacon.beacon_public_id || 'HG-BEACON-BLKA-01';
+    const secret = beacon.shared_secret_ref || process.env.ANCHOR_HMAC_SECRET || 'HG_STRICT_ANCHOR_SECRET_2026';
+
     const sketch = `/**
- * ============================================================================
- * HOSTELGUARD ENTERPRISE v3.2: BARE ESP32 AIR-ANCHOR FIRMWARE
- * Floor/Wing:      ${beacon.block_name || 'Main Hostel'}
- * Target:          ESP32 Dev Module (Arduino IDE 2.3.10)
- * Partition:       Huge APP (3MB No OTA/1MB SPIFFS)
- * Zero Hardware:   Zero external RTC chip, zero external resistors
- * ============================================================================
+ * HostelGuard Enterprise v4.2 - Layer 2 Hardware BLE Anchor Firmware
+ * Target MCU: Seeed Studio XIAO ESP32C6 / ESP32-WROOM / ESP32-S3
+ * Framework: Arduino-ESP32 (v2.0.x or v3.0.x)
+ * Floor/Wing: ${beacon.block_name || 'Main Hostel'}
  */
 
-#include <WiFi.h>
-#include <time.h>
-#include <sys/time.h>
+#include <Arduino.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
-#include <mbedtls/md.h>
+#include "mbedtls/md.h"
 
-// ----------------------------------------------------------------------------
-// 1. FLOOR PARAMETERS (Auto-configured by HostelGuard Admin)
-// ----------------------------------------------------------------------------
-const char* WIFI_SSID         = "HostelGuard_WiFi";
-const char* WIFI_SSID_ALT     = "iPhone";
-const char* WIFI_PASSWORD     = "Hostel@12345";
+// 1. MULTI-FLOOR CONFIGURATION
+#define FLOOR_ANCHOR_ID      "${anchorId}"
+#define BLE_DEVICE_NAME      "${deviceName}"
+#define ANCHOR_HMAC_SECRET   "${secret}"
 
-const char* BEACON_PUBLIC_ID  = "${beacon.beacon_public_id}";
-const char* BEACON_NAME       = "${beacon.block_name || beacon.beacon_public_id}";
-const char* SHARED_SECRET_HEX = "${beacon.shared_secret_ref}";
+#define HG_SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define HG_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 
-// BLE UUID Definitions
-#define SERVICE_UUID              "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define CHARACTERISTIC_UUID       "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-#define TIME_SYNC_CHAR_UUID       "beb5483e-36e1-4688-b7f5-ea07361b26a9"
-#define OFFLINE_SIGN_CHAR_UUID    "beb5483e-36e1-4688-b7f5-ea07361b26aa"
+#define TOTP_STEP_MS         30000ULL
+#define MAX_CONN_HOLD_MS     3500UL
+#define TOKEN_UPDATE_MS      1000UL
 
-const char* NTP_SERVER        = "pool.ntp.org";
-const long  GMT_OFFSET_SEC    = 19800; // +05:30 Asia/Kolkata
-const int   DAYLIGHT_OFFSET   = 0;
+#ifndef LED_BUILTIN
+  #if defined(CONFIG_IDF_TARGET_ESP32C6)
+    #define LED_BUILTIN 15
+  #else
+    #define LED_BUILTIN 2
+  #endif
+#endif
 
-BLEServer*         pServer = NULL;
-BLECharacteristic* pRollingChar = NULL;
-BLECharacteristic* pTimeSyncChar = NULL;
-BLECharacteristic* pOfflineSignChar = NULL;
+BLEServer* pServer = nullptr;
+BLECharacteristic* pTokenCharacteristic = nullptr;
 
-bool     deviceConnected = false;
-uint32_t lastComputedSlot = 0;
-String   currentRollingToken = "INIT0000";
-unsigned long lastKeepAlivePulse = 0;
+volatile bool deviceConnected = false;
+volatile uint16_t activeConnId = 0;
+volatile unsigned long connectedTimestampMs = 0;
+unsigned long lastTokenUpdateMs = 0;
+uint32_t lastComputedStep = 0xFFFFFFFF;
+char currentPayload[20] = {0};
 
-uint8_t hexPairToByte(char high, char low) {
-  auto hexVal = [](char c) -> uint8_t {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return 0;
-  };
-  return (hexVal(high) << 4) | hexVal(low);
-}
+void updateRollingToken(bool forceUpdate = false) {
+  uint64_t uptimeMs = esp_timer_get_time() / 1000ULL;
+  uint32_t currentStep = (uint32_t)(uptimeMs / TOTP_STEP_MS);
 
-String computeHmacHex(const char* secretHex, const char* payload, int outLength) {
-  uint8_t keyBytes[32];
-  for (int i = 0; i < 32; i++) {
-    keyBytes[i] = hexPairToByte(secretHex[i * 2], secretHex[i * 2 + 1]);
+  if (!forceUpdate && currentStep == lastComputedStep) {
+    return;
   }
-  uint8_t hmacOutput[32];
+  lastComputedStep = currentStep;
+
+  char messageToSign[32];
+  snprintf(messageToSign, sizeof(messageToSign), "%s:%lu", FLOOR_ANCHOR_ID, (unsigned long)currentStep);
+
+  uint8_t hmacResult[32];
   mbedtls_md_context_t ctx;
+  mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+
   mbedtls_md_init(&ctx);
-  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1);
-  mbedtls_md_hmac_starts(&ctx, keyBytes, 32);
-  mbedtls_md_hmac_update(&ctx, (const unsigned char*)payload, strlen(payload));
-  mbedtls_md_hmac_finish(&ctx, hmacOutput);
+  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
+  mbedtls_md_hmac_starts(&ctx, (const unsigned char*)ANCHOR_HMAC_SECRET, strlen(ANCHOR_HMAC_SECRET));
+  mbedtls_md_hmac_update(&ctx, (const unsigned char*)messageToSign, strlen(messageToSign));
+  mbedtls_md_hmac_finish(&ctx, hmacResult);
   mbedtls_md_free(&ctx);
 
-  char hexBuf[65];
-  for (int i = 0; i < 32; i++) {
-    snprintf(&hexBuf[i * 2], 3, "%02X", hmacOutput[i]);
+  snprintf(
+    currentPayload,
+    sizeof(currentPayload),
+    "%-3.3s|%06lX|%02X%02X%02X%02X",
+    FLOOR_ANCHOR_ID,
+    (unsigned long)(currentStep & 0xFFFFFF),
+    hmacResult[0], hmacResult[1], hmacResult[2], hmacResult[3]
+  );
+
+  if (pTokenCharacteristic != nullptr) {
+    pTokenCharacteristic->setValue((uint8_t*)currentPayload, strlen(currentPayload));
   }
-  hexBuf[outLength] = '\0';
-  return String(hexBuf);
 }
 
-class ServerCallbacks: public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) {
+class HGServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer* server, esp_ble_gatts_cb_param_t* param) override {
     deviceConnected = true;
-    Serial.println("[BLE] Phone Connected to Floor Beacon: " + String(BEACON_NAME));
+    activeConnId = param->connect.conn_id;
+    connectedTimestampMs = millis();
+    digitalWrite(LED_BUILTIN, LOW);
+    server->updateConnParams(param->connect.remote_bda, 0x0C, 0x18, 0, 200);
+    BLEDevice::startAdvertising();
   }
-  void onDisconnect(BLEServer* pServer) {
+
+  void onDisconnect(BLEServer* server) override {
     deviceConnected = false;
-    Serial.println("[BLE] Client Disconnected. Advertising...");
-    pServer->startAdvertising();
+    digitalWrite(LED_BUILTIN, HIGH);
+    BLEDevice::startAdvertising();
   }
 };
 
-class TimeSyncCallbacks: public BLECharacteristicCallbacks {
-  void onWrite(BLECharacteristic* pChar) {
-    String val = pChar->getValue().c_str();
-    if (val.length() > 0) {
-      int sep = val.indexOf(':');
-      if (sep > 0) {
-        String epochStr = val.substring(0, sep);
-        String hmacStr = val.substring(sep + 1);
-        time_t epoch = (time_t)epochStr.toInt();
-        String expected = computeHmacHex(SHARED_SECRET_HEX, ("TIMESYNC|" + String(BEACON_PUBLIC_ID) + "|" + epochStr).c_str(), 16);
-        if (hmacStr.equalsIgnoreCase(expected)) {
-          struct timeval tv = { epoch, 0 };
-          settimeofday(&tv, NULL);
-          Serial.printf("[GATT TIME RELAY] RTC Calibrated from Phone: %ld\n", epoch);
-        }
-      }
-    }
+class HGCharacteristicCallbacks : public BLECharacteristicCallbacks {
+  void onRead(BLECharacteristic* pCharacteristic) override {
+    updateRollingToken(true);
   }
 };
 
-class OfflineSignCallbacks: public BLECharacteristicCallbacks {
-  void onWrite(BLECharacteristic* pChar) {
-    String val = pChar->getValue().c_str();
-    if (val.startsWith("SIGN:")) {
-      int firstSep = val.indexOf(':', 5);
-      String imgHash = firstSep > 0 ? val.substring(5, firstSep) : val.substring(5);
-      time_t now = time(nullptr);
-      uint32_t slot = (uint32_t)(now / 30);
-      String payload = imgHash + ":" + String(BEACON_PUBLIC_ID) + ":" + String(slot);
-      String sig = computeHmacHex(SHARED_SECRET_HEX, payload.c_str(), 32);
-      String response = String(BEACON_PUBLIC_ID) + ":" + String(slot) + ":" + sig;
-      pChar->setValue((uint8_t*)response.c_str(), response.length());
-      pChar->notify();
-      Serial.printf("[OFFLINE SIGN] Signed frame hash for slot #%u\n", slot);
-    }
-  }
-};
-
-void keepPowerBankAwake() {
-  if (millis() - lastKeepAlivePulse > 20000) {
-    lastKeepAlivePulse = millis();
-    volatile uint32_t dummy = 0;
-    for (int i = 0; i < 200000; i++) dummy += i; // 100ms CPU current pulse
-  }
+void initRadioHardware() {
+#if defined(CONFIG_IDF_TARGET_ESP32C6)
+  pinMode(3, OUTPUT);
+  digitalWrite(3, LOW);
+  pinMode(14, OUTPUT);
+  digitalWrite(14, LOW);
+#endif
 }
 
 void setup() {
-  Serial.begin(9600);
-  delay(1000);
-  Serial.println("\n=======================================================");
-  Serial.printf("  HOSTELGUARD v3.2 AIR-ANCHOR: %s (%s)\n", BEACON_NAME, BEACON_PUBLIC_ID);
-  Serial.println("=======================================================");
+  Serial.begin(115200);
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
 
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  int retry = 0;
-  while (WiFi.status() != WL_CONNECTED && retry < 16) {
-    delay(500);
-    Serial.print(".");
-    retry++;
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-    configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET, NTP_SERVER);
-    struct tm ti;
-    if (getLocalTime(&ti)) {
-      Serial.printf("\n[NTP SYNC OK] Current Time: %02d:%02d:%02d\n", ti.tm_hour, ti.tm_min, ti.tm_sec);
-    }
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-  } else {
-    Serial.println("\n[NTP Offline] Waiting for Web Bluetooth Phone Time Relay...");
-  }
+  initRadioHardware();
 
-  BLEDevice::init(BEACON_PUBLIC_ID);
-  BLEDevice::setPower(ESP_PWR_LVL_P9);
+  BLEDevice::init(BLE_DEVICE_NAME);
+  BLEDevice::setMTU(128);
+
+  BLEDevice::setPower(ESP_PWR_LVL_P9, ESP_BLE_PWR_TYPE_DEFAULT);
+  BLEDevice::setPower(ESP_PWR_LVL_P9, ESP_BLE_PWR_TYPE_ADV);
+  BLEDevice::setPower(ESP_PWR_LVL_P9, ESP_BLE_PWR_TYPE_CONN_HDL0);
+
   pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new ServerCallbacks());
+  pServer->setCallbacks(new HGServerCallbacks());
 
-  BLEService* pService = pServer->createService(SERVICE_UUID);
+  BLEService* pService = pServer->createService(HG_SERVICE_UUID);
 
-  pRollingChar = pService->createCharacteristic(
-                   CHARACTERISTIC_UUID,
-                   BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
-                 );
-  pRollingChar->addDescriptor(new BLE2902());
+  pTokenCharacteristic = pService->createCharacteristic(
+    HG_CHARACTERISTIC_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+  );
+  pTokenCharacteristic->addDescriptor(new BLE2902());
+  pTokenCharacteristic->setCallbacks(new HGCharacteristicCallbacks());
 
-  pTimeSyncChar = pService->createCharacteristic(
-                    TIME_SYNC_CHAR_UUID,
-                    BLECharacteristic::PROPERTY_WRITE
-                  );
-  pTimeSyncChar->setCallbacks(new TimeSyncCallbacks());
-
-  pOfflineSignChar = pService->createCharacteristic(
-                       OFFLINE_SIGN_CHAR_UUID,
-                       BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
-                     );
-  pOfflineSignChar->setCallbacks(new OfflineSignCallbacks());
-  pOfflineSignChar->addDescriptor(new BLE2902());
-
+  updateRollingToken(true);
   pService->start();
 
-  BLEAdvertising* pAdv = BLEDevice::getAdvertising();
-  pAdv->addServiceUUID(SERVICE_UUID);
+  BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(HG_SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinInterval(0xA0);
+  pAdvertising->setMaxInterval(0xF0);
+  pAdvertising->setMinPreferred(0x06);
+  pAdvertising->setMaxPreferred(0x12);
 
-  BLEAdvertisementData advData;
-  advData.setName(BEACON_PUBLIC_ID);
-  advData.setCompleteServices(BLEUUID(SERVICE_UUID));
-  pAdv->setAdvertisementData(advData);
-
-  BLEAdvertisementData scanData;
-  scanData.setName(BEACON_NAME);
-  pAdv->setScanResponseData(scanData);
-
-  pAdv->setScanResponse(true);
-  pAdv->setMinPreferred(0x06);
-  pAdv->setMinPreferred(0x12);
   BLEDevice::startAdvertising();
-
-  Serial.println("✅ Bare ESP32 Air-Anchor Active & Broadcasting!");
+  Serial.println("[HG-ANCHOR] BLE Hardware Anchor Active & Advertising!");
 }
 
 void loop() {
-  keepPowerBankAwake();
-  time_t now = time(nullptr);
-  uint32_t currentSlot = (uint32_t)(now / 30);
+  unsigned long now = millis();
 
-  if (currentSlot != lastComputedSlot) {
-    lastComputedSlot = currentSlot;
-    char payload[64];
-    snprintf(payload, sizeof(payload), "%s:%u", BEACON_PUBLIC_ID, currentSlot);
-    currentRollingToken = computeHmacHex(SHARED_SECRET_HEX, payload, 8);
-
-    char buffer[128];
-    snprintf(buffer, sizeof(buffer), "{\"id\":\"%s\",\"code\":\"%s\",\"slot\":%u}",
-             BEACON_PUBLIC_ID, currentRollingToken.c_str(), currentSlot);
-
-    pRollingChar->setValue((uint8_t*)buffer, strlen(buffer));
-    pRollingChar->notify();
-    Serial.printf("[TICK] Slot #%u -> %s\n", currentSlot, currentRollingToken.c_str());
+  if (now - lastTokenUpdateMs >= TOKEN_UPDATE_MS) {
+    lastTokenUpdateMs = now;
+    updateRollingToken(false);
   }
-  delay(1000);
+
+  if (deviceConnected && (now - connectedTimestampMs > MAX_CONN_HOLD_MS)) {
+    Serial.println("[HG-ANCHOR] Watchdog: Dropping stale BLE peer & restarting advertising");
+    pServer->disconnect(activeConnId);
+    deviceConnected = false;
+    BLEDevice::startAdvertising();
+  }
+
+  delay(20);
 }
 `;
 
     const filename = `esp32_${(beacon.beacon_public_id || 'beacon').toLowerCase().replace(/[^a-z0-9_]/g, '_')}.ino`;
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(sketch);
   } catch (err) {
