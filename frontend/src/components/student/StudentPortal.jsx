@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import QRCode from 'qrcode';
 import { api } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import { getNativeOrBrowserLocation, isNativeMobile, scanHostelBleBeacon, verifyGenuineIOSDevice } from '../../utils/nativeHardware';
@@ -31,7 +32,9 @@ import {
   Globe,
   Download,
   Lock,
-  Wifi
+  Wifi,
+  Compass,
+  ExternalLink
 } from 'lucide-react';
 import GeofenceMap from '../common/GeofenceMap';
 import { playBiometricChime, detectFaceAngle, detectBlinkEvent, resetBlinkTracker } from '../../utils/faceAngleGuide';
@@ -68,6 +71,47 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [verifiedWifiAnchor, setVerifiedWifiAnchor] = useState(null);
   const [activeChallenge, setActiveChallenge] = useState('HOLD_STILL');
   const [activeChallengeInstruction, setActiveChallengeInstruction] = useState('Fit face into oval and hold steady');
+
+  // iOS Device Detection and Bluefy QR Code
+  const isIOSDevice = typeof navigator !== 'undefined' && (
+    /iPad|iPhone|iPod/.test(navigator.userAgent || '') ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+  const [bluefyQrUrl, setBluefyQrUrl] = useState('');
+
+  useEffect(() => {
+    QRCode.toDataURL('https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055', {
+      width: 140,
+      margin: 1,
+      color: { dark: '#0f172a', light: '#ffffff' }
+    }).then(setBluefyQrUrl).catch(() => {});
+  }, []);
+
+  // If on iOS and check-in fails due to hardware beacon/Bluetooth requirement, attempt direct redirect to Bluefy browser
+  useEffect(() => {
+    if (checkinStep === 'failed' && isIOSDevice) {
+      const errLower = (checkinError || '').toLowerCase();
+      const isBle = errLower.includes('layer 2') || errLower.includes('bluetooth') || errLower.includes('beacon') || errLower.includes('esp32') || errLower.includes('hardware') || errLower.includes('strict') || errLower.includes('safari');
+      if (isBle && typeof window !== 'undefined') {
+        const bluefyUrl = `bluefy://open?url=${encodeURIComponent(window.location.href)}`;
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = bluefyUrl;
+        document.body.appendChild(iframe);
+        const timer = setTimeout(() => {
+          try {
+            if (iframe.parentNode) document.body.removeChild(iframe);
+          } catch (_) {}
+        }, 1500);
+        return () => {
+          clearTimeout(timer);
+          try {
+            if (iframe.parentNode) document.body.removeChild(iframe);
+          } catch (_) {}
+        };
+      }
+    }
+  }, [checkinStep, checkinError, isIOSDevice]);
 
   // Dynamic beacon list from active admin configuration
   const activeBeaconList = Array.isArray(dashboard?.beacons) && dashboard.beacons.length > 0
@@ -343,7 +387,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
               // Strict Mode Rejection: Physical ESP32 Anchor is OFF or out of range (~15m)
               setCheckinError(
                 bleRes.message ||
-                `Layer 2 Check Failed: ESP32 Hardware Anchor is required in Strict Mode (${activeBeaconList}). No active ESP32 beacon or authorized floor Wi-Fi detected (~15m). Please stand near the floor anchor and ensure the ESP32 board is powered ON.`
+                `ESP32 Hardware Anchor required (${activeBeaconList}). Please ensure the ESP32 board is powered ON.`
               );
               setCheckinStep('failed');
               return;
@@ -441,7 +485,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       if (res.success) {
         // Strict Mode Safeguard: Physical ESP32 Hardware Anchor presence is strictly required before camera activation
         if ((bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && !verifiedBeaconInfo && !lanWifiTicket && !verifiedWifiAnchor && (!bleProof || (bleProof.channel !== 'HOSTEL_WIFI_VERIFIED' && bleProof.method !== 'HOSTEL_WIFI_VERIFIED'))) {
-          setCheckinError(`Layer 2 Check Failed: Strict Hardware Beacon Lock is active (${activeBeaconList}). ESP32 physical anchor (~15m) or authorized floor Wi-Fi must be detected. Please ensure the ESP32 board is powered ON.`);
+          setCheckinError(`ESP32 Hardware Anchor required (${activeBeaconList}). Please ensure the ESP32 board is powered ON.`);
           setCheckinStep('failed');
           return;
         }
@@ -474,7 +518,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const startCamera = async () => {
     // Strict Mode Safeguard: Camera feed cannot open unless ESP32 anchor or floor Wi-Fi has been verified
     if ((bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && !verifiedBeaconInfo && !lanWifiTicket && !verifiedWifiAnchor) {
-      setCheckinError(`Camera Blocked: ESP32 Hardware Anchor signal (~15m) or authorized floor Wi-Fi is strictly required (${activeBeaconList}). Ensure your floor ESP32 board is powered ON.`);
+      setCheckinError(`Camera Blocked: ESP32 Hardware Anchor required (${activeBeaconList}). Ensure the ESP32 board is powered ON.`);
       setCheckinStep('failed');
       return;
     }
@@ -1679,29 +1723,73 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                                 <LifeBuoy size={14} /> Submit Strike Appeal to Warden
                               </button>
                             </div>
-                          ) : isBleError ? (
-                            /* CASE C: Layer 2 - ESP32 Hardware Presence Lock */
+                          ) : (isBleError && isIOSDevice) ? (
+                            /* CASE C1: iOS - Bluefy Browser Required */
                             <div className="d-flex flex-column align-items-center gap-2">
-                              <div className="card bg-danger-subtle border-danger border-opacity-25 p-3.5 rounded-3 mb-2 text-start shadow-sm" style={{ maxWidth: '460px' }}>
-                                <div className="fw-bold text-danger small mb-1.5 d-flex align-items-center gap-1.5">
-                                  <Bluetooth size={18} /> Layer 2: Hardware Presence Lock Notice
+                              <div className="card border-0 shadow-sm p-3.5 rounded-3 mb-2 text-center" style={{ maxWidth: '440px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                                <div className="d-flex justify-content-center mb-2">
+                                  <div className="p-2.5 rounded-circle bg-primary bg-opacity-10 text-primary">
+                                    <Compass size={28} />
+                                  </div>
                                 </div>
-                                <div className="small text-danger mb-2.5 fw-medium" style={{ lineHeight: '1.45' }}>
-                                  {checkinError}
-                                </div>
-                                <div className="small text-muted border-top border-danger border-opacity-15 pt-2">
-                                  <strong className="text-dark">Strict Mode Troubleshooting:</strong>
-                                  <ul className="mb-0 ps-3 mt-1 text-muted" style={{ fontSize: '12px', lineHeight: '1.5' }}>
-                                    <li>Ensure <strong>Bluetooth is turned ON</strong> in your device settings.</li>
-                                    <li>Walk within <strong>~15 meters</strong> of an authorized floor beacon ({activeBeaconList}).</li>
-                                    <li>Ensure the ESP32 board is plugged into USB power and LED is glowing.</li>
-                                    <li>On Android: Tap <strong>"Open Directly in Google Chrome"</strong> or install the APK below.</li>
-                                  </ul>
+                                <h6 className="fw-bold text-dark mb-1">Bluefy Browser Required for iPhone</h6>
+                                <p className="text-muted small mb-3" style={{ fontSize: '13px', lineHeight: '1.45' }}>
+                                  Apple Safari blocks Bluetooth scanning. You must open HostelGuard in <strong>Bluefy Browser</strong> to connect to ESP32 beacons and mark attendance.
+                                </p>
+
+                                {/* Direct launch if Bluefy is installed */}
+                                <a
+                                  href={`bluefy://open?url=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+                                  className="btn btn-primary fw-bold py-2.5 shadow-sm d-flex align-items-center justify-content-center gap-2 mb-3"
+                                >
+                                  <ExternalLink size={18} /> Open in Bluefy Browser
+                                </a>
+
+                                {/* QR Code & App Store Download if not installed */}
+                                <div className="bg-white p-3 rounded-3 border d-flex flex-column align-items-center gap-2">
+                                  {bluefyQrUrl && (
+                                    <img
+                                      src={bluefyQrUrl}
+                                      alt="Scan QR to download Bluefy on App Store"
+                                      style={{ width: '130px', height: '130px', borderRadius: '8px' }}
+                                    />
+                                  )}
+                                  <span className="text-muted fw-medium" style={{ fontSize: '11px' }}>
+                                    Scan QR with Camera or tap below:
+                                  </span>
+                                  <a
+                                    href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn btn-dark btn-sm w-100 fw-semibold d-flex align-items-center justify-content-center gap-1.5 py-2"
+                                  >
+                                    <Download size={15} /> Download Bluefy on App Store
+                                  </a>
                                 </div>
                               </div>
 
-                              {/* Clean Android 1-Tap Solutions & Retry */}
-                              <div className="d-flex flex-column gap-2 w-100" style={{ maxWidth: '460px' }}>
+                              <button
+                                type="button"
+                                className="btn btn-outline-secondary btn-sm py-2 px-4 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
+                                onClick={handleVerifyLocation}
+                              >
+                                <RefreshCw size={14} /> Retry Check-In
+                              </button>
+                            </div>
+                          ) : isBleError ? (
+                            /* CASE C2: Android / Other Devices - Hardware Anchor Required */
+                            <div className="d-flex flex-column align-items-center gap-2">
+                              <div className="card bg-danger-subtle border-danger border-opacity-25 p-3 rounded-3 mb-2 text-start shadow-sm" style={{ maxWidth: '440px' }}>
+                                <div className="fw-bold text-danger small mb-1 d-flex align-items-center gap-1.5">
+                                  <Bluetooth size={17} /> ESP32 Hardware Anchor Required
+                                </div>
+                                <div className="small text-danger fw-medium" style={{ fontSize: '13px' }}>
+                                  {checkinError}
+                                </div>
+                              </div>
+
+                              {/* Android 1-Tap Solutions & Retry */}
+                              <div className="d-flex flex-column gap-2 w-100" style={{ maxWidth: '440px' }}>
                                 {dashboard?.wifi_cluster_endpoints && dashboard.wifi_cluster_endpoints.length > 0 && (
                                   <a
                                     href={`${dashboard.wifi_cluster_endpoints[0].handshakeUrl}?returnUrl=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}

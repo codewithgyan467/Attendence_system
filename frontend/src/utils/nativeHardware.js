@@ -686,9 +686,9 @@ export async function scanHostelBleBeacon(options = {}) {
       }
     }
 
-    let unsupportedMsg = 'Web Bluetooth is not supported on this browser. On Android/PC, please use Google Chrome, Microsoft Edge, or Samsung Internet.';
+    let unsupportedMsg = 'Web Bluetooth is not supported on this browser. Please use Google Chrome or install the app.';
     if (isIOS) {
-      unsupportedMsg = 'Physical Presence Lock Active: Apple Safari blocks Web Bluetooth. To detect the hostel ESP32 beacon on iPhone, open HostelGuard in "Bluefy - Web BLE Browser" (free on App Store), use the floor secure Wi-Fi anchor, or use an Android phone.';
+      unsupportedMsg = 'Apple Safari blocks Bluetooth scanning. You must use Bluefy Browser to connect to the hostel ESP32 beacon and mark attendance.';
     } else if (!isSecure && isHttp) {
       unsupportedMsg = 'Web Bluetooth requires a Secure HTTPS connection. Google Chrome disables Bluetooth on http:// URLs. Please switch your address bar from http:// to https:// or install the signed HostelGuard APK.';
     }
@@ -765,7 +765,7 @@ export async function scanHostelBleBeacon(options = {}) {
         reason: isIOSDevice ? 'BLE_FALLBACK_TO_IOS_SILENT' : 'BLUETOOTH_REQUEST_ERROR',
         isIOS: isIOSDevice,
         message: isIOSDevice
-          ? 'Physical Presence Lock Active: Apple Safari blocks Web Bluetooth.'
+          ? 'Apple Safari blocks Bluetooth scanning. You must use Bluefy Browser to mark attendance.'
           : (errMsg || 'Failed to initialize Bluetooth scan. Please ensure Bluetooth is ON in Android Settings.')
       };
     }
