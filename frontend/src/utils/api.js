@@ -203,6 +203,9 @@ export const api = {
     toggleBleBeacon: (id) => request(`/admin/ble/beacons/${encodeURIComponent(id)}/toggle`, { method: 'POST' }),
     downloadBeaconSketchUrl: (id) => `${getApiBaseUrl()}/admin/ble/beacons/${encodeURIComponent(id)}/sketch`,
     verifyBleToken: (data) => request('/admin/ble/verify-token', { method: 'POST', body: JSON.stringify(data) }),
+    getStrictVaultStatus: () => request('/admin/strict-vault/status'),
+    prepareStrictVaultOffline: () => request('/admin/strict-vault/prepare-offline', { method: 'POST' }),
+    syncStrictVaultToCloud: () => request('/admin/strict-vault/sync-to-cloud', { method: 'POST' }),
     getReports: (params = {}) => {
       const q = new URLSearchParams(params).toString();
       return request(`/admin/reports${q ? '?' + q : ''}`);

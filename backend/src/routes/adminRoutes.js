@@ -1240,13 +1240,46 @@ router.get('/ble/config', requireRole('ADMIN'), async (req, res) => {
 router.post('/ble/mode', requireRole('ADMIN'), async (req, res) => {
   try {
     const { ble_mode } = req.body;
-    const allowed = ['STANDBY_OPTIONAL', 'SOFT_ANCHOR', 'STRICT_REQUIRED'];
+    const allowed = ['STANDBY_OPTIONAL', 'SOFT_ANCHOR', 'STRICT_REQUIRED', 'STRICT_LOCK'];
     if (!allowed.includes(ble_mode)) {
       return res.status(400).json({ success: false, error: `Invalid ble_mode. Must be one of: ${allowed.join(', ')}` });
     }
     await runQuery(`UPDATE geofence_configs SET ble_mode = ?, updated_at = CURRENT_TIMESTAMP WHERE is_active = 1`, [ble_mode]);
     await recordAuditEvent(req.user.id, req.user.username, 'UPDATE_BLE_MODE', 'GEOFENCE', 'BLE_CONFIG', `Changed ESP32 BLE mode to ${ble_mode}`, req);
     res.json({ success: true, ble_mode, message: `BLE Radio Anchor mode switched to ${ble_mode}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4c. Strict Lock Localhost Vault & Cloud Sync Management (Warden Low-Spec Architecture)
+router.get('/strict-vault/status', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const localVaultDb = require('../config/localVaultDb');
+    const status = await localVaultDb.getVaultStatus();
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/strict-vault/prepare-offline', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const localVaultDb = require('../config/localVaultDb');
+    const prepResult = await localVaultDb.prepareOfflineCache({ allQuery, getQuery });
+    await recordAuditEvent(req.user.id, req.user.username, 'PREPARE_OFFLINE_VAULT', 'VAULT', 'LOCAL_SQLITE', 'Preloaded offline biometrics and beacon cache', req);
+    res.json(prepResult);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/strict-vault/sync-to-cloud', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const localVaultDb = require('../config/localVaultDb');
+    const syncResult = await localVaultDb.syncVaultToCloud({ runQuery, getQuery, withTransaction });
+    await recordAuditEvent(req.user.id, req.user.username, 'SYNC_OFFLINE_VAULT', 'VAULT', 'CLOUD_DB', `Synced ${syncResult.syncedAttendanceCount} attendance records to cloud`, req);
+    res.json(syncResult);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

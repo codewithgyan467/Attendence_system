@@ -69,6 +69,14 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Request-Id']
 }));
 
+// Chrome Private Network Access (PNA) Support for Local Wi-Fi Hostel LAN
+app.use((req, res, next) => {
+  if (req.headers['access-control-request-private-network']) {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  }
+  next();
+});
+
 // Request Tracking & Structured Logging
 app.use((req, res, next) => {
   req.id = uuidv4();
@@ -213,6 +221,13 @@ async function startServer() {
   try {
     await initDatabase();
     await ensureAiServiceRunning();
+    try {
+      const localVaultDb = require('./config/localVaultDb');
+      await localVaultDb.openVaultDb();
+      await localVaultDb.loadEmbeddingCache();
+    } catch (vaultErr) {
+      console.warn('⚠️ [StrictVault] Local SQLite vault initialization notice:', vaultErr.message);
+    }
 
     const server = app.listen(PORT, () => {
       console.log(`=======================================================`);

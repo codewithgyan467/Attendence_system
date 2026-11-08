@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { runQuery, getQuery, allQuery, withTransaction } = require('../db/database');
 const { validateLocation } = require('../services/geofenceService');
@@ -13,6 +14,35 @@ const embeddingCache = require('../services/embeddingCache');
 const bleBeaconService = require('../services/bleBeaconService');
 const beaconCache = require('../services/beaconCache');
 const { getIstTime12h, getIstDateString } = require('../utils/istTime');
+const localVaultDb = require('../config/localVaultDb');
+const { strictLanGuard } = require('../middleware/strictLanGuard');
+
+// Lightweight FIFO Semaphore Queue for Low-Spec Warden Laptop (Prevents CPU/RAM spikes)
+class FifoSemaphore {
+  constructor(maxConcurrent = 2) {
+    this.maxConcurrent = maxConcurrent;
+    this.running = 0;
+    this.queue = [];
+  }
+
+  async run(task) {
+    if (this.running >= this.maxConcurrent) {
+      await new Promise((resolve) => this.queue.push(resolve));
+    }
+    this.running++;
+    try {
+      return await task();
+    } finally {
+      this.running--;
+      if (this.queue.length > 0) {
+        const next = this.queue.shift();
+        next();
+      }
+    }
+  }
+}
+
+const aiInferenceQueue = new FifoSemaphore(2);
 
 // Helper to get today's date in YYYY-MM-DD (Indian Standard Time - IST)
 function getTodayDateString() {
@@ -584,16 +614,24 @@ const verifyFaceHandler = async (req, res) => {
     }
 
     // 4. Call AI Microservice for MiniFASNet Deep Anti-Spoofing, Active Challenge & Cosine Matching
+    // Throttled by FifoSemaphore (max 2 concurrent) to ensure zero lag on low-spec dual-core CPUs
     let aiResult;
     try {
       const temporalFrames = req.body.temporal_frames || req.body.temporalFrames || [];
-      aiResult = await aiServiceClient.verifyLiveFace(live_photo, storedEmbeddings, 0.65, null, {
-        temporal_frames: temporalFrames,
-        active_challenge: challenge.active_challenge || 'HOLD_STILL',
-        requires_step_up: Boolean(challenge.requires_step_up),
-        step_up_frames: photometric_data?.frames || null,
-        step_up_colors: challenge.step_up_color_sequence ? JSON.parse(challenge.step_up_color_sequence) : null
-      });
+      const faceCrop112 = req.body.face_crop_112 || req.body.faceCrop112 || null;
+      const padCrop80 = req.body.pad_crop_80 || req.body.padCrop80 || null;
+
+      aiResult = await aiInferenceQueue.run(() =>
+        aiServiceClient.verifyLiveFace(live_photo, storedEmbeddings, 0.65, null, {
+          face_crop_112: faceCrop112,
+          pad_crop_80: padCrop80,
+          temporal_frames: temporalFrames,
+          active_challenge: challenge.active_challenge || 'HOLD_STILL',
+          requires_step_up: Boolean(challenge.requires_step_up),
+          step_up_frames: photometric_data?.frames || null,
+          step_up_colors: challenge.step_up_color_sequence ? JSON.parse(challenge.step_up_color_sequence) : null
+        })
+      );
     } catch (aiErr) {
       return res.status(500).json({ success: false, error: `AI Microservice Error: ${aiErr.message}` });
     }
@@ -705,6 +743,29 @@ const verifyFaceHandler = async (req, res) => {
         );
       }
     } catch (_) {}
+
+    // Mirror to local SQLite vault for offline resilience on Warden low-spec laptop
+    try {
+      localVaultDb.recordLocalAttendance({
+        id: recordId,
+        student_id: student.id,
+        roll_no: student.roll_number,
+        hostel_id: student.hostel_id || 'HOSTEL_A',
+        status: 'PRESENT',
+        latitude: challenge.verified_lat || null,
+        longitude: challenge.verified_lon || null,
+        distance_m: challenge.verified_distance || 0,
+        ble_beacon_id: challenge.ble_beacon_id || null,
+        ble_hmac_token: challenge.ble_token || null,
+        face_similarity: aiResult.similarity_score,
+        liveness_score: aiResult.liveness_score,
+        client_ip: clientIp,
+        verified_at: new Date().toISOString(),
+        synced_to_cloud: 1
+      });
+    } catch (vaultErr) {
+      console.warn('[StrictVault] Failed to record local attendance mirror:', vaultErr.message);
+    }
 
     res.json({
       success: true,
@@ -947,14 +1008,14 @@ const offlineSyncHandler = async (req, res) => {
   }
 };
 
-// Route registrations and aliases
-router.post('/challenge', attendanceLimiter, verifyLocationHandler);
-router.post('/offline-sync', attendanceLimiter, offlineSyncHandler);
-router.post('/verify-location', attendanceLimiter, verifyLocationHandler);
-router.post('/check-geofence', attendanceLimiter, verifyLocationHandler);
+// Route registrations and aliases with Strict LAN Guard protection
+router.post('/challenge', attendanceLimiter, strictLanGuard, verifyLocationHandler);
+router.post('/offline-sync', attendanceLimiter, strictLanGuard, offlineSyncHandler);
+router.post('/verify-location', attendanceLimiter, strictLanGuard, verifyLocationHandler);
+router.post('/check-geofence', attendanceLimiter, strictLanGuard, verifyLocationHandler);
 
-router.post('/verify-face', attendanceLimiter, verifyFaceHandler);
-router.post('/mark', attendanceLimiter, verifyFaceHandler);
+router.post('/verify-face', attendanceLimiter, strictLanGuard, verifyFaceHandler);
+router.post('/mark', attendanceLimiter, strictLanGuard, verifyFaceHandler);
 
 // 3. Attendance Status Lookup
 router.get('/status/:identifier', async (req, res) => {

@@ -95,7 +95,9 @@ class AiServiceClient {
         allow_simulation_fallback: effectiveSimulation,
         requires_step_up: Boolean(options.requires_step_up),
         step_up_frames: options.step_up_frames || null,
-        step_up_colors: options.step_up_colors || null
+        step_up_colors: options.step_up_colors || null,
+        face_crop_112: options.face_crop_112 || options.faceCrop112 || null,
+        pad_crop_80: options.pad_crop_80 || options.padCrop80 || null
       };
 
       const resp = await this.client.post('/api/v1/faces/verify-live', payload);

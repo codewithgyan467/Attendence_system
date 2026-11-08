@@ -56,6 +56,9 @@ export default function GeofenceManager() {
   const [testBeaconId, setTestBeaconId] = useState('HG-BEACON-BLKA-01');
   const [testResult, setTestResult] = useState(null);
   const [verifyingToken, setVerifyingToken] = useState(false);
+  const [vaultStatus, setVaultStatus] = useState(null);
+  const [vaultLoading, setVaultLoading] = useState(false);
+  const [vaultSyncing, setVaultSyncing] = useState(false);
 
   useEffect(() => {
     fetchConfig();
@@ -105,6 +108,47 @@ export default function GeofenceManager() {
       console.warn('Non-fatal BLE fetch notice:', err.message);
     } finally {
       setBleLoading(false);
+    }
+  };
+
+  const fetchVaultStatus = async () => {
+    try {
+      const data = await api.admin.getStrictVaultStatus();
+      if (data?.success) setVaultStatus(data);
+    } catch (_) {}
+  };
+
+  const handlePrepareOffline = async () => {
+    setVaultLoading(true);
+    setStatusMsg(null);
+    setErrorMsg(null);
+    try {
+      const res = await api.admin.prepareStrictVaultOffline();
+      if (res?.success) {
+        setStatusMsg(`Successfully cached ${res.cachedStudents} students and preloaded RAM vector cache!`);
+        await fetchVaultStatus();
+      }
+    } catch (err) {
+      setErrorMsg(`Failed to prepare offline vault: ${err.message}`);
+    } finally {
+      setVaultLoading(false);
+    }
+  };
+
+  const handleSyncToCloud = async () => {
+    setVaultSyncing(true);
+    setStatusMsg(null);
+    setErrorMsg(null);
+    try {
+      const res = await api.admin.syncVaultToCloud();
+      if (res?.success) {
+        setStatusMsg(`Successfully synced ${res.syncedAttendanceCount} attendance records to cloud database!`);
+        await fetchVaultStatus();
+      }
+    } catch (err) {
+      setErrorMsg(`Failed to sync vault to cloud: ${err.message}`);
+    } finally {
+      setVaultSyncing(false);
     }
   };
 
@@ -775,6 +819,94 @@ export default function GeofenceManager() {
                   </div>
                 </div>
               </div>
+
+              {/* Strict Lock Localhost Vault & Cloud Sync (Low-Spec Warden Laptop Architecture) */}
+              {(bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && (
+                <div className="card border-0 rounded-3 shadow-sm mb-4 overflow-hidden border-start border-4 border-danger bg-light">
+                  <div className="card-header bg-danger bg-opacity-10 py-2.5 px-3 border-0 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <div className="d-flex align-items-center gap-2">
+                      <Cpu size={18} className="text-danger" />
+                      <span className="fw-bold text-dark small">Strict Lock Localhost Vault & Cloud Sync (Warden Low-Spec Office Laptop)</span>
+                    </div>
+                    <span className="badge bg-danger text-white px-2 py-0.5" style={{ fontSize: '11px' }}>
+                      Hostel Wi-Fi LAN Only &bull; Zero Lag FIFO Engine
+                    </span>
+                  </div>
+                  <div className="card-body p-3">
+                    <p className="text-muted small mb-3" style={{ fontSize: '12px' }}>
+                      Optimized for dual-core Intel/Celeron laptops (4GB-8GB RAM). Operates 100% offline inside the local SQLite vault (<code>strict_local.db</code>) with in-memory Float32 vector embeddings (&lt;0.05ms similarity matching).
+                    </p>
+
+                    {/* LAN URLs */}
+                    <div className="p-2.5 bg-white rounded-3 mb-3 border">
+                      <div className="small fw-bold text-dark mb-1 d-flex align-items-center gap-1.5">
+                        <Radio size={14} className="text-primary" /> Warden Laptop Wi-Fi LAN Access Points:
+                      </div>
+                      <div className="d-flex flex-wrap gap-2">
+                        {vaultStatus?.localLanUrls?.map((url, idx) => (
+                          <code key={idx} className="badge bg-light text-dark border px-2 py-1 font-monospace" style={{ fontSize: '11px' }}>
+                            {url}
+                          </code>
+                        )) || <code className="badge bg-light text-dark border px-2 py-1">http://localhost:5000</code>}
+                      </div>
+                      <div className="text-muted small mt-1" style={{ fontSize: '11px' }}>
+                        Students on the hostel Wi-Fi network connect to this local IP for instant offline check-in without relying on the internet.
+                      </div>
+                    </div>
+
+                    {/* Live Vault Metrics */}
+                    <div className="row g-2 mb-3">
+                      <div className="col-6 col-md-3">
+                        <div className="p-2 rounded-2 bg-white border text-center">
+                          <div className="text-muted" style={{ fontSize: '11px' }}>Cached Students</div>
+                          <div className="fw-bold text-dark fs-6">{vaultStatus?.cachedStudentsCount ?? '--'}</div>
+                        </div>
+                      </div>
+                      <div className="col-6 col-md-3">
+                        <div className="p-2 rounded-2 bg-white border text-center">
+                          <div className="text-muted" style={{ fontSize: '11px' }}>RAM Vector Cache</div>
+                          <div className="fw-bold text-success fs-6">{vaultStatus?.ramCachedStudents ?? '--'}</div>
+                        </div>
+                      </div>
+                      <div className="col-6 col-md-3">
+                        <div className="p-2 rounded-2 bg-white border text-center">
+                          <div className="text-muted" style={{ fontSize: '11px' }}>Unsynced Attendance</div>
+                          <div className="fw-bold text-danger fs-6">{vaultStatus?.unsyncedAttendanceCount ?? 0}</div>
+                        </div>
+                      </div>
+                      <div className="col-6 col-md-3">
+                        <div className="p-2 rounded-2 bg-white border text-center">
+                          <div className="text-muted" style={{ fontSize: '11px' }}>Hardware Beacons</div>
+                          <div className="fw-bold text-primary fs-6">{vaultStatus?.cachedBeaconsCount ?? beacons.length}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="d-flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-outline-primary btn-sm fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
+                        disabled={vaultLoading}
+                        onClick={handlePrepareOffline}
+                      >
+                        <RefreshCw size={13} className={vaultLoading ? 'spin' : ''} />
+                        {vaultLoading ? 'Preloading Vault...' : 'Prepare Offline Cache (Preload Students & RAM Vectors)'}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm text-white"
+                        disabled={vaultSyncing || (vaultStatus?.unsyncedAttendanceCount === 0)}
+                        onClick={handleSyncToCloud}
+                      >
+                        <Zap size={13} className={vaultSyncing ? 'spin' : ''} />
+                        {vaultSyncing ? 'Syncing to Cloud...' : `Push & Sync Local Vault to Cloud DB (${vaultStatus?.unsyncedAttendanceCount || 0} Pending)`}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Table of Registered Beacons */}
               <div className="table-responsive">

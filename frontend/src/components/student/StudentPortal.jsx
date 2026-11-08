@@ -37,7 +37,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import GeofenceMap from '../common/GeofenceMap';
-import { playBiometricChime, detectFaceAngle, detectBlinkEvent, resetBlinkTracker } from '../../utils/faceAngleGuide';
+import { playBiometricChime, detectFaceAngle, detectBlinkEvent, resetBlinkTracker, generateOptimizedBiometricPayload } from '../../utils/faceAngleGuide';
 import { formatTime12h, formatDateTime12h, formatDateIST, getCurrentTimeIST12h } from '../../utils/timeUtils';
 
 const formatDisplayTime12h = (timeVal) => {
@@ -803,36 +803,37 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     setScanProgress(15);
 
     try {
-      // Task 5: High-speed biometric capture (480x360 @ 0.80 quality ~35KB)
-      // Slashes mobile upload payload from ~450KB to ~53KB, reducing uplink latency to <150ms
-      const primaryCanvas = document.createElement('canvas');
-      primaryCanvas.width = 480;
-      primaryCanvas.height = 360;
-      const pctx = primaryCanvas.getContext('2d');
-      pctx.drawImage(videoRef.current, 0, 0, 480, 360);
-      const livePhotoBase64 = primaryCanvas.toDataURL('image/jpeg', 0.80);
+      // Task 2: Ultra-light client-side pre-cropping (450KB -> ~26KB payload)
+      // Generates faceCrop112 (112x112 ~4KB), padCrop80 (80x80 ~3KB), and livePhoto (320x240 ~15KB)
+      const optimizedPayload = generateOptimizedBiometricPayload(videoRef.current);
+
+      let livePhotoBase64 = optimizedPayload?.livePhoto;
+      if (!livePhotoBase64) {
+        const primaryCanvas = document.createElement('canvas');
+        primaryCanvas.width = 320;
+        primaryCanvas.height = 240;
+        const pctx = primaryCanvas.getContext('2d');
+        pctx.drawImage(videoRef.current, 0, 0, 320, 240);
+        livePhotoBase64 = primaryCanvas.toDataURL('image/jpeg', 0.75);
+      }
 
       if (screenFlashEnabled) {
         setTimeout(() => setIsFlashing(false), 200);
       }
 
-      // 1 lightweight temporal frame (320x240 @ 0.70 quality ~18KB) for micro-motion & PAD analysis
-      const burstCanvas = document.createElement('canvas');
-      burstCanvas.width = 320;
-      burstCanvas.height = 240;
-      const bctx = burstCanvas.getContext('2d');
-      const temporalFrames = [];
+      const faceCrop112 = optimizedPayload?.faceCrop112 || null;
+      const padCrop80 = optimizedPayload?.padCrop80 || null;
+      const temporalFrames = (optimizedPayload?.temporalFrames && optimizedPayload.temporalFrames.length > 0)
+        ? optimizedPayload.temporalFrames
+        : [];
 
-      await new Promise((r) => setTimeout(r, 120));
-      if (videoRef.current && videoRef.current.readyState >= 2) {
-        bctx.drawImage(videoRef.current, 0, 0, 320, 240);
-        temporalFrames.push(burstCanvas.toDataURL('image/jpeg', 0.70));
-      }
-      setScanProgress(75);
+      setScanProgress(60);
 
       const res = await api.attendance.verifyFace({
         session_token: sessionToken,
         live_photo: livePhotoBase64,
+        face_crop_112: faceCrop112,
+        pad_crop_80: padCrop80,
         temporal_frames: temporalFrames,
         active_challenge: activeChallenge || 'HOLD_STILL'
       });
