@@ -65,6 +65,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [studentCoords, setStudentCoords] = useState(null);
   const [bleScanningStatus, setBleScanningStatus] = useState(null);
   const [verifiedBeaconInfo, setVerifiedBeaconInfo] = useState(null);
+  const [verifiedWifiAnchor, setVerifiedWifiAnchor] = useState(null);
   const [activeChallenge, setActiveChallenge] = useState('HOLD_STILL');
   const [activeChallengeInstruction, setActiveChallengeInstruction] = useState('Fit face into oval and hold steady');
 
@@ -308,25 +309,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           // Multi-Router Strict Lock: Authorized Hostel Floor Wi-Fi Anchor (Instant 1-Click Verification)
           const ssid = (pos.connectedWifi.ssid || '').trim();
           setBleScanningStatus(`Layer 2 Check: Floor Wi-Fi Anchor Verified (${ssid})...`);
+          setVerifiedWifiAnchor(ssid);
           bleProof = {
             channel: 'HOSTEL_WIFI_VERIFIED',
             method: 'HOSTEL_WIFI_VERIFIED',
             ssid: pos.connectedWifi.ssid,
             bssid: pos.connectedWifi.bssid
-          };
-        } else if (isIOSDevice && (typeof navigator === 'undefined' || !navigator.bluetooth)) {
-          // 1-Click Silent Hardware Verification for iOS (Safari & Home Screen PWA)
-          // Automatically passes Layer 2 without showing any Bluetooth errors
-          setBleScanningStatus('Layer 2 Check: Genuine iOS Hardware Attested (Single Click)...');
-          bleProof = {
-            channel: 'IOS_SILENT_HARDWARE_ATTESTED',
-            method: 'IOS_SILENT_HARDWARE_ATTESTED',
-            isIosSilentAttested: true,
-            gpuRenderer: iosAttestation.gpuRenderer,
-            altitude: pos.altitude ?? null,
-            altitudeAccuracy: pos.altitudeAccuracy ?? null,
-            accuracy: pos.accuracy ?? null,
-            maxTouchPoints: iosAttestation.maxTouchPoints || 5
           };
         } else {
           // Standard BLE Scan or LAN Router Handshake Probe
@@ -344,30 +332,18 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
             if (pos.connectedWifi && pos.connectedWifi.isConnected) {
               const ssid = (pos.connectedWifi.ssid || '').trim();
               setBleScanningStatus(`Layer 2 Check: Floor Wi-Fi Anchor Verified (${ssid})...`);
+              setVerifiedWifiAnchor(ssid);
               bleProof = {
                 channel: 'HOSTEL_WIFI_VERIFIED',
                 method: 'HOSTEL_WIFI_VERIFIED',
                 ssid: pos.connectedWifi.ssid,
                 bssid: pos.connectedWifi.bssid
               };
-            } else if (isIOSDevice) {
-              // Seamless iOS fallback
-              setBleScanningStatus('Layer 2 Check: Genuine iOS Hardware Attested (Single Click)...');
-              bleProof = {
-                channel: 'IOS_SILENT_HARDWARE_ATTESTED',
-                method: 'IOS_SILENT_HARDWARE_ATTESTED',
-                isIosSilentAttested: true,
-                gpuRenderer: iosAttestation.gpuRenderer,
-                altitude: pos.altitude ?? null,
-                altitudeAccuracy: pos.altitudeAccuracy ?? null,
-                accuracy: pos.accuracy ?? null,
-                maxTouchPoints: iosAttestation.maxTouchPoints || 5
-              };
             } else {
-              // Android device rejection
+              // Strict Mode Rejection: Physical ESP32 Anchor is OFF or out of range (~15m)
               setCheckinError(
                 bleRes.message ||
-                `Layer 2 Check Failed: Hardware Bluetooth beacon proximity or floor Wi-Fi is strictly required (${activeBeaconList}). Please stand near the floor beacon, connect to hostel floor Wi-Fi, or ensure Bluetooth is turned ON.`
+                `Layer 2 Check Failed: ESP32 Hardware Anchor is required in Strict Mode (${activeBeaconList}). No active ESP32 beacon or authorized floor Wi-Fi detected (~15m). Please stand near the floor anchor and ensure the ESP32 board is powered ON.`
               );
               setCheckinStep('failed');
               return;
@@ -407,6 +383,19 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           } catch (_) {
             // Soft anchor allows proceeding without BLE
           }
+        } else if (isIOSDevice) {
+          // Soft Anchor allows genuine iOS hardware attestation with photometric step-up challenge
+          setBleScanningStatus('Layer 2 Check: iOS Adaptive Hardware Attestation...');
+          bleProof = {
+            channel: 'IOS_SILENT_HARDWARE_ATTESTED',
+            method: 'IOS_SILENT_HARDWARE_ATTESTED',
+            isIosSilentAttested: true,
+            gpuRenderer: iosAttestation.gpuRenderer,
+            altitude: pos.altitude ?? null,
+            altitudeAccuracy: pos.altitudeAccuracy ?? null,
+            accuracy: pos.accuracy ?? null,
+            maxTouchPoints: iosAttestation.maxTouchPoints || 5
+          };
         }
       }
 
@@ -450,6 +439,13 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       });
 
       if (res.success) {
+        // Strict Mode Safeguard: Physical ESP32 Hardware Anchor presence is strictly required before camera activation
+        if ((bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && !verifiedBeaconInfo && !lanWifiTicket && !verifiedWifiAnchor && (!bleProof || (bleProof.channel !== 'HOSTEL_WIFI_VERIFIED' && bleProof.method !== 'HOSTEL_WIFI_VERIFIED'))) {
+          setCheckinError(`Layer 2 Check Failed: Strict Hardware Beacon Lock is active (${activeBeaconList}). ESP32 physical anchor (~15m) or authorized floor Wi-Fi must be detected. Please ensure the ESP32 board is powered ON.`);
+          setCheckinStep('failed');
+          return;
+        }
+
         setSessionToken(res.sessionToken || res.challengeToken);
         setVerifiedDistance(res.verifiedDistance || res.distanceMeters);
         if (res.activeChallenge) {
@@ -476,6 +472,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
   // Check-In Step 2: Camera with Progressive Constraint Fallbacks
   const startCamera = async () => {
+    // Strict Mode Safeguard: Camera feed cannot open unless ESP32 anchor or floor Wi-Fi has been verified
+    if ((bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && !verifiedBeaconInfo && !lanWifiTicket && !verifiedWifiAnchor) {
+      setCheckinError(`Camera Blocked: ESP32 Hardware Anchor signal (~15m) or authorized floor Wi-Fi is strictly required (${activeBeaconList}). Ensure your floor ESP32 board is powered ON.`);
+      setCheckinStep('failed');
+      return;
+    }
     try {
       let stream;
       try {
