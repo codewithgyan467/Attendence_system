@@ -1,942 +1,1890 @@
-import React, { useState, useEffect } from 'react';
-import { api } from '../../utils/api';
-import KpiCard from '../common/KpiCard';
-import { AttendanceTrendChart, StatusDistributionChart, BlockDistributionChart } from './AdminCharts';
-import {
-  Users,
-  CheckCircle2,
-  AlertTriangle,
-  Clock,
-  ShieldAlert,
-  RotateCw,
-  MapPin,
-  TrendingUp,
-  FileCheck,
-  Search,
-  Filter,
-  Download,
-  X,
-  Phone,
-  Mail,
-  ArrowRight,
-  FileSpreadsheet,
-  Radio,
-  ShieldCheck,
-  Cpu,
-  Zap,
-  RefreshCw
-} from 'lucide-react';
-import { exportToExcel, exportToCsv } from '../../utils/exportUtils';
-import { formatTime12h, getCurrentTimeIST12h, formatDateIST, getTodayDateIST } from '../../utils/timeUtils';
-
-const DASHBOARD_CACHE_KEY = 'hg_cached_admin_dashboard_stats';
-
-const getCachedDashboardStats = () => {
-  try {
-    const raw = localStorage.getItem(DASHBOARD_CACHE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-};
-
-export default function AdminDashboard({ onNavigate }) {
-  const [data, setData] = useState(getCachedDashboardStats);
-  const [loading, setLoading] = useState(!data);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSynced, setLastSynced] = useState(() => (getCachedDashboardStats() ? 'Cached' : ''));
-  const [error, setError] = useState('');
-
-  // Today's Roster Interactive Modal State
-  const [rosterModalOpen, setRosterModalOpen] = useState(false);
-  const [rosterTab, setRosterTab] = useState('PRESENT'); // 'PRESENT' | 'ABSENT'
-  const [searchQuery, setSearchQuery] = useState('');
-  const [blockFilter, setBlockFilter] = useState('');
-
-  const fetchStats = async (isManual = false) => {
-    try {
-      if (!data || isManual) {
-        setLoading(true);
-      }
-      setIsSyncing(true);
-      setError('');
-      const res = await api.admin.getDashboardStats();
-      if (res.success) {
-        setData(res);
-        setLastSynced(getCurrentTimeIST12h());
-        try {
-          localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(res));
-        } catch (_) {}
-      }
-    } catch (err) {
-      if (!data) {
-        setError(err.message || 'Failed to load dashboard metrics');
-      }
-    } finally {
-      setLoading(false);
-      setIsSyncing(false);
-    }
-  };
-
-  const fetchBleAndVault = async () => {
-    try {
-      const [bleData, vData] = await Promise.allSettled([
-        api.admin.getBleConfig(),
-        api.admin.getStrictVaultStatus()
-      ]);
-      if (bleData.status === 'fulfilled' && bleData.value?.success) {
-        setBleMode(bleData.value.ble_mode || 'STANDBY_OPTIONAL');
-      }
-      if (vData.status === 'fulfilled' && vData.value?.success) {
-        setVaultStatus(vData.value);
-      }
-    } catch (_) {}
-  };
-
-  const handleModeChange = async (newMode) => {
-    setBleUpdating(true);
-    setVaultMsg(null);
-    try {
-      const res = await api.admin.updateBleMode(newMode);
-      if (res?.success) {
-        setBleMode(newMode);
-        setVaultMsg(`Enforcement Mode successfully updated to ${newMode}`);
-        fetchBleAndVault();
-      }
-    } catch (err) {
-      setVaultMsg(`Failed to update mode: ${err.message}`);
-    } finally {
-      setBleUpdating(false);
-    }
-  };
-
-  const handlePrepareVault = async () => {
-    setVaultLoading(true);
-    setVaultMsg(null);
-    try {
-      const res = await api.admin.prepareStrictVaultOffline();
-      if (res?.success) {
-        setVaultMsg(`Cached ${res.cachedStudents} students into local SQLite & loaded Float32 RAM vector cache!`);
-        fetchBleAndVault();
-      }
-    } catch (err) {
-      setVaultMsg(`Offline cache error: ${err.message}`);
-    } finally {
-      setVaultLoading(false);
-    }
-  };
-
-  const handleSyncVault = async () => {
-    setVaultSyncing(true);
-    setVaultMsg(null);
-    try {
-      const res = await api.admin.syncVaultToCloud();
-      if (res?.success) {
-        setVaultMsg(`Synced ${res.syncedAttendanceCount} attendance records from local vault to Turso Cloud!`);
-        fetchBleAndVault();
-      }
-    } catch (err) {
-      setVaultMsg(`Cloud sync error: ${err.message}`);
-    } finally {
-      setVaultSyncing(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchStats();
-    fetchBleAndVault();
-  }, []);
-
-  if (loading && !data) {
-    return (
-      <div className="container-fluid px-0 py-2">
-        <div className="d-flex justify-content-between align-items-center mb-4 placeholder-glow">
-          <div>
-            <div className="placeholder col-8 bg-secondary rounded py-2 mb-2" style={{ minWidth: '220px' }}></div>
-            <div className="placeholder col-6 bg-secondary rounded py-1" style={{ minWidth: '160px' }}></div>
-          </div>
-          <div className="placeholder col-2 bg-secondary rounded py-3" style={{ minWidth: '100px' }}></div>
-        </div>
-
-        <div className="row g-3 mb-4">
-          {[1, 2, 3, 4].map((n) => (
-            <div key={n} className="col-12 col-sm-6 col-xl-3">
-              <div className="hg-card p-3 placeholder-glow" style={{ borderRadius: '12px' }}>
-                <div className="d-flex justify-content-between mb-2">
-                  <span className="placeholder col-6 bg-secondary rounded py-1"></span>
-                  <span className="placeholder rounded-circle bg-secondary" style={{ width: '28px', height: '28px' }}></span>
-                </div>
-                <div className="placeholder col-4 bg-secondary rounded py-3 my-2"></div>
-                <span className="placeholder col-8 bg-secondary rounded py-1"></span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="row g-3">
-          <div className="col-12 col-lg-8">
-            <div className="hg-card p-4 placeholder-glow" style={{ minHeight: '300px', borderRadius: '12px' }}>
-              <span className="placeholder col-4 bg-secondary rounded py-2 mb-4 d-block"></span>
-              <div className="placeholder col-12 bg-secondary rounded" style={{ height: '220px' }}></div>
-            </div>
-          </div>
-          <div className="col-12 col-lg-4">
-            <div className="hg-card p-4 placeholder-glow" style={{ minHeight: '300px', borderRadius: '12px' }}>
-              <span className="placeholder col-6 bg-secondary rounded py-2 mb-4 d-block"></span>
-              <div className="placeholder col-12 bg-secondary rounded-circle mx-auto" style={{ width: '160px', height: '160px' }}></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const s = data?.summary || {};
-
-  const handleOpenRoster = (tab) => {
-    setRosterTab(tab);
-    setSearchQuery('');
-    setBlockFilter('');
-    setRosterModalOpen(true);
-  };
-
-  const presentStudents = data?.todayPresent || [];
-  const absentStudents = data?.todayAbsent || [];
-
-  const activeList = rosterTab === 'PRESENT' ? presentStudents : absentStudents;
-
-  const filteredList = activeList.filter((item) => {
-    const q = searchQuery.toLowerCase().trim();
-    const matchesQuery =
-      !q ||
-      item.full_name?.toLowerCase().includes(q) ||
-      item.roll_number?.toLowerCase().includes(q) ||
-      item.room_number?.toLowerCase().includes(q) ||
-      item.hostel_block?.toLowerCase().includes(q) ||
-      item.course?.toLowerCase().includes(q);
-
-    const matchesBlock = !blockFilter || item.hostel_block === blockFilter;
-
-    return matchesQuery && matchesBlock;
-  });
-
-  const availableBlocks = Array.from(
-    new Set(
-      [...presentStudents, ...absentStudents]
-        .map((st) => st.hostel_block)
-        .filter(Boolean)
-    )
-  ).sort();
-
-  const getRosterExportData = () => {
-    const isPresent = rosterTab === 'PRESENT';
-    const headers = isPresent
-      ? [
-          { key: 'roll_number', label: 'Roll Number' },
-          { key: 'full_name', label: 'Full Name' },
-          { key: 'hostel_block', label: 'Hostel Block' },
-          { key: 'room_number', label: 'Room Number' },
-          { key: 'course', label: 'Course' },
-          { key: 'time_marked', label: 'Check-in Time (IST)' },
-          { key: 'status', label: 'Status' },
-          { key: 'distance', label: 'Verified Distance' },
-          { key: 'phone', label: 'Phone' },
-          { key: 'email', label: 'Email' }
-        ]
-      : [
-          { key: 'roll_number', label: 'Roll Number' },
-          { key: 'full_name', label: 'Full Name' },
-          { key: 'hostel_block', label: 'Hostel Block' },
-          { key: 'room_number', label: 'Room Number' },
-          { key: 'course', label: 'Course' },
-          { key: 'status', label: 'Status' },
-          { key: 'phone', label: 'Phone' },
-          { key: 'email', label: 'Email' }
-        ];
-
-    const data = filteredList.map((item) => {
-      if (isPresent) {
-        return {
-          roll_number: item.roll_number || '',
-          full_name: item.full_name || '',
-          hostel_block: item.hostel_block || '',
-          room_number: item.room_number || '',
-          course: item.course || '',
-          time_marked: item.time_marked_12 || item.time_marked ? formatTime12h(item.time_marked_12 || item.time_marked) : 'N/A',
-          status: item.status || 'PRESENT',
-          distance: item.verified_distance !== null && item.verified_distance !== undefined ? `${item.verified_distance}m` : 'N/A',
-          phone: item.phone || '',
-          email: item.email || ''
-        };
-      } else {
-        return {
-          roll_number: item.roll_number || '',
-          full_name: item.full_name || '',
-          hostel_block: item.hostel_block || '',
-          room_number: item.room_number || '',
-          course: item.course || '',
-          status: item.status || 'ABSENT',
-          phone: item.phone || '',
-          email: item.email || ''
-        };
-      }
-    });
-
-    return { headers, data, isPresent };
-  };
-
-  const handleExportRosterCsv = () => {
-    const { headers, data, isPresent } = getRosterExportData();
-    exportToCsv({
-      filename: `hostel_${isPresent ? 'present' : 'absent'}_residents_${getTodayDateIST()}`,
-      headers,
-      data
-    });
-  };
-
-  const handleExportRosterExcel = () => {
-    const { headers, data, isPresent } = getRosterExportData();
-    exportToExcel({
-      filename: `hostel_${isPresent ? 'present' : 'absent'}_residents_${getTodayDateIST()}`,
-      sheetName: isPresent ? 'Present Residents' : 'Absent Residents',
-      headers,
-      data
-    });
-  };
-
-  const todayFormatted = formatDateIST(new Date());
-
-  return (
-    <div className="container-fluid px-0">
-      {/* Page Header */}
-      <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
-        <div>
-          <h4 className="fw-bold mb-1">Executive Attendance Dashboard</h4>
-          <p className="text-muted mb-0" style={{ fontSize: '13px' }}>
-            Real-time biometric and geo-fenced hostel operations overview. Click Present or Absent cards to view student rosters.
-          </p>
-        </div>
-        <div className="d-flex align-items-center gap-2">
-          {isSyncing ? (
-            <span className="badge bg-light text-primary border d-none d-sm-inline-flex align-items-center gap-1 py-2 px-2" style={{ fontSize: '11px' }}>
-              <RotateCw size={11} className="spin-fast" /> Syncing live...
-            </span>
-          ) : lastSynced ? (
-            <span className="badge bg-light text-muted border d-none d-sm-inline-block py-2 px-2" style={{ fontSize: '11px' }}>
-              ✓ Synced {lastSynced}
-            </span>
-          ) : null}
-          <button onClick={() => fetchStats(true)} className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" disabled={isSyncing}>
-            <RotateCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-            <span>Refresh Data</span>
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="alert alert-danger py-2 px-3 mb-4" style={{ fontSize: '13px' }}>
-          <AlertTriangle size={16} className="me-2" />
-          {error}
-        </div>
-      )}
-
-      {/* KPI Cards Row */}
-      <div className="row g-3 mb-4">
-        <div className="col-12 col-sm-6 col-xl-3">
-          <KpiCard
-            title="Total Registered Students"
-            value={s.totalRegistered || 0}
-            subtitle={`${s.totalAllotted || 0} pre-allotted in roster`}
-            icon={Users}
-            color="primary"
-          />
-        </div>
-        <div className="col-12 col-sm-6 col-xl-3">
-          <KpiCard
-            title="Present Today"
-            value={s.presentToday || 0}
-            subtitle={`${s.presentToday || 0} / ${s.totalRegistered || 0} residents present today`}
-            icon={CheckCircle2}
-            color="success"
-            badgeText={s.lateToday > 0 ? `+${s.lateToday} Late` : undefined}
-            onClick={() => handleOpenRoster('PRESENT')}
-            actionText="View Present Students"
-          />
-        </div>
-        <div className="col-12 col-sm-6 col-xl-3">
-          <KpiCard
-            title="Absent / Unmarked"
-            value={s.absentToday || 0}
-            subtitle="Residents pending check-in"
-            icon={Clock}
-            color="warning"
-            onClick={() => handleOpenRoster('ABSENT')}
-            actionText="View Absent Students"
-          />
-        </div>
-        <div className="col-12 col-sm-6 col-xl-3">
-          <KpiCard
-            title="Forge Location Alerts"
-            value={s.flaggedForgeCount || 0}
-            subtitle="Hit 3-strike location limit"
-            icon={ShieldAlert}
-            color={s.flaggedForgeCount > 0 ? 'danger' : 'primary'}
-            badgeText={s.pendingCorrections > 0 ? `${s.pendingCorrections} Corrections Pending` : undefined}
-          />
-        </div>
-      </div>
-
-      {/* Select Attendance Bluetooth Enforcement Mode Panel */}
-      <div className="card border-0 rounded-4 shadow-sm mb-4 overflow-hidden border-start border-4 border-primary bg-white">
-        <div className="card-header bg-light py-3 px-4 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
-          <div className="d-flex align-items-center gap-2">
-            <Radio size={20} className="text-primary" />
-            <h6 className="fw-bold mb-0 text-dark">Select Attendance Bluetooth Enforcement Mode</h6>
-          </div>
-          <span className={`badge ${bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'bg-danger text-white' : (bleMode === 'SOFT_ANCHOR' ? 'bg-warning text-dark' : 'bg-primary text-white')} px-3 py-1.5`} style={{ fontSize: '11px' }}>
-            Active: {bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'Strict Lock (Offline Wi-Fi + BLE)' : (bleMode === 'SOFT_ANCHOR' ? 'Soft Anchor (Proximity)' : 'Standby Mode (GPS & Face)')}
-          </span>
-        </div>
-        <div className="card-body p-4">
-          <div className="row g-3 mb-3">
-            {/* Mode 1: STANDBY */}
-            <div className="col-12 col-md-4">
-              <div
-                className={`card h-100 p-3 border-2 cursor-pointer transition-all ${bleMode === 'STANDBY_OPTIONAL' ? 'border-primary bg-primary bg-opacity-10' : 'border-light bg-light'}`}
-                style={{ cursor: 'pointer' }}
-                onClick={() => !bleUpdating && handleModeChange('STANDBY_OPTIONAL')}
-              >
-                <div className="d-flex align-items-center justify-content-between mb-2">
-                  <span className="badge bg-primary text-white fw-bold">1. STANDBY</span>
-                  {bleMode === 'STANDBY_OPTIONAL' && <ShieldCheck size={18} className="text-primary" />}
-                </div>
-                <h6 className="fw-bold mb-1">GPS &amp; Face Mode</h6>
-                <p className="text-muted small mb-0" style={{ fontSize: '12px' }}>
-                  Cloud / Internet allowed. Standard geofence verification with active face check. BLE anchor optional.
-                </p>
-              </div>
-            </div>
-
-            {/* Mode 2: SOFT ANCHOR */}
-            <div className="col-12 col-md-4">
-              <div
-                className={`card h-100 p-3 border-2 cursor-pointer transition-all ${bleMode === 'SOFT_ANCHOR' ? 'border-warning bg-warning bg-opacity-10' : 'border-light bg-light'}`}
-                style={{ cursor: 'pointer' }}
-                onClick={() => !bleUpdating && handleModeChange('SOFT_ANCHOR')}
-              >
-                <div className="d-flex align-items-center justify-content-between mb-2">
-                  <span className="badge bg-warning text-dark fw-bold">2. SOFT ANCHOR</span>
-                  {bleMode === 'SOFT_ANCHOR' && <ShieldCheck size={18} className="text-warning" />}
-                </div>
-                <h6 className="fw-bold mb-1">Smart Proximity Verification</h6>
-                <p className="text-muted small mb-0" style={{ fontSize: '12px' }}>
-                  ESP32 grants instant attendance. If signal is weak through thick walls, falls back to screen-flash face check with 0 strikes.
-                </p>
-              </div>
-            </div>
-
-            {/* Mode 3: STRICT LOCK */}
-            <div className="col-12 col-md-4">
-              <div
-                className={`card h-100 p-3 border-2 cursor-pointer transition-all ${bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'border-danger bg-danger bg-opacity-10' : 'border-light bg-light'}`}
-                style={{ cursor: 'pointer' }}
-                onClick={() => !bleUpdating && handleModeChange('STRICT_REQUIRED')}
-              >
-                <div className="d-flex align-items-center justify-content-between mb-2">
-                  <span className="badge bg-danger text-white fw-bold">3. STRICT LOCK</span>
-                  {(bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && <ShieldCheck size={18} className="text-danger" />}
-                </div>
-                <h6 className="fw-bold mb-1">Physical Presence Lock</h6>
-                <p className="text-muted small mb-0" style={{ fontSize: '12px' }}>
-                  100% Offline Hostel Wi-Fi LAN-Only + Mandatory ESP32 Hardware Anchor + Ultra-Light Local Biometrics + Cloud Sync.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {vaultMsg && (
-            <div className="alert alert-info py-2 px-3 small mb-3">
-              {vaultMsg}
-            </div>
-          )}
-
-          {/* Strict Lock Localhost Vault & Cloud Sync Panel */}
-          {(bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && (
-            <div className="p-3 bg-light rounded-3 border mt-3">
-              <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                <div className="d-flex align-items-center gap-2">
-                  <Cpu size={16} className="text-danger" />
-                  <span className="fw-bold small text-dark">Strict Lock Localhost Vault &amp; Cloud Sync (Low-Spec Warden Laptop)</span>
-                </div>
-                <span className="badge bg-danger text-white" style={{ fontSize: '10px' }}>Zero-Lag FIFO Engine</span>
-              </div>
-
-              {/* Local LAN URLs */}
-              <div className="p-2.5 bg-white rounded border mb-3">
-                <div className="small fw-semibold text-dark mb-1 d-flex align-items-center gap-1.5">
-                  <Radio size={13} className="text-primary" /> Warden Laptop Wi-Fi LAN Check-In URLs:
-                </div>
-                <div className="d-flex flex-wrap gap-2">
-                  {vaultStatus?.localLanUrls?.map((url, idx) => (
-                    <code key={idx} className="badge bg-light text-dark border px-2 py-1 font-monospace" style={{ fontSize: '11px' }}>
-                      {url}
-                    </code>
-                  )) || <code className="badge bg-light text-dark border px-2 py-1 font-monospace">http://localhost:5000</code>}
-                </div>
-                <div className="text-muted small mt-1" style={{ fontSize: '11px' }}>
-                  Give this Wi-Fi address to students. Check-in runs completely offline without consuming cloud quota.
-                </div>
-              </div>
-
-              {/* Live Metric Counters */}
-              <div className="row g-2 mb-3">
-                <div className="col-6 col-md-3">
-                  <div className="p-2 bg-white rounded border text-center">
-                    <div className="text-muted" style={{ fontSize: '11px' }}>Cached Students</div>
-                    <div className="fw-bold fs-6 text-dark">{vaultStatus?.cachedStudentsCount ?? 0}</div>
-                  </div>
-                </div>
-                <div className="col-6 col-md-3">
-                  <div className="p-2 bg-white rounded border text-center">
-                    <div className="text-muted" style={{ fontSize: '11px' }}>RAM Vector Cache</div>
-                    <div className="fw-bold fs-6 text-success">{vaultStatus?.ramCachedStudents ?? 0}</div>
-                  </div>
-                </div>
-                <div className="col-6 col-md-3">
-                  <div className="p-2 bg-white rounded border text-center">
-                    <div className="text-muted" style={{ fontSize: '11px' }}>Pending Unsynced</div>
-                    <div className="fw-bold fs-6 text-danger">{vaultStatus?.unsyncedAttendanceCount ?? 0}</div>
-                  </div>
-                </div>
-                <div className="col-6 col-md-3">
-                  <div className="p-2 bg-white rounded border text-center">
-                    <div className="text-muted" style={{ fontSize: '11px' }}>Hardware Beacons</div>
-                    <div className="fw-bold fs-6 text-primary">{vaultStatus?.cachedBeaconsCount ?? 2}</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="d-flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="btn btn-outline-primary btn-sm fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
-                  disabled={vaultLoading}
-                  onClick={handlePrepareVault}
-                >
-                  <RefreshCw size={13} className={vaultLoading ? 'spin' : ''} />
-                  {vaultLoading ? 'Preloading Vault...' : 'Prepare Offline Cache (Preload Students & RAM Vectors)'}
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-danger btn-sm fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm text-white"
-                  disabled={vaultSyncing || (vaultStatus?.unsyncedAttendanceCount === 0)}
-                  onClick={handleSyncVault}
-                >
-                  <Zap size={13} className={vaultSyncing ? 'spin' : ''} />
-                  {vaultSyncing ? 'Syncing to Cloud...' : `Push & Sync Local Vault to Cloud DB (${vaultStatus?.unsyncedAttendanceCount || 0} Pending)`}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Charts Row */}
-      <div className="row g-3 mb-4">
-        <div className="col-12 col-lg-8">
-          <div className="hg-card">
-            <div className="hg-card-header">
-              <div className="d-flex align-items-center gap-2">
-                <TrendingUp size={18} className="text-primary" />
-                <span className="fw-bold" style={{ fontSize: '14px' }}>7-Day Attendance Trend</span>
-              </div>
-              <span className="badge bg-light text-dark">Live Database Records</span>
-            </div>
-            <div className="hg-card-body">
-              <AttendanceTrendChart trendData={data?.charts?.weeklyTrend} />
-            </div>
-          </div>
-        </div>
-
-        <div className="col-12 col-lg-4">
-          <div className="hg-card">
-            <div className="hg-card-header">
-              <span className="fw-bold" style={{ fontSize: '14px' }}>Today's Check-In Status</span>
-              <span className="badge badge-soft-primary">Today</span>
-            </div>
-            <div className="hg-card-body">
-              <StatusDistributionChart distribution={data?.charts?.statusDistribution} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Block Distribution & Recent Activity Row */}
-      <div className="row g-3">
-        <div className="col-12 col-lg-5">
-          <div className="hg-card">
-            <div className="hg-card-header">
-              <div className="d-flex align-items-center gap-2">
-                <MapPin size={18} className="text-primary" />
-                <span className="fw-bold" style={{ fontSize: '14px' }}>Attendance by Hostel Block</span>
-              </div>
-              <span className="badge badge-soft-success">Radius: {s.geofenceRadius || 20}m</span>
-            </div>
-            <div className="hg-card-body">
-              <BlockDistributionChart blockData={data?.charts?.blockDistribution} />
-            </div>
-          </div>
-        </div>
-
-        <div className="col-12 col-lg-7">
-          <div className="hg-card">
-            <div className="hg-card-header">
-              <div className="d-flex align-items-center gap-2">
-                <FileCheck size={18} className="text-success" />
-                <span className="fw-bold" style={{ fontSize: '14px' }}>Recent Verified Attendances</span>
-              </div>
-              <button
-                className="btn btn-sm btn-link text-decoration-none p-0"
-                onClick={() => onNavigate && onNavigate('admin_attendance')}
-                style={{ fontSize: '12px' }}
-              >
-                View Full Logs &rarr;
-              </button>
-            </div>
-            <div className="table-responsive">
-              <table className="table table-hover mb-0">
-                <thead>
-                  <tr>
-                    <th>Roll Number</th>
-                    <th>Student Name</th>
-                    <th>Time Marked</th>
-                    <th>Status</th>
-                    <th>Distance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data?.recentActivity && data.recentActivity.length > 0 ? (
-                    data.recentActivity.slice(0, 5).map((act, idx) => (
-                      <tr key={idx}>
-                        <td className="font-mono fw-semibold text-primary">{act.roll_number}</td>
-                        <td className="fw-medium">{act.full_name}</td>
-                        <td className="font-mono text-muted" style={{ fontSize: '12px' }}>{formatTime12h(act.time_marked)}</td>
-                        <td>
-                          <span className={act.status === 'PRESENT' ? 'badge-soft-success' : 'badge-soft-warning'}>
-                            {act.status}
-                          </span>
-                        </td>
-                        <td className="font-mono text-muted" style={{ fontSize: '12px' }}>
-                          {act.verified_distance !== null ? `${act.verified_distance}m` : 'N/A'}
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan="5" className="text-center py-3 text-muted" style={{ fontSize: '13px' }}>
-                        No check-ins recorded yet today.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Interactive Today's Attendance Roster Modal (Present & Absent View) */}
-      {rosterModalOpen && (
-        <div
-          className="modal show d-block"
-          tabIndex="-1"
-          style={{ background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', zIndex: 1060 }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setRosterModalOpen(false);
-          }}
-        >
-          <div className="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '16px', overflow: 'hidden' }}>
-              {/* Modal Header */}
-              <div className="modal-header border-bottom bg-light px-4 py-3 d-flex align-items-center justify-content-between">
-                <div>
-                  <div className="d-flex align-items-center gap-2">
-                    <div
-                      className={`p-2 rounded-circle ${rosterTab === 'PRESENT' ? 'bg-success bg-opacity-10 text-success' : 'bg-warning bg-opacity-10 text-warning'}`}
-                    >
-                      {rosterTab === 'PRESENT' ? <CheckCircle2 size={22} /> : <Clock size={22} />}
-                    </div>
-                    <div>
-                      <h5 className="modal-title fw-bold text-dark mb-0" style={{ fontSize: '18px' }}>
-                        {rosterTab === 'PRESENT' ? "Today's Present Residents" : "Today's Absent & Unmarked Residents"}
-                      </h5>
-                      <span className="text-muted small">
-                        {todayFormatted} &bull; Authoritative Real-Time Hostel Records
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="btn-close"
-                  aria-label="Close"
-                  onClick={() => setRosterModalOpen(false)}
-                />
-              </div>
-
-              {/* Modal Subheader with Segmented Tabs and Search */}
-              <div className="modal-body px-4 py-3">
-                {/* Segmented Control / Tab Switcher */}
-                <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3 pb-3 border-bottom">
-                  <div className="btn-group p-1 bg-light rounded-3 border" role="group">
-                    <button
-                      type="button"
-                      className={`btn btn-sm px-3 py-1.5 fw-semibold d-flex align-items-center gap-2 rounded-2 ${rosterTab === 'PRESENT' ? 'btn-success shadow-sm text-white' : 'btn-light text-muted'}`}
-                      onClick={() => setRosterTab('PRESENT')}
-                    >
-                      <CheckCircle2 size={16} />
-                      <span>Present Today</span>
-                      <span className={`badge ms-1 ${rosterTab === 'PRESENT' ? 'bg-white text-success' : 'bg-secondary bg-opacity-25 text-dark'}`}>
-                        {presentStudents.length}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`btn btn-sm px-3 py-1.5 fw-semibold d-flex align-items-center gap-2 rounded-2 ${rosterTab === 'ABSENT' ? 'btn-warning shadow-sm text-dark' : 'btn-light text-muted'}`}
-                      onClick={() => setRosterTab('ABSENT')}
-                    >
-                      <Clock size={16} />
-                      <span>Absent / Unmarked</span>
-                      <span className={`badge ms-1 ${rosterTab === 'ABSENT' ? 'bg-dark text-white' : 'bg-secondary bg-opacity-25 text-dark'}`}>
-                        {absentStudents.length}
-                      </span>
-                    </button>
-                  </div>
-
-                  <div className="d-flex align-items-center gap-2 flex-grow-1 flex-sm-grow-0">
-                    {/* Search Bar */}
-                    <div className="input-group input-group-sm" style={{ minWidth: '220px', maxWidth: '320px' }}>
-                      <span className="input-group-text bg-white border-end-0">
-                        <Search size={14} className="text-muted" />
-                      </span>
-                      <input
-                        type="text"
-                        className="form-control border-start-0 ps-0"
-                        placeholder="Search name, roll no, room..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                      />
-                      {searchQuery && (
-                        <button
-                          className="btn btn-outline-secondary border-start-0"
-                          type="button"
-                          onClick={() => setSearchQuery('')}
-                        >
-                          <X size={13} />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Block Filter */}
-                    {availableBlocks.length > 0 && (
-                      <select
-                        className="form-select form-select-sm"
-                        style={{ width: 'auto' }}
-                        value={blockFilter}
-                        onChange={(e) => setBlockFilter(e.target.value)}
-                      >
-                        <option value="">All Blocks</option>
-                        {availableBlocks.map((blk) => (
-                          <option key={blk} value={blk}>{blk}</option>
-                        ))}
-                      </select>
-                    )}
-
-                    {/* Export Buttons (CSV + Excel) */}
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1.5"
-                      onClick={handleExportRosterCsv}
-                      title="Export as CSV"
-                    >
-                      <Download size={14} />
-                      <span className="d-none d-md-inline">CSV</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-success btn-sm d-flex align-items-center gap-1.5 shadow-sm"
-                      onClick={handleExportRosterExcel}
-                      title="Export as Excel (.xlsx)"
-                    >
-                      <FileSpreadsheet size={14} />
-                      <span className="d-none d-md-inline">Excel (.xlsx)</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Table Container */}
-                <div className="table-responsive border rounded-3" style={{ maxHeight: '420px', minHeight: '200px' }}>
-                  <table className="table table-hover align-middle mb-0" style={{ fontSize: '13px' }}>
-                    <thead className="table-light sticky-top" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      {rosterTab === 'PRESENT' ? (
-                        <tr>
-                          <th className="ps-3 py-2.5">Roll Number</th>
-                          <th className="py-2.5">Student Name</th>
-                          <th className="py-2.5">Room & Block</th>
-                          <th className="py-2.5">Check-In Time</th>
-                          <th className="py-2.5">Verification</th>
-                          <th className="py-2.5">Distance</th>
-                          <th className="text-end pe-3 py-2.5">Status</th>
-                        </tr>
-                      ) : (
-                        <tr>
-                          <th className="ps-3 py-2.5">Roll Number</th>
-                          <th className="py-2.5">Student Name</th>
-                          <th className="py-2.5">Room & Block</th>
-                          <th className="py-2.5">Student Contact</th>
-                          <th className="py-2.5">Course / Year</th>
-                          <th className="text-end pe-3 py-2.5">Status</th>
-                        </tr>
-                      )}
-                    </thead>
-                    <tbody>
-                      {filteredList.length === 0 ? (
-                        <tr>
-                          <td colSpan={rosterTab === 'PRESENT' ? 7 : 6} className="text-center py-5 text-muted">
-                            {searchQuery || blockFilter ? (
-                              <div>
-                                <Search size={32} className="opacity-25 mb-2" />
-                                <div className="fw-semibold">No students match your search criteria.</div>
-                                <div className="small mt-1">Try clearing your search query or block filter.</div>
-                              </div>
-                            ) : rosterTab === 'PRESENT' ? (
-                              <div>
-                                <Clock size={36} className="opacity-25 mb-2 text-warning" />
-                                <div className="fw-semibold">No check-ins recorded yet today.</div>
-                                <div className="small mt-1">Attendance window opens during scheduled hours.</div>
-                              </div>
-                            ) : (
-                              <div>
-                                <CheckCircle2 size={36} className="text-success opacity-50 mb-2" />
-                                <div className="fw-semibold text-success">100% Attendance Achieved!</div>
-                                <div className="small mt-1">All registered hostel residents are marked present today.</div>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredList.map((st, idx) => (
-                          <tr key={st.attendance_id || st.student_id || st.roll_number || idx}>
-                            <td className="ps-3 fw-bold font-monospace text-primary">
-                              {st.roll_number}
-                            </td>
-                            <td>
-                              <div className="fw-semibold text-dark">{st.full_name}</div>
-                              {st.email && <div className="text-muted small" style={{ fontSize: '11px' }}>{st.email}</div>}
-                            </td>
-                            <td>
-                              <span className="badge bg-light text-dark border me-1">
-                                {st.hostel_block || 'Block A'}
-                              </span>
-                              <span className="text-muted small">Rm {st.room_number || 'N/A'}</span>
-                            </td>
-
-                            {rosterTab === 'PRESENT' ? (
-                              <>
-                                <td>
-                                  <span className="badge bg-light text-dark border font-monospace d-inline-flex align-items-center gap-1">
-                                    <Clock size={11} className="text-muted" />
-                                    {st.time_marked_12 || st.time_marked ? formatTime12h(st.time_marked_12 || st.time_marked) : 'Recorded'}
-                                  </span>
-                                </td>
-                                <td>
-                                  <small className="text-muted">
-                                    {st.is_override ? 'Admin Override' : (st.verification_method || 'Facial Match')}
-                                  </small>
-                                </td>
-                                <td>
-                                  {st.verified_distance !== null && st.verified_distance !== undefined ? (
-                                    <span className={`badge ${Number(st.verified_distance) <= 20 ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning'}`}>
-                                      {Number(st.verified_distance).toFixed(1)}m
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted small">&mdash;</span>
-                                  )}
-                                </td>
-                                <td className="text-end pe-3">
-                                  <span className={`badge ${st.status === 'PRESENT' ? 'bg-success' : st.status === 'LATE' ? 'bg-warning text-dark' : 'bg-primary'}`}>
-                                    {st.status || 'PRESENT'}
-                                  </span>
-                                </td>
-                              </>
-                            ) : (
-                              <>
-                                <td>
-                                  {st.phone ? (
-                                    <a
-                                      href={`tel:${st.phone}`}
-                                      className="text-decoration-none fw-semibold small text-primary d-inline-flex align-items-center gap-1"
-                                    >
-                                      <Phone size={12} />
-                                      {st.phone}
-                                    </a>
-                                  ) : (
-                                    <span className="text-muted small">No phone on file</span>
-                                  )}
-                                </td>
-                                <td>
-                                  <small className="text-muted">{st.course || 'Undergraduate'}</small>
-                                </td>
-                                <td className="text-end pe-3">
-                                  <span className="badge bg-warning-subtle text-warning border border-warning-subtle">
-                                    Pending Check-in
-                                  </span>
-                                </td>
-                              </>
-                            )}
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Modal Footer */}
-              <div className="modal-footer border-top bg-light px-4 py-2.5 d-flex align-items-center justify-content-between">
-                <div className="text-muted small">
-                  Showing <strong>{filteredList.length}</strong> of <strong>{activeList.length}</strong> {rosterTab === 'PRESENT' ? 'present' : 'absent'} residents
-                </div>
-                <div className="d-flex align-items-center gap-2">
-                  {onNavigate && (
-                    <button
-                      type="button"
-                      className="btn btn-outline-primary btn-sm d-flex align-items-center gap-1"
-                      onClick={() => {
-                        setRosterModalOpen(false);
-                        onNavigate('admin_attendance');
-                      }}
-                    >
-                      <span>Open in Attendance Records</span>
-                      <ArrowRight size={14} />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => setRosterModalOpen(false)}
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+import React, { useState, useEffect } from 'react';
+
+import { api } from '../../utils/api';
+
+import KpiCard from '../common/KpiCard';
+
+import { AttendanceTrendChart, StatusDistributionChart, BlockDistributionChart } from './AdminCharts';
+
+import {
+
+  Users,
+
+  CheckCircle2,
+
+  AlertTriangle,
+
+  Clock,
+
+  ShieldAlert,
+
+  RotateCw,
+
+  MapPin,
+
+  TrendingUp,
+
+  FileCheck,
+
+  Search,
+
+  Filter,
+
+  Download,
+
+  X,
+
+  Phone,
+
+  Mail,
+
+  ArrowRight,
+
+  FileSpreadsheet,
+
+  Radio,
+
+  ShieldCheck,
+
+  Cpu,
+
+  Zap,
+
+  RefreshCw
+
+} from 'lucide-react';
+
+import { exportToExcel, exportToCsv } from '../../utils/exportUtils';
+
+import { formatTime12h, getCurrentTimeIST12h, formatDateIST, getTodayDateIST } from '../../utils/timeUtils';
+
+
+
+const DASHBOARD_CACHE_KEY = 'hg_cached_admin_dashboard_stats';
+
+
+
+const getCachedDashboardStats = () => {
+
+  try {
+
+    const raw = localStorage.getItem(DASHBOARD_CACHE_KEY);
+
+    return raw ? JSON.parse(raw) : null;
+
+  } catch {
+
+    return null;
+
+  }
+
+};
+
+
+
+export default function AdminDashboard({ onNavigate }) {
+
+  const [data, setData] = useState(getCachedDashboardStats);
+
+  const [loading, setLoading] = useState(!data);
+
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const [lastSynced, setLastSynced] = useState(() => (getCachedDashboardStats() ? 'Cached' : ''));
+
+  const [error, setError] = useState('');
+  const [bleMode, setBleMode] = useState('STANDBY_OPTIONAL');
+  const [bleUpdating, setBleUpdating] = useState(false);
+  const [vaultStatus, setVaultStatus] = useState(null);
+  const [vaultLoading, setVaultLoading] = useState(false);
+  const [vaultSyncing, setVaultSyncing] = useState(false);
+  const [vaultMsg, setVaultMsg] = useState(null);
+
+
+
+  // Today's Roster Interactive Modal State
+
+  const [rosterModalOpen, setRosterModalOpen] = useState(false);
+
+  const [rosterTab, setRosterTab] = useState('PRESENT'); // 'PRESENT' | 'ABSENT'
+
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const [blockFilter, setBlockFilter] = useState('');
+
+
+
+  const fetchStats = async (isManual = false) => {
+
+    try {
+
+      if (!data || isManual) {
+
+        setLoading(true);
+
+      }
+
+      setIsSyncing(true);
+
+      setError('');
+
+      const res = await api.admin.getDashboardStats();
+
+      if (res.success) {
+
+        setData(res);
+
+        setLastSynced(getCurrentTimeIST12h());
+
+        try {
+
+          localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(res));
+
+        } catch (_) {}
+
+      }
+
+    } catch (err) {
+
+      if (!data) {
+
+        setError(err.message || 'Failed to load dashboard metrics');
+
+      }
+
+    } finally {
+
+      setLoading(false);
+
+      setIsSyncing(false);
+
+    }
+
+  };
+
+
+
+  const fetchBleAndVault = async () => {
+
+    try {
+
+      const [bleData, vData] = await Promise.allSettled([
+
+        api.admin.getBleConfig(),
+
+        api.admin.getStrictVaultStatus()
+
+      ]);
+
+      if (bleData.status === 'fulfilled' && bleData.value?.success) {
+
+        setBleMode(bleData.value.ble_mode || 'STANDBY_OPTIONAL');
+
+      }
+
+      if (vData.status === 'fulfilled' && vData.value?.success) {
+
+        setVaultStatus(vData.value);
+
+      }
+
+    } catch (_) {}
+
+  };
+
+
+
+  const handleModeChange = async (newMode) => {
+
+    setBleUpdating(true);
+
+    setVaultMsg(null);
+
+    try {
+
+      const res = await api.admin.updateBleMode(newMode);
+
+      if (res?.success) {
+
+        setBleMode(newMode);
+
+        setVaultMsg(`Enforcement Mode successfully updated to ${newMode}`);
+
+        fetchBleAndVault();
+
+      }
+
+    } catch (err) {
+
+      setVaultMsg(`Failed to update mode: ${err.message}`);
+
+    } finally {
+
+      setBleUpdating(false);
+
+    }
+
+  };
+
+
+
+  const handlePrepareVault = async () => {
+
+    setVaultLoading(true);
+
+    setVaultMsg(null);
+
+    try {
+
+      const res = await api.admin.prepareStrictVaultOffline();
+
+      if (res?.success) {
+
+        setVaultMsg(`Cached ${res.cachedStudents} students into local SQLite & loaded Float32 RAM vector cache!`);
+
+        fetchBleAndVault();
+
+      }
+
+    } catch (err) {
+
+      setVaultMsg(`Offline cache error: ${err.message}`);
+
+    } finally {
+
+      setVaultLoading(false);
+
+    }
+
+  };
+
+
+
+  const handleSyncVault = async () => {
+
+    setVaultSyncing(true);
+
+    setVaultMsg(null);
+
+    try {
+
+      const res = await api.admin.syncVaultToCloud();
+
+      if (res?.success) {
+
+        setVaultMsg(`Synced ${res.syncedAttendanceCount} attendance records from local vault to Turso Cloud!`);
+
+        fetchBleAndVault();
+
+      }
+
+    } catch (err) {
+
+      setVaultMsg(`Cloud sync error: ${err.message}`);
+
+    } finally {
+
+      setVaultSyncing(false);
+
+    }
+
+  };
+
+
+
+  useEffect(() => {
+
+    fetchStats();
+
+    fetchBleAndVault();
+
+  }, []);
+
+
+
+  if (loading && !data) {
+
+    return (
+
+      <div className="container-fluid px-0 py-2">
+
+        <div className="d-flex justify-content-between align-items-center mb-4 placeholder-glow">
+
+          <div>
+
+            <div className="placeholder col-8 bg-secondary rounded py-2 mb-2" style={{ minWidth: '220px' }}></div>
+
+            <div className="placeholder col-6 bg-secondary rounded py-1" style={{ minWidth: '160px' }}></div>
+
+          </div>
+
+          <div className="placeholder col-2 bg-secondary rounded py-3" style={{ minWidth: '100px' }}></div>
+
+        </div>
+
+
+
+        <div className="row g-3 mb-4">
+
+          {[1, 2, 3, 4].map((n) => (
+
+            <div key={n} className="col-12 col-sm-6 col-xl-3">
+
+              <div className="hg-card p-3 placeholder-glow" style={{ borderRadius: '12px' }}>
+
+                <div className="d-flex justify-content-between mb-2">
+
+                  <span className="placeholder col-6 bg-secondary rounded py-1"></span>
+
+                  <span className="placeholder rounded-circle bg-secondary" style={{ width: '28px', height: '28px' }}></span>
+
+                </div>
+
+                <div className="placeholder col-4 bg-secondary rounded py-3 my-2"></div>
+
+                <span className="placeholder col-8 bg-secondary rounded py-1"></span>
+
+              </div>
+
+            </div>
+
+          ))}
+
+        </div>
+
+
+
+        <div className="row g-3">
+
+          <div className="col-12 col-lg-8">
+
+            <div className="hg-card p-4 placeholder-glow" style={{ minHeight: '300px', borderRadius: '12px' }}>
+
+              <span className="placeholder col-4 bg-secondary rounded py-2 mb-4 d-block"></span>
+
+              <div className="placeholder col-12 bg-secondary rounded" style={{ height: '220px' }}></div>
+
+            </div>
+
+          </div>
+
+          <div className="col-12 col-lg-4">
+
+            <div className="hg-card p-4 placeholder-glow" style={{ minHeight: '300px', borderRadius: '12px' }}>
+
+              <span className="placeholder col-6 bg-secondary rounded py-2 mb-4 d-block"></span>
+
+              <div className="placeholder col-12 bg-secondary rounded-circle mx-auto" style={{ width: '160px', height: '160px' }}></div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    );
+
+  }
+
+
+
+  const s = data?.summary || {};
+
+
+
+  const handleOpenRoster = (tab) => {
+
+    setRosterTab(tab);
+
+    setSearchQuery('');
+
+    setBlockFilter('');
+
+    setRosterModalOpen(true);
+
+  };
+
+
+
+  const presentStudents = data?.todayPresent || [];
+
+  const absentStudents = data?.todayAbsent || [];
+
+
+
+  const activeList = rosterTab === 'PRESENT' ? presentStudents : absentStudents;
+
+
+
+  const filteredList = activeList.filter((item) => {
+
+    const q = searchQuery.toLowerCase().trim();
+
+    const matchesQuery =
+
+      !q ||
+
+      item.full_name?.toLowerCase().includes(q) ||
+
+      item.roll_number?.toLowerCase().includes(q) ||
+
+      item.room_number?.toLowerCase().includes(q) ||
+
+      item.hostel_block?.toLowerCase().includes(q) ||
+
+      item.course?.toLowerCase().includes(q);
+
+
+
+    const matchesBlock = !blockFilter || item.hostel_block === blockFilter;
+
+
+
+    return matchesQuery && matchesBlock;
+
+  });
+
+
+
+  const availableBlocks = Array.from(
+
+    new Set(
+
+      [...presentStudents, ...absentStudents]
+
+        .map((st) => st.hostel_block)
+
+        .filter(Boolean)
+
+    )
+
+  ).sort();
+
+
+
+  const getRosterExportData = () => {
+
+    const isPresent = rosterTab === 'PRESENT';
+
+    const headers = isPresent
+
+      ? [
+
+          { key: 'roll_number', label: 'Roll Number' },
+
+          { key: 'full_name', label: 'Full Name' },
+
+          { key: 'hostel_block', label: 'Hostel Block' },
+
+          { key: 'room_number', label: 'Room Number' },
+
+          { key: 'course', label: 'Course' },
+
+          { key: 'time_marked', label: 'Check-in Time (IST)' },
+
+          { key: 'status', label: 'Status' },
+
+          { key: 'distance', label: 'Verified Distance' },
+
+          { key: 'phone', label: 'Phone' },
+
+          { key: 'email', label: 'Email' }
+
+        ]
+
+      : [
+
+          { key: 'roll_number', label: 'Roll Number' },
+
+          { key: 'full_name', label: 'Full Name' },
+
+          { key: 'hostel_block', label: 'Hostel Block' },
+
+          { key: 'room_number', label: 'Room Number' },
+
+          { key: 'course', label: 'Course' },
+
+          { key: 'status', label: 'Status' },
+
+          { key: 'phone', label: 'Phone' },
+
+          { key: 'email', label: 'Email' }
+
+        ];
+
+
+
+    const data = filteredList.map((item) => {
+
+      if (isPresent) {
+
+        return {
+
+          roll_number: item.roll_number || '',
+
+          full_name: item.full_name || '',
+
+          hostel_block: item.hostel_block || '',
+
+          room_number: item.room_number || '',
+
+          course: item.course || '',
+
+          time_marked: item.time_marked_12 || item.time_marked ? formatTime12h(item.time_marked_12 || item.time_marked) : 'N/A',
+
+          status: item.status || 'PRESENT',
+
+          distance: item.verified_distance !== null && item.verified_distance !== undefined ? `${item.verified_distance}m` : 'N/A',
+
+          phone: item.phone || '',
+
+          email: item.email || ''
+
+        };
+
+      } else {
+
+        return {
+
+          roll_number: item.roll_number || '',
+
+          full_name: item.full_name || '',
+
+          hostel_block: item.hostel_block || '',
+
+          room_number: item.room_number || '',
+
+          course: item.course || '',
+
+          status: item.status || 'ABSENT',
+
+          phone: item.phone || '',
+
+          email: item.email || ''
+
+        };
+
+      }
+
+    });
+
+
+
+    return { headers, data, isPresent };
+
+  };
+
+
+
+  const handleExportRosterCsv = () => {
+
+    const { headers, data, isPresent } = getRosterExportData();
+
+    exportToCsv({
+
+      filename: `hostel_${isPresent ? 'present' : 'absent'}_residents_${getTodayDateIST()}`,
+
+      headers,
+
+      data
+
+    });
+
+  };
+
+
+
+  const handleExportRosterExcel = () => {
+
+    const { headers, data, isPresent } = getRosterExportData();
+
+    exportToExcel({
+
+      filename: `hostel_${isPresent ? 'present' : 'absent'}_residents_${getTodayDateIST()}`,
+
+      sheetName: isPresent ? 'Present Residents' : 'Absent Residents',
+
+      headers,
+
+      data
+
+    });
+
+  };
+
+
+
+  const todayFormatted = formatDateIST(new Date());
+
+
+
+  return (
+
+    <div className="container-fluid px-0">
+
+      {/* Page Header */}
+
+      <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+
+        <div>
+
+          <h4 className="fw-bold mb-1">Executive Attendance Dashboard</h4>
+
+          <p className="text-muted mb-0" style={{ fontSize: '13px' }}>
+
+            Real-time biometric and geo-fenced hostel operations overview. Click Present or Absent cards to view student rosters.
+
+          </p>
+
+        </div>
+
+        <div className="d-flex align-items-center gap-2">
+
+          {isSyncing ? (
+
+            <span className="badge bg-light text-primary border d-none d-sm-inline-flex align-items-center gap-1 py-2 px-2" style={{ fontSize: '11px' }}>
+
+              <RotateCw size={11} className="spin-fast" /> Syncing live...
+
+            </span>
+
+          ) : lastSynced ? (
+
+            <span className="badge bg-light text-muted border d-none d-sm-inline-block py-2 px-2" style={{ fontSize: '11px' }}>
+
+              ✓ Synced {lastSynced}
+
+            </span>
+
+          ) : null}
+
+          <button onClick={() => fetchStats(true)} className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" disabled={isSyncing}>
+
+            <RotateCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+
+            <span>Refresh Data</span>
+
+          </button>
+
+        </div>
+
+      </div>
+
+
+
+      {error && (
+
+        <div className="alert alert-danger py-2 px-3 mb-4" style={{ fontSize: '13px' }}>
+
+          <AlertTriangle size={16} className="me-2" />
+
+          {error}
+
+        </div>
+
+      )}
+
+
+
+      {/* KPI Cards Row */}
+
+      <div className="row g-3 mb-4">
+
+        <div className="col-12 col-sm-6 col-xl-3">
+
+          <KpiCard
+
+            title="Total Registered Students"
+
+            value={s.totalRegistered || 0}
+
+            subtitle={`${s.totalAllotted || 0} pre-allotted in roster`}
+
+            icon={Users}
+
+            color="primary"
+
+          />
+
+        </div>
+
+        <div className="col-12 col-sm-6 col-xl-3">
+
+          <KpiCard
+
+            title="Present Today"
+
+            value={s.presentToday || 0}
+
+            subtitle={`${s.presentToday || 0} / ${s.totalRegistered || 0} residents present today`}
+
+            icon={CheckCircle2}
+
+            color="success"
+
+            badgeText={s.lateToday > 0 ? `+${s.lateToday} Late` : undefined}
+
+            onClick={() => handleOpenRoster('PRESENT')}
+
+            actionText="View Present Students"
+
+          />
+
+        </div>
+
+        <div className="col-12 col-sm-6 col-xl-3">
+
+          <KpiCard
+
+            title="Absent / Unmarked"
+
+            value={s.absentToday || 0}
+
+            subtitle="Residents pending check-in"
+
+            icon={Clock}
+
+            color="warning"
+
+            onClick={() => handleOpenRoster('ABSENT')}
+
+            actionText="View Absent Students"
+
+          />
+
+        </div>
+
+        <div className="col-12 col-sm-6 col-xl-3">
+
+          <KpiCard
+
+            title="Forge Location Alerts"
+
+            value={s.flaggedForgeCount || 0}
+
+            subtitle="Hit 3-strike location limit"
+
+            icon={ShieldAlert}
+
+            color={s.flaggedForgeCount > 0 ? 'danger' : 'primary'}
+
+            badgeText={s.pendingCorrections > 0 ? `${s.pendingCorrections} Corrections Pending` : undefined}
+
+          />
+
+        </div>
+
+      </div>
+
+
+
+      {/* Select Attendance Bluetooth Enforcement Mode Panel */}
+
+      <div className="card border-0 rounded-4 shadow-sm mb-4 overflow-hidden border-start border-4 border-primary bg-white">
+
+        <div className="card-header bg-light py-3 px-4 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+
+          <div className="d-flex align-items-center gap-2">
+
+            <Radio size={20} className="text-primary" />
+
+            <h6 className="fw-bold mb-0 text-dark">Select Attendance Bluetooth Enforcement Mode</h6>
+
+          </div>
+
+          <span className={`badge ${bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'bg-danger text-white' : (bleMode === 'SOFT_ANCHOR' ? 'bg-warning text-dark' : 'bg-primary text-white')} px-3 py-1.5`} style={{ fontSize: '11px' }}>
+
+            Active: {bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'Strict Lock (Offline Wi-Fi + BLE)' : (bleMode === 'SOFT_ANCHOR' ? 'Soft Anchor (Proximity)' : 'Standby Mode (GPS & Face)')}
+
+          </span>
+
+        </div>
+
+        <div className="card-body p-4">
+
+          <div className="row g-3 mb-3">
+
+            {/* Mode 1: STANDBY */}
+
+            <div className="col-12 col-md-4">
+
+              <div
+
+                className={`card h-100 p-3 border-2 cursor-pointer transition-all ${bleMode === 'STANDBY_OPTIONAL' ? 'border-primary bg-primary bg-opacity-10' : 'border-light bg-light'}`}
+
+                style={{ cursor: 'pointer' }}
+
+                onClick={() => !bleUpdating && handleModeChange('STANDBY_OPTIONAL')}
+
+              >
+
+                <div className="d-flex align-items-center justify-content-between mb-2">
+
+                  <span className="badge bg-primary text-white fw-bold">1. STANDBY</span>
+
+                  {bleMode === 'STANDBY_OPTIONAL' && <ShieldCheck size={18} className="text-primary" />}
+
+                </div>
+
+                <h6 className="fw-bold mb-1">GPS &amp; Face Mode</h6>
+
+                <p className="text-muted small mb-0" style={{ fontSize: '12px' }}>
+
+                  Cloud / Internet allowed. Standard geofence verification with active face check. BLE anchor optional.
+
+                </p>
+
+              </div>
+
+            </div>
+
+
+
+            {/* Mode 2: SOFT ANCHOR */}
+
+            <div className="col-12 col-md-4">
+
+              <div
+
+                className={`card h-100 p-3 border-2 cursor-pointer transition-all ${bleMode === 'SOFT_ANCHOR' ? 'border-warning bg-warning bg-opacity-10' : 'border-light bg-light'}`}
+
+                style={{ cursor: 'pointer' }}
+
+                onClick={() => !bleUpdating && handleModeChange('SOFT_ANCHOR')}
+
+              >
+
+                <div className="d-flex align-items-center justify-content-between mb-2">
+
+                  <span className="badge bg-warning text-dark fw-bold">2. SOFT ANCHOR</span>
+
+                  {bleMode === 'SOFT_ANCHOR' && <ShieldCheck size={18} className="text-warning" />}
+
+                </div>
+
+                <h6 className="fw-bold mb-1">Smart Proximity Verification</h6>
+
+                <p className="text-muted small mb-0" style={{ fontSize: '12px' }}>
+
+                  ESP32 grants instant attendance. If signal is weak through thick walls, falls back to screen-flash face check with 0 strikes.
+
+                </p>
+
+              </div>
+
+            </div>
+
+
+
+            {/* Mode 3: STRICT LOCK */}
+
+            <div className="col-12 col-md-4">
+
+              <div
+
+                className={`card h-100 p-3 border-2 cursor-pointer transition-all ${bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'border-danger bg-danger bg-opacity-10' : 'border-light bg-light'}`}
+
+                style={{ cursor: 'pointer' }}
+
+                onClick={() => !bleUpdating && handleModeChange('STRICT_REQUIRED')}
+
+              >
+
+                <div className="d-flex align-items-center justify-content-between mb-2">
+
+                  <span className="badge bg-danger text-white fw-bold">3. STRICT LOCK</span>
+
+                  {(bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && <ShieldCheck size={18} className="text-danger" />}
+
+                </div>
+
+                <h6 className="fw-bold mb-1">Physical Presence Lock</h6>
+
+                <p className="text-muted small mb-0" style={{ fontSize: '12px' }}>
+
+                  100% Offline Hostel Wi-Fi LAN-Only + Mandatory ESP32 Hardware Anchor + Ultra-Light Local Biometrics + Cloud Sync.
+
+                </p>
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+
+          {vaultMsg && (
+
+            <div className="alert alert-info py-2 px-3 small mb-3">
+
+              {vaultMsg}
+
+            </div>
+
+          )}
+
+
+
+          {/* Strict Lock Localhost Vault & Cloud Sync Panel */}
+
+          {(bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && (
+
+            <div className="p-3 bg-light rounded-3 border mt-3">
+
+              <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+
+                <div className="d-flex align-items-center gap-2">
+
+                  <Cpu size={16} className="text-danger" />
+
+                  <span className="fw-bold small text-dark">Strict Lock Localhost Vault &amp; Cloud Sync (Low-Spec Warden Laptop)</span>
+
+                </div>
+
+                <span className="badge bg-danger text-white" style={{ fontSize: '10px' }}>Zero-Lag FIFO Engine</span>
+
+              </div>
+
+
+
+              {/* Local LAN URLs */}
+
+              <div className="p-2.5 bg-white rounded border mb-3">
+
+                <div className="small fw-semibold text-dark mb-1 d-flex align-items-center gap-1.5">
+
+                  <Radio size={13} className="text-primary" /> Warden Laptop Wi-Fi LAN Check-In URLs:
+
+                </div>
+
+                <div className="d-flex flex-wrap gap-2">
+
+                  {vaultStatus?.localLanUrls?.map((url, idx) => (
+
+                    <code key={idx} className="badge bg-light text-dark border px-2 py-1 font-monospace" style={{ fontSize: '11px' }}>
+
+                      {url}
+
+                    </code>
+
+                  )) || <code className="badge bg-light text-dark border px-2 py-1 font-monospace">http://localhost:5000</code>}
+
+                </div>
+
+                <div className="text-muted small mt-1" style={{ fontSize: '11px' }}>
+
+                  Give this Wi-Fi address to students. Check-in runs completely offline without consuming cloud quota.
+
+                </div>
+
+              </div>
+
+
+
+              {/* Live Metric Counters */}
+
+              <div className="row g-2 mb-3">
+
+                <div className="col-6 col-md-3">
+
+                  <div className="p-2 bg-white rounded border text-center">
+
+                    <div className="text-muted" style={{ fontSize: '11px' }}>Cached Students</div>
+
+                    <div className="fw-bold fs-6 text-dark">{vaultStatus?.cachedStudentsCount ?? 0}</div>
+
+                  </div>
+
+                </div>
+
+                <div className="col-6 col-md-3">
+
+                  <div className="p-2 bg-white rounded border text-center">
+
+                    <div className="text-muted" style={{ fontSize: '11px' }}>RAM Vector Cache</div>
+
+                    <div className="fw-bold fs-6 text-success">{vaultStatus?.ramCachedStudents ?? 0}</div>
+
+                  </div>
+
+                </div>
+
+                <div className="col-6 col-md-3">
+
+                  <div className="p-2 bg-white rounded border text-center">
+
+                    <div className="text-muted" style={{ fontSize: '11px' }}>Pending Unsynced</div>
+
+                    <div className="fw-bold fs-6 text-danger">{vaultStatus?.unsyncedAttendanceCount ?? 0}</div>
+
+                  </div>
+
+                </div>
+
+                <div className="col-6 col-md-3">
+
+                  <div className="p-2 bg-white rounded border text-center">
+
+                    <div className="text-muted" style={{ fontSize: '11px' }}>Hardware Beacons</div>
+
+                    <div className="fw-bold fs-6 text-primary">{vaultStatus?.cachedBeaconsCount ?? 2}</div>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+
+
+              {/* Action Buttons */}
+
+              <div className="d-flex flex-wrap gap-2">
+
+                <button
+
+                  type="button"
+
+                  className="btn btn-outline-primary btn-sm fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
+
+                  disabled={vaultLoading}
+
+                  onClick={handlePrepareVault}
+
+                >
+
+                  <RefreshCw size={13} className={vaultLoading ? 'spin' : ''} />
+
+                  {vaultLoading ? 'Preloading Vault...' : 'Prepare Offline Cache (Preload Students & RAM Vectors)'}
+
+                </button>
+
+
+
+                <button
+
+                  type="button"
+
+                  className="btn btn-danger btn-sm fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm text-white"
+
+                  disabled={vaultSyncing || (vaultStatus?.unsyncedAttendanceCount === 0)}
+
+                  onClick={handleSyncVault}
+
+                >
+
+                  <Zap size={13} className={vaultSyncing ? 'spin' : ''} />
+
+                  {vaultSyncing ? 'Syncing to Cloud...' : `Push & Sync Local Vault to Cloud DB (${vaultStatus?.unsyncedAttendanceCount || 0} Pending)`}
+
+                </button>
+
+              </div>
+
+            </div>
+
+          )}
+
+        </div>
+
+      </div>
+
+
+
+      {/* Charts Row */}
+
+      <div className="row g-3 mb-4">
+
+        <div className="col-12 col-lg-8">
+
+          <div className="hg-card">
+
+            <div className="hg-card-header">
+
+              <div className="d-flex align-items-center gap-2">
+
+                <TrendingUp size={18} className="text-primary" />
+
+                <span className="fw-bold" style={{ fontSize: '14px' }}>7-Day Attendance Trend</span>
+
+              </div>
+
+              <span className="badge bg-light text-dark">Live Database Records</span>
+
+            </div>
+
+            <div className="hg-card-body">
+
+              <AttendanceTrendChart trendData={data?.charts?.weeklyTrend} />
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+
+        <div className="col-12 col-lg-4">
+
+          <div className="hg-card">
+
+            <div className="hg-card-header">
+
+              <span className="fw-bold" style={{ fontSize: '14px' }}>Today's Check-In Status</span>
+
+              <span className="badge badge-soft-primary">Today</span>
+
+            </div>
+
+            <div className="hg-card-body">
+
+              <StatusDistributionChart distribution={data?.charts?.statusDistribution} />
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+
+      {/* Block Distribution & Recent Activity Row */}
+
+      <div className="row g-3">
+
+        <div className="col-12 col-lg-5">
+
+          <div className="hg-card">
+
+            <div className="hg-card-header">
+
+              <div className="d-flex align-items-center gap-2">
+
+                <MapPin size={18} className="text-primary" />
+
+                <span className="fw-bold" style={{ fontSize: '14px' }}>Attendance by Hostel Block</span>
+
+              </div>
+
+              <span className="badge badge-soft-success">Radius: {s.geofenceRadius || 20}m</span>
+
+            </div>
+
+            <div className="hg-card-body">
+
+              <BlockDistributionChart blockData={data?.charts?.blockDistribution} />
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+
+        <div className="col-12 col-lg-7">
+
+          <div className="hg-card">
+
+            <div className="hg-card-header">
+
+              <div className="d-flex align-items-center gap-2">
+
+                <FileCheck size={18} className="text-success" />
+
+                <span className="fw-bold" style={{ fontSize: '14px' }}>Recent Verified Attendances</span>
+
+              </div>
+
+              <button
+
+                className="btn btn-sm btn-link text-decoration-none p-0"
+
+                onClick={() => onNavigate && onNavigate('admin_attendance')}
+
+                style={{ fontSize: '12px' }}
+
+              >
+
+                View Full Logs &rarr;
+
+              </button>
+
+            </div>
+
+            <div className="table-responsive">
+
+              <table className="table table-hover mb-0">
+
+                <thead>
+
+                  <tr>
+
+                    <th>Roll Number</th>
+
+                    <th>Student Name</th>
+
+                    <th>Time Marked</th>
+
+                    <th>Status</th>
+
+                    <th>Distance</th>
+
+                  </tr>
+
+                </thead>
+
+                <tbody>
+
+                  {data?.recentActivity && data.recentActivity.length > 0 ? (
+
+                    data.recentActivity.slice(0, 5).map((act, idx) => (
+
+                      <tr key={idx}>
+
+                        <td className="font-mono fw-semibold text-primary">{act.roll_number}</td>
+
+                        <td className="fw-medium">{act.full_name}</td>
+
+                        <td className="font-mono text-muted" style={{ fontSize: '12px' }}>{formatTime12h(act.time_marked)}</td>
+
+                        <td>
+
+                          <span className={act.status === 'PRESENT' ? 'badge-soft-success' : 'badge-soft-warning'}>
+
+                            {act.status}
+
+                          </span>
+
+                        </td>
+
+                        <td className="font-mono text-muted" style={{ fontSize: '12px' }}>
+
+                          {act.verified_distance !== null ? `${act.verified_distance}m` : 'N/A'}
+
+                        </td>
+
+                      </tr>
+
+                    ))
+
+                  ) : (
+
+                    <tr>
+
+                      <td colSpan="5" className="text-center py-3 text-muted" style={{ fontSize: '13px' }}>
+
+                        No check-ins recorded yet today.
+
+                      </td>
+
+                    </tr>
+
+                  )}
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+
+      {/* Interactive Today's Attendance Roster Modal (Present & Absent View) */}
+
+      {rosterModalOpen && (
+
+        <div
+
+          className="modal show d-block"
+
+          tabIndex="-1"
+
+          style={{ background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', zIndex: 1060 }}
+
+          onClick={(e) => {
+
+            if (e.target === e.currentTarget) setRosterModalOpen(false);
+
+          }}
+
+        >
+
+          <div className="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+
+            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '16px', overflow: 'hidden' }}>
+
+              {/* Modal Header */}
+
+              <div className="modal-header border-bottom bg-light px-4 py-3 d-flex align-items-center justify-content-between">
+
+                <div>
+
+                  <div className="d-flex align-items-center gap-2">
+
+                    <div
+
+                      className={`p-2 rounded-circle ${rosterTab === 'PRESENT' ? 'bg-success bg-opacity-10 text-success' : 'bg-warning bg-opacity-10 text-warning'}`}
+
+                    >
+
+                      {rosterTab === 'PRESENT' ? <CheckCircle2 size={22} /> : <Clock size={22} />}
+
+                    </div>
+
+                    <div>
+
+                      <h5 className="modal-title fw-bold text-dark mb-0" style={{ fontSize: '18px' }}>
+
+                        {rosterTab === 'PRESENT' ? "Today's Present Residents" : "Today's Absent & Unmarked Residents"}
+
+                      </h5>
+
+                      <span className="text-muted small">
+
+                        {todayFormatted} &bull; Authoritative Real-Time Hostel Records
+
+                      </span>
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+                <button
+
+                  type="button"
+
+                  className="btn-close"
+
+                  aria-label="Close"
+
+                  onClick={() => setRosterModalOpen(false)}
+
+                />
+
+              </div>
+
+
+
+              {/* Modal Subheader with Segmented Tabs and Search */}
+
+              <div className="modal-body px-4 py-3">
+
+                {/* Segmented Control / Tab Switcher */}
+
+                <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3 pb-3 border-bottom">
+
+                  <div className="btn-group p-1 bg-light rounded-3 border" role="group">
+
+                    <button
+
+                      type="button"
+
+                      className={`btn btn-sm px-3 py-1.5 fw-semibold d-flex align-items-center gap-2 rounded-2 ${rosterTab === 'PRESENT' ? 'btn-success shadow-sm text-white' : 'btn-light text-muted'}`}
+
+                      onClick={() => setRosterTab('PRESENT')}
+
+                    >
+
+                      <CheckCircle2 size={16} />
+
+                      <span>Present Today</span>
+
+                      <span className={`badge ms-1 ${rosterTab === 'PRESENT' ? 'bg-white text-success' : 'bg-secondary bg-opacity-25 text-dark'}`}>
+
+                        {presentStudents.length}
+
+                      </span>
+
+                    </button>
+
+
+
+                    <button
+
+                      type="button"
+
+                      className={`btn btn-sm px-3 py-1.5 fw-semibold d-flex align-items-center gap-2 rounded-2 ${rosterTab === 'ABSENT' ? 'btn-warning shadow-sm text-dark' : 'btn-light text-muted'}`}
+
+                      onClick={() => setRosterTab('ABSENT')}
+
+                    >
+
+                      <Clock size={16} />
+
+                      <span>Absent / Unmarked</span>
+
+                      <span className={`badge ms-1 ${rosterTab === 'ABSENT' ? 'bg-dark text-white' : 'bg-secondary bg-opacity-25 text-dark'}`}>
+
+                        {absentStudents.length}
+
+                      </span>
+
+                    </button>
+
+                  </div>
+
+
+
+                  <div className="d-flex align-items-center gap-2 flex-grow-1 flex-sm-grow-0">
+
+                    {/* Search Bar */}
+
+                    <div className="input-group input-group-sm" style={{ minWidth: '220px', maxWidth: '320px' }}>
+
+                      <span className="input-group-text bg-white border-end-0">
+
+                        <Search size={14} className="text-muted" />
+
+                      </span>
+
+                      <input
+
+                        type="text"
+
+                        className="form-control border-start-0 ps-0"
+
+                        placeholder="Search name, roll no, room..."
+
+                        value={searchQuery}
+
+                        onChange={(e) => setSearchQuery(e.target.value)}
+
+                      />
+
+                      {searchQuery && (
+
+                        <button
+
+                          className="btn btn-outline-secondary border-start-0"
+
+                          type="button"
+
+                          onClick={() => setSearchQuery('')}
+
+                        >
+
+                          <X size={13} />
+
+                        </button>
+
+                      )}
+
+                    </div>
+
+
+
+                    {/* Block Filter */}
+
+                    {availableBlocks.length > 0 && (
+
+                      <select
+
+                        className="form-select form-select-sm"
+
+                        style={{ width: 'auto' }}
+
+                        value={blockFilter}
+
+                        onChange={(e) => setBlockFilter(e.target.value)}
+
+                      >
+
+                        <option value="">All Blocks</option>
+
+                        {availableBlocks.map((blk) => (
+
+                          <option key={blk} value={blk}>{blk}</option>
+
+                        ))}
+
+                      </select>
+
+                    )}
+
+
+
+                    {/* Export Buttons (CSV + Excel) */}
+
+                    <button
+
+                      type="button"
+
+                      className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1.5"
+
+                      onClick={handleExportRosterCsv}
+
+                      title="Export as CSV"
+
+                    >
+
+                      <Download size={14} />
+
+                      <span className="d-none d-md-inline">CSV</span>
+
+                    </button>
+
+                    <button
+
+                      type="button"
+
+                      className="btn btn-success btn-sm d-flex align-items-center gap-1.5 shadow-sm"
+
+                      onClick={handleExportRosterExcel}
+
+                      title="Export as Excel (.xlsx)"
+
+                    >
+
+                      <FileSpreadsheet size={14} />
+
+                      <span className="d-none d-md-inline">Excel (.xlsx)</span>
+
+                    </button>
+
+                  </div>
+
+                </div>
+
+
+
+                {/* Table Container */}
+
+                <div className="table-responsive border rounded-3" style={{ maxHeight: '420px', minHeight: '200px' }}>
+
+                  <table className="table table-hover align-middle mb-0" style={{ fontSize: '13px' }}>
+
+                    <thead className="table-light sticky-top" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+
+                      {rosterTab === 'PRESENT' ? (
+
+                        <tr>
+
+                          <th className="ps-3 py-2.5">Roll Number</th>
+
+                          <th className="py-2.5">Student Name</th>
+
+                          <th className="py-2.5">Room & Block</th>
+
+                          <th className="py-2.5">Check-In Time</th>
+
+                          <th className="py-2.5">Verification</th>
+
+                          <th className="py-2.5">Distance</th>
+
+                          <th className="text-end pe-3 py-2.5">Status</th>
+
+                        </tr>
+
+                      ) : (
+
+                        <tr>
+
+                          <th className="ps-3 py-2.5">Roll Number</th>
+
+                          <th className="py-2.5">Student Name</th>
+
+                          <th className="py-2.5">Room & Block</th>
+
+                          <th className="py-2.5">Student Contact</th>
+
+                          <th className="py-2.5">Course / Year</th>
+
+                          <th className="text-end pe-3 py-2.5">Status</th>
+
+                        </tr>
+
+                      )}
+
+                    </thead>
+
+                    <tbody>
+
+                      {filteredList.length === 0 ? (
+
+                        <tr>
+
+                          <td colSpan={rosterTab === 'PRESENT' ? 7 : 6} className="text-center py-5 text-muted">
+
+                            {searchQuery || blockFilter ? (
+
+                              <div>
+
+                                <Search size={32} className="opacity-25 mb-2" />
+
+                                <div className="fw-semibold">No students match your search criteria.</div>
+
+                                <div className="small mt-1">Try clearing your search query or block filter.</div>
+
+                              </div>
+
+                            ) : rosterTab === 'PRESENT' ? (
+
+                              <div>
+
+                                <Clock size={36} className="opacity-25 mb-2 text-warning" />
+
+                                <div className="fw-semibold">No check-ins recorded yet today.</div>
+
+                                <div className="small mt-1">Attendance window opens during scheduled hours.</div>
+
+                              </div>
+
+                            ) : (
+
+                              <div>
+
+                                <CheckCircle2 size={36} className="text-success opacity-50 mb-2" />
+
+                                <div className="fw-semibold text-success">100% Attendance Achieved!</div>
+
+                                <div className="small mt-1">All registered hostel residents are marked present today.</div>
+
+                              </div>
+
+                            )}
+
+                          </td>
+
+                        </tr>
+
+                      ) : (
+
+                        filteredList.map((st, idx) => (
+
+                          <tr key={st.attendance_id || st.student_id || st.roll_number || idx}>
+
+                            <td className="ps-3 fw-bold font-monospace text-primary">
+
+                              {st.roll_number}
+
+                            </td>
+
+                            <td>
+
+                              <div className="fw-semibold text-dark">{st.full_name}</div>
+
+                              {st.email && <div className="text-muted small" style={{ fontSize: '11px' }}>{st.email}</div>}
+
+                            </td>
+
+                            <td>
+
+                              <span className="badge bg-light text-dark border me-1">
+
+                                {st.hostel_block || 'Block A'}
+
+                              </span>
+
+                              <span className="text-muted small">Rm {st.room_number || 'N/A'}</span>
+
+                            </td>
+
+
+
+                            {rosterTab === 'PRESENT' ? (
+
+                              <>
+
+                                <td>
+
+                                  <span className="badge bg-light text-dark border font-monospace d-inline-flex align-items-center gap-1">
+
+                                    <Clock size={11} className="text-muted" />
+
+                                    {st.time_marked_12 || st.time_marked ? formatTime12h(st.time_marked_12 || st.time_marked) : 'Recorded'}
+
+                                  </span>
+
+                                </td>
+
+                                <td>
+
+                                  <small className="text-muted">
+
+                                    {st.is_override ? 'Admin Override' : (st.verification_method || 'Facial Match')}
+
+                                  </small>
+
+                                </td>
+
+                                <td>
+
+                                  {st.verified_distance !== null && st.verified_distance !== undefined ? (
+
+                                    <span className={`badge ${Number(st.verified_distance) <= 20 ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning'}`}>
+
+                                      {Number(st.verified_distance).toFixed(1)}m
+
+                                    </span>
+
+                                  ) : (
+
+                                    <span className="text-muted small">&mdash;</span>
+
+                                  )}
+
+                                </td>
+
+                                <td className="text-end pe-3">
+
+                                  <span className={`badge ${st.status === 'PRESENT' ? 'bg-success' : st.status === 'LATE' ? 'bg-warning text-dark' : 'bg-primary'}`}>
+
+                                    {st.status || 'PRESENT'}
+
+                                  </span>
+
+                                </td>
+
+                              </>
+
+                            ) : (
+
+                              <>
+
+                                <td>
+
+                                  {st.phone ? (
+
+                                    <a
+
+                                      href={`tel:${st.phone}`}
+
+                                      className="text-decoration-none fw-semibold small text-primary d-inline-flex align-items-center gap-1"
+
+                                    >
+
+                                      <Phone size={12} />
+
+                                      {st.phone}
+
+                                    </a>
+
+                                  ) : (
+
+                                    <span className="text-muted small">No phone on file</span>
+
+                                  )}
+
+                                </td>
+
+                                <td>
+
+                                  <small className="text-muted">{st.course || 'Undergraduate'}</small>
+
+                                </td>
+
+                                <td className="text-end pe-3">
+
+                                  <span className="badge bg-warning-subtle text-warning border border-warning-subtle">
+
+                                    Pending Check-in
+
+                                  </span>
+
+                                </td>
+
+                              </>
+
+                            )}
+
+                          </tr>
+
+                        ))
+
+                      )}
+
+                    </tbody>
+
+                  </table>
+
+                </div>
+
+              </div>
+
+
+
+              {/* Modal Footer */}
+
+              <div className="modal-footer border-top bg-light px-4 py-2.5 d-flex align-items-center justify-content-between">
+
+                <div className="text-muted small">
+
+                  Showing <strong>{filteredList.length}</strong> of <strong>{activeList.length}</strong> {rosterTab === 'PRESENT' ? 'present' : 'absent'} residents
+
+                </div>
+
+                <div className="d-flex align-items-center gap-2">
+
+                  {onNavigate && (
+
+                    <button
+
+                      type="button"
+
+                      className="btn btn-outline-primary btn-sm d-flex align-items-center gap-1"
+
+                      onClick={() => {
+
+                        setRosterModalOpen(false);
+
+                        onNavigate('admin_attendance');
+
+                      }}
+
+                    >
+
+                      <span>Open in Attendance Records</span>
+
+                      <ArrowRight size={14} />
+
+                    </button>
+
+                  )}
+
+                  <button
+
+                    type="button"
+
+                    className="btn btn-secondary btn-sm"
+
+                    onClick={() => setRosterModalOpen(false)}
+
+                  >
+
+                    Close
+
+                  </button>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
+    </div>
+
+  );
+
+}
+

@@ -88,7 +88,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       width: 140,
       margin: 1,
       color: { dark: '#0f172a', light: '#ffffff' }
-    }).then(setBluefyQrUrl).catch(() => {});
+    }).then(setBluefyQrUrl).catch(() => { });
   }, []);
 
   // Dynamic beacon list from active admin configuration
@@ -143,7 +143,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       try {
         const p = new URLSearchParams(window.location.search);
         return p.get('lan_wifi_ticket') || null;
-      } catch (_) {}
+      } catch (_) { }
     }
     return null;
   });
@@ -213,7 +213,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                 return;
               }
             }
-          } catch (_) {}
+          } catch (_) { }
         }
       }
 
@@ -309,11 +309,11 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     // 1. Immediately launch Bluetooth scanner on user click tick to preserve WebKit transient user gesture
     const bleScanPromise = (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && !lanWifiTicket
       ? scanHostelBleBeacon({
-          onProgress: (p) => setBleScanningStatus(p.message),
-          timeSyncPacket: dashboard?.ble_time_sync_packet || dashboard?.schedule?.ble_time_sync_packet,
-          localHttpsAnchorUrl: dashboard?.geofence?.local_https_anchor_url || null,
-          clusterEndpoints: dashboard?.wifi_cluster_endpoints || []
-        })
+        onProgress: (p) => setBleScanningStatus(p.message),
+        timeSyncPacket: dashboard?.ble_time_sync_packet || dashboard?.schedule?.ble_time_sync_packet,
+        localHttpsAnchorUrl: dashboard?.geofence?.local_https_anchor_url || null,
+        clusterEndpoints: dashboard?.wifi_cluster_endpoints || []
+      })
       : null;
 
     setCheckinStep('verifying_gps');
@@ -960,19 +960,19 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                 style={{
                   padding: '8px 16px',
                   borderRadius: '12px',
-                  background: todayStatus.status === 'PRESENT' 
-                    ? 'rgba(16, 185, 129, 0.18)' 
+                  background: todayStatus.status === 'PRESENT'
+                    ? 'rgba(16, 185, 129, 0.18)'
                     : 'rgba(245, 158, 11, 0.22)',
-                  border: todayStatus.status === 'PRESENT' 
-                    ? '1.5px solid #10b981' 
+                  border: todayStatus.status === 'PRESENT'
+                    ? '1.5px solid #10b981'
                     : '1.5px solid #f59e0b',
                   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)'
                 }}
               >
-                <div 
-                  style={{ 
-                    fontSize: '11px', 
-                    fontWeight: '700', 
+                <div
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: '700',
                     letterSpacing: '0.6px',
                     textTransform: 'uppercase',
                     color: '#cbd5e1',
@@ -981,10 +981,10 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                 >
                   Today's Status
                 </div>
-                <div 
-                  style={{ 
-                    fontSize: '14px', 
-                    fontWeight: '800', 
+                <div
+                  style={{
+                    fontSize: '14px',
+                    fontWeight: '800',
                     letterSpacing: '0.3px',
                     color: todayStatus.status === 'PRESENT' ? '#34d399' : '#fbbf24'
                   }}
@@ -1428,9 +1428,9 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           <h5 className="fw-bold mb-1">
                             {checkinStep === 'verifying_face'
                               ? (activeChallenge === 'TURN_LEFT' ? 'Turn Head Slightly Left (~15°)' :
-                                 activeChallenge === 'TURN_RIGHT' ? 'Turn Head Slightly Right (~15°)' :
-                                 activeChallenge === 'NOD_DOWN' ? 'Tilt Chin Downward' :
-                                 'Hold Steady & Face Camera')
+                                activeChallenge === 'TURN_RIGHT' ? 'Turn Head Slightly Right (~15°)' :
+                                  activeChallenge === 'NOD_DOWN' ? 'Tilt Chin Downward' :
+                                    'Hold Steady & Face Camera')
                               : 'Biometric Face Verification'}
                           </h5>
                           <div className="d-inline-flex align-items-center gap-1.5 px-3 py-1 rounded-pill bg-primary bg-opacity-10 text-primary small fw-semibold mt-1">
@@ -2072,49 +2072,49 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                 Daily Roll Call Verification History ({history.length} Records)
               </h6>
             </div>
-          <div className="card-body p-0">
-            {history.length === 0 ? (
-              <div className="text-center p-5 text-muted small">No attendance records found yet.</div>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-hover align-middle mb-0">
-                  <thead className="table-light">
-                    <tr className="small text-muted">
-                      <th className="ps-3">Date</th>
-                      <th>Check-in Time</th>
-                      <th>Status</th>
-                      <th>Method</th>
-                      <th className="pe-3">Recorded Distance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((h) => (
-                      <tr key={h.id || h.date}>
-                        <td className="ps-3 fw-medium text-dark">{h.date}</td>
-                        <td>
-                          {h.time_marked ? (
-                            <span className="small text-dark"><Clock size={12} className="me-1 inline text-muted" />{formatDisplayTime12h(h.time_marked)}</span>
-                          ) : (
-                            <span className="small text-muted">&mdash;</span>
-                          )}
-                        </td>
-                        <td>
-                          <span className={`badge ${h.status === 'PRESENT' ? 'bg-success' : h.status === 'OVERRIDDEN' ? 'bg-primary' : 'bg-secondary'}`}>
-                            {h.status}
-                          </span>
-                        </td>
-                        <td><small className="text-muted">{h.verification_method || 'Facial Match'}</small></td>
-                        <td className="pe-3">
-                          <small className="text-muted">{h.distance_meters ? `${h.distance_meters.toFixed(1)}m` : 'N/A'}</small>
-                        </td>
+            <div className="card-body p-0">
+              {history.length === 0 ? (
+                <div className="text-center p-5 text-muted small">No attendance records found yet.</div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="table table-hover align-middle mb-0">
+                    <thead className="table-light">
+                      <tr className="small text-muted">
+                        <th className="ps-3">Date</th>
+                        <th>Check-in Time</th>
+                        <th>Status</th>
+                        <th>Method</th>
+                        <th className="pe-3">Recorded Distance</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody>
+                      {history.map((h) => (
+                        <tr key={h.id || h.date}>
+                          <td className="ps-3 fw-medium text-dark">{h.date}</td>
+                          <td>
+                            {h.time_marked ? (
+                              <span className="small text-dark"><Clock size={12} className="me-1 inline text-muted" />{formatDisplayTime12h(h.time_marked)}</span>
+                            ) : (
+                              <span className="small text-muted">&mdash;</span>
+                            )}
+                          </td>
+                          <td>
+                            <span className={`badge ${h.status === 'PRESENT' ? 'bg-success' : h.status === 'OVERRIDDEN' ? 'bg-primary' : 'bg-secondary'}`}>
+                              {h.status}
+                            </span>
+                          </td>
+                          <td><small className="text-muted">{h.verification_method || 'Facial Match'}</small></td>
+                          <td className="pe-3">
+                            <small className="text-muted">{h.distance_meters ? `${h.distance_meters.toFixed(1)}m` : 'N/A'}</small>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
         </div>
       )}
 
@@ -2417,13 +2417,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                         <button
                           key={ang}
                           type="button"
-                          className={`btn btn-sm px-3 rounded-pill fw-medium ${
-                            isCaptured
+                          className={`btn btn-sm px-3 rounded-pill fw-medium ${isCaptured
                               ? 'btn-success text-white'
                               : isActive
-                              ? 'btn-primary'
-                              : 'btn-outline-secondary'
-                          }`}
+                                ? 'btn-primary'
+                                : 'btn-outline-secondary'
+                            }`}
                           onClick={() => setEnrollActiveAngle(ang)}
                         >
                           {isCaptured ? <Check size={12} className="me-1 inline" /> : null}
@@ -2436,8 +2435,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     {enrollActiveAngle === 'FRONT'
                       ? 'Look directly at the camera with a neutral expression.'
                       : enrollActiveAngle === 'LEFT'
-                      ? 'Turn your head slightly to the left (~15°).'
-                      : 'Turn your head slightly to the right (~15°).'}
+                        ? 'Turn your head slightly to the left (~15°).'
+                        : 'Turn your head slightly to the right (~15°).'}
                   </p>
                   {autoCaptureEnabled && (
                     <div className="d-inline-flex align-items-center gap-1 px-2 py-1 rounded bg-success-subtle text-success small fw-medium mb-3">
@@ -2480,8 +2479,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                         poseStatus.progress > 0
                           ? '3px solid #10b981'
                           : poseStatus.detected && poseStatus.angle === enrollActiveAngle
-                          ? '2px solid #10b981'
-                          : '2px dashed rgba(16, 185, 129, 0.65)',
+                            ? '2px solid #10b981'
+                            : '2px dashed rgba(16, 185, 129, 0.65)',
                       borderRadius: '50%',
                       pointerEvents: 'none',
                       boxShadow:
@@ -2573,9 +2572,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
                   <button
                     type="button"
-                    className={`btn btn-sm d-inline-flex align-items-center gap-1 shadow-sm ${
-                      autoCaptureEnabled ? 'btn-success text-white' : 'btn-outline-secondary'
-                    }`}
+                    className={`btn btn-sm d-inline-flex align-items-center gap-1 shadow-sm ${autoCaptureEnabled ? 'btn-success text-white' : 'btn-outline-secondary'
+                      }`}
                     onClick={() => setAutoCaptureEnabled(!autoCaptureEnabled)}
                     title={autoCaptureEnabled ? 'Hands-Free Auto Snap is ON' : 'Turn Auto-Snap ON'}
                   >

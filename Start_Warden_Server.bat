@@ -4,18 +4,18 @@ title HostelGuard - Warden Strict Lock Local Server
 
 :: 0. Check Node.js Prerequisite
 where node >nul 2>nul
-if %errorlevel% neq 0 (
-    echo ================================================================================
-    echo  [ERROR] Node.js is not installed on this computer!
-    echo ================================================================================
-    echo  HostelGuard Warden Server requires Node.js (v18 or higher).
-    echo  Please download and install Node.js from: https://nodejs.org
-    echo  After installing, double-click Start_Warden_Server.bat again.
-    echo ================================================================================
-    echo.
-    pause
-    exit /b 1
-)
+if %errorlevel% equ 0 goto :node_ok
+echo ================================================================================
+echo  [ERROR] Node.js is not installed on this computer!
+echo ================================================================================
+echo  HostelGuard Warden Server requires Node.js v18 or higher.
+echo  Please download and install Node.js from https://nodejs.org
+echo  After installing, double-click Start_Warden_Server.bat again.
+echo ================================================================================
+echo.
+pause
+exit /b 1
+:node_ok
 
 :: 1. Force Low-Spec CPU Thread Limits (Prevent Dual-Core CPU Freezes)
 set OMP_NUM_THREADS=2
