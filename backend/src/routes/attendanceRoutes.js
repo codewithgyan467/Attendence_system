@@ -99,7 +99,34 @@ function verifyCompactEsp32Payload(rawPayload, secret = process.env.ANCHOR_HMAC_
 router.get('/schedule', async (req, res) => {
   try {
     const schedule = await getAttendanceWindowStatus();
-    res.json({ success: true, schedule });
+    const geofence = await getQuery(`SELECT ble_mode FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
+    const activeMode = global.activeEnforcementMode || geofence?.ble_mode || 'STANDBY_OPTIONAL';
+    res.json({
+      success: true,
+      schedule,
+      bluetoothEnforcementMode: activeMode,
+      ble_mode: activeMode
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Real-time time-window status with enforcement mode
+router.get('/time-window', async (req, res) => {
+  try {
+    const schedule = await getAttendanceWindowStatus();
+    const geofence = await getQuery(`SELECT ble_mode FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
+    const activeMode = global.activeEnforcementMode || geofence?.ble_mode || 'STANDBY_OPTIONAL';
+    res.json({
+      success: true,
+      isOpen: schedule.isOpen,
+      schedule,
+      bluetoothEnforcementMode: activeMode,
+      ble_mode: activeMode,
+      startTime: schedule.startTime,
+      endTime: schedule.endTime
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -226,6 +253,36 @@ const verifyLocationHandler = async (req, res) => {
     const geofence = await getQuery(`SELECT * FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
     if (!geofence) {
       return res.status(500).json({ success: false, error: 'Active hostel geofence configuration missing.' });
+    }
+
+    const activeBleMode = String(global.activeEnforcementMode || geofence.ble_mode || 'STANDBY_OPTIONAL').toUpperCase();
+    const isStrictMode = (activeBleMode === 'STRICT_REQUIRED' || activeBleMode === 'STRICT_LOCK' || activeBleMode === 'STRICT');
+
+    // Hard Backend Gate: In STRICT mode, mandatory live ESP32 hardware proof required before any camera access
+    const effectiveBleProof = ble_proof || req.body.bleBeacon;
+    if (isStrictMode) {
+      const hasBleAnchorSignal = Boolean(
+        effectiveBleProof &&
+        (
+          effectiveBleProof.compactVerified === true ||
+          (typeof effectiveBleProof.rawPayload === 'string' && effectiveBleProof.rawPayload.trim().length >= 10) ||
+          effectiveBleProof.rollingCode ||
+          effectiveBleProof.signature ||
+          effectiveBleProof.code
+        )
+      );
+
+      if (!hasBleAnchorSignal) {
+        return res.status(403).json({
+          success: false,
+          stepPassed: false,
+          decision: 'DENY',
+          code: 'STRICT_BLE_REQUIRED',
+          reason: 'STRICT_BLE_ANCHOR_FAILED',
+          bleVerified: false,
+          message: 'STRICT LOCK (Hardware Bluetooth Beacon Required): ESP32 Hardware Bluetooth Beacon was not detected or signature is invalid. Camera verification is locked.'
+        });
+      }
     }
 
     // 5. Evaluate Multi-Layer Anti-Spoof & Unfair-Means Policy (13 Layers + 5-State Decision Matrix)
@@ -467,6 +524,7 @@ const verifyLocationHandler = async (req, res) => {
       wifiMatchStatus: evaluation.wifiMatchStatus,
       ble_time_sync_packet: bleTimeSyncPacket,
       bleTimeSyncPacket: bleTimeSyncPacket,
+      bleVerified: Boolean(ble_proof?.compactVerified || evaluation.bleMatchStatus === 'VERIFIED_BEACON_PROXIMITY' || evaluation.bleMatchStatus === 'VERIFIED_IOS_HARDWARE_ATTESTED'),
       studentName: student.full_name
     });
   } catch (err) {
@@ -1033,13 +1091,18 @@ router.get('/status/:identifier', async (req, res) => {
       WHERE student_id = ? AND date = ?
     `, [student.id, today]);
 
+    const geofence = await getQuery(`SELECT ble_mode FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
+    const activeMode = global.activeEnforcementMode || geofence?.ble_mode || 'STANDBY_OPTIONAL';
+
     res.json({
       success: true,
       rollNumber: student.roll_number,
       fullName: student.full_name,
       isMarkedToday: Boolean(record),
       status: record ? record.status : 'PENDING',
-      record: record || null
+      record: record || null,
+      bluetoothEnforcementMode: activeMode,
+      ble_mode: activeMode
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

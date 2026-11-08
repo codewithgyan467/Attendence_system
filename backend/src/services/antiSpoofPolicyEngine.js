@@ -355,19 +355,12 @@ class AntiSpoofPolicyEngine {
     } else {
       // No BLE or LAN proof provided
       if (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') {
-        // Physical anchor check: If device is connected to the authorized hostel Wi-Fi (e.g. AEC_Student_5.0) or shared router WAN
-        if (wifiMatchStatus === 'MATCHED_HOSTEL_AP' || isClientOnClusterWan) {
-          bleMatchStatus = 'VERIFIED_HOSTEL_WIFI_PROXIMITY';
-          riskScore = Math.max(0, riskScore - 25);
-          requiresStepUp = false;
-        } else {
-          // Strict Hardware Lock: Neither BLE beacon nor hostel Wi-Fi present
-          bleMatchStatus = 'STRICT_BEACON_MISSING';
-          riskScore += 85;
-          unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
-          reasonCodes.push('L3_BLE_STRICT_REJECTED');
-          requiresStepUp = false;
-        }
+        // Strict Hardware Lock: Physical ESP32 BLE anchor is strictly mandatory
+        bleMatchStatus = 'STRICT_BEACON_MISSING';
+        riskScore += 85;
+        unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
+        reasonCodes.push('L3_BLE_STRICT_REJECTED');
+        requiresStepUp = false;
       } else if (bleMode === 'SOFT_ANCHOR') {
         // Soft Anchor allows smart fallback: iOS Safari or devices without BLE do Photometric Step-Up
         bleMatchStatus = isIOSWeb ? 'IOS_SAFARI_ADAPTIVE_ANCHOR' : 'SOFT_ANCHOR_MISSING';

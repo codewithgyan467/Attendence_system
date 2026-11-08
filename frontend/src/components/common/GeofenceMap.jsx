@@ -452,31 +452,31 @@ export default function GeofenceMap({
             <div className="legend-item">
               <span className="legend-dot beacon-detected-dot"></span>
               <span>
-                ESP32 Anchor (~{effectiveBeaconRadius}m): <b style={{ color: '#16a34a' }}>● Signal Verified (Board ON)</b>
+                ESP32 Anchor (~{effectiveBeaconRadius}m): <b style={{ color: '#16a34a' }}>● Signal Verified (Board ON): {verifiedBeacon?.deviceName || 'HG-BEACON'}</b>
               </span>
             </div>
-          ) : bleMode === 'STRICT_REQUIRED' ? (
+          ) : (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' || bleMode === 'STRICT') ? (
             <div className="legend-item">
               <span className="legend-dot" style={{ backgroundColor: '#dc2626', boxShadow: '0 0 6px rgba(220, 38, 38, 0.6)' }}></span>
               <span>
-                ESP32 Anchor (~{effectiveBeaconRadius}m): <b style={{ color: '#dc2626' }}>Strict BLE Signal Required</b>
+                ESP32 Anchor (~{effectiveBeaconRadius}m): <b style={{ color: '#dc2626' }}>Strict BLE Signal Required (Camera Locked Until Verified)</b>
               </span>
             </div>
-          ) : hasActiveBeacons ? (
+          ) : bleMode === 'SOFT_ANCHOR' ? (
             <div className="legend-item">
-              <span className="legend-dot beacon-active-dot"></span>
+              <span className="legend-dot" style={{ backgroundColor: '#d97706', boxShadow: '0 0 6px rgba(217, 119, 6, 0.6)' }}></span>
               <span>
-                ESP32 Anchor (~{effectiveBeaconRadius}m): <b style={{ color: '#d97706' }}>Configured (~15m BLE Zone)</b>
+                ESP32 Anchor (~{effectiveBeaconRadius}m): <b style={{ color: '#d97706' }}>Soft Anchor: BLE Optional (Face Fallback Active)</b>
               </span>
             </div>
-          ) : hasAnyBeacons ? (
+          ) : (
             <div className="legend-item">
-              <span className="legend-dot beacon-inactive-dot"></span>
+              <span className="legend-dot" style={{ backgroundColor: '#64748b' }}></span>
               <span style={{ color: '#64748b' }}>
-                ESP32 Anchor: <b>Disabled in Admin</b>
+                ESP32 Anchor: <b>Standby Mode: BLE Not Required</b>
               </span>
             </div>
-          ) : null}
+          )}
           {hasStudentPos && (
             <div className="legend-item">
               <span className={`legend-dot ${isStudentInside ? 'student-inside-dot' : 'student-outside-dot'}`}></span>

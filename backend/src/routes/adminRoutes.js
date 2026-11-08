@@ -1237,20 +1237,58 @@ router.get('/ble/config', requireRole('ADMIN'), async (req, res) => {
   }
 });
 
-router.post('/ble/mode', requireRole('ADMIN'), async (req, res) => {
+const handleSetBluetoothMode = async (req, res) => {
   try {
-    const { ble_mode } = req.body;
-    const allowed = ['STANDBY_OPTIONAL', 'SOFT_ANCHOR', 'STRICT_REQUIRED', 'STRICT_LOCK'];
-    if (!allowed.includes(ble_mode)) {
-      return res.status(400).json({ success: false, error: `Invalid ble_mode. Must be one of: ${allowed.join(', ')}` });
+    const rawMode = req.body.ble_mode || req.body.mode || req.body.bluetoothEnforcementMode;
+    const modeUpper = String(rawMode || '').toUpperCase().trim();
+    let normalizedMode = 'STANDBY_OPTIONAL';
+
+    if (modeUpper === 'STANDBY' || modeUpper === 'STANDBY_OPTIONAL') {
+      normalizedMode = 'STANDBY_OPTIONAL';
+    } else if (modeUpper === 'SOFT_ANCHOR') {
+      normalizedMode = 'SOFT_ANCHOR';
+    } else if (modeUpper === 'STRICT' || modeUpper === 'STRICT_LOCK' || modeUpper === 'STRICT_REQUIRED') {
+      normalizedMode = 'STRICT_REQUIRED';
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid bluetooth mode '${rawMode}'. Must be one of: STANDBY, SOFT_ANCHOR, STRICT, STRICT_LOCK, STRICT_REQUIRED`
+      });
     }
-    await runQuery(`UPDATE geofence_configs SET ble_mode = ?, updated_at = CURRENT_TIMESTAMP WHERE is_active = 1`, [ble_mode]);
-    await recordAuditEvent(req.user.id, req.user.username, 'UPDATE_BLE_MODE', 'GEOFENCE', 'BLE_CONFIG', `Changed ESP32 BLE mode to ${ble_mode}`, req);
-    res.json({ success: true, ble_mode, message: `BLE Radio Anchor mode switched to ${ble_mode}` });
+
+    await runQuery(`UPDATE geofence_configs SET ble_mode = ?, updated_at = CURRENT_TIMESTAMP WHERE is_active = 1`, [normalizedMode]);
+    global.activeEnforcementMode = normalizedMode;
+
+    try {
+      const localVaultDb = require('../config/localVaultDb');
+      await localVaultDb.runVaultQuery(`CREATE TABLE IF NOT EXISTS local_system_config (key TEXT PRIMARY KEY, value TEXT)`);
+      await localVaultDb.runVaultQuery(`INSERT INTO local_system_config (key, value) VALUES ('ble_mode', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [normalizedMode]);
+    } catch (_) {}
+
+    await recordAuditEvent(
+      req.user?.id || 'SYSTEM',
+      req.user?.username || 'admin',
+      'UPDATE_BLE_MODE',
+      'GEOFENCE',
+      'BLE_CONFIG',
+      `Changed ESP32 BLE enforcement mode to ${normalizedMode}`,
+      req
+    );
+
+    res.json({
+      success: true,
+      ble_mode: normalizedMode,
+      bluetoothEnforcementMode: normalizedMode,
+      message: `BLE Radio Anchor mode switched to ${normalizedMode}`
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
-});
+};
+
+router.post('/ble/mode', requireRole('ADMIN'), handleSetBluetoothMode);
+router.put('/settings/bluetooth-mode', requireRole('ADMIN'), handleSetBluetoothMode);
+router.post('/settings/bluetooth-mode', requireRole('ADMIN'), handleSetBluetoothMode);
 
 // 4c. Strict Lock Localhost Vault & Cloud Sync Management (Warden Low-Spec Architecture)
 router.get('/strict-vault/status', requireRole('ADMIN'), async (req, res) => {

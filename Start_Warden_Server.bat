@@ -36,15 +36,16 @@ echo   - Local Vault:       backend\data\strict_local.db (SQLite WAL + RAM Vecto
 echo.
 echo  [ACCESS URLS]
 echo   - Warden Laptop Admin:  http://localhost:5000
-echo   - Student Wi-Fi Check-In: http://%LAN_IP%:5000
+echo   - Student Wi-Fi Check-In: http://!LAN_IP!:5000
+echo   - Tip: If using Mobile Hotspot, connect phone to laptop hotspot (http://192.168.137.1:5000)
 echo.
 echo ================================================================================
 echo  OPERATIONAL CHECKLIST FOR WARDEN:
 echo   [1] Connect this laptop to the floor Hostel Wi-Fi router.
 echo   [2] Ensure floor ESP32 BLE anchor (HG-BEACON) is powered ON.
 echo   [3] Students must be connected to the Hostel Wi-Fi router.
-echo   [4] Students open http://%LAN_IP%:5000 in Chrome (Android) or Bluefy (iOS).
-echo   [5] When roll-call ends, click 'Push ^& Sync Local Vault to Cloud DB' in Admin.
+echo   [4] Students open http://!LAN_IP!:5000 in Chrome (Android) or Bluefy (iOS).
+echo   [5] When roll-call ends, click 'Push and Sync Local Vault to Cloud DB' in Admin.
 echo ================================================================================
 echo.
 

@@ -62,6 +62,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
   // Daily Check-in flow state: 'idle' | 'verifying_gps' | 'gps_ok' | 'camera_active' | 'verifying_face' | 'success' | 'failed'
   const [checkinStep, setCheckinStep] = useState('idle');
+  const [enforcementMode, setEnforcementMode] = useState('STANDBY');
   const [sessionToken, setSessionToken] = useState(null);
   const [verifiedDistance, setVerifiedDistance] = useState(null);
   const [checkinError, setCheckinError] = useState(null);
@@ -264,14 +265,30 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       if (dashRes.status === 'fulfilled' && dashRes.value.success) {
         setDashboard(dashRes.value);
         const geoMode = dashRes.value?.geofence?.ble_mode;
-        if (geoMode) setActiveBleMode(geoMode);
+        if (geoMode) {
+          setActiveBleMode(geoMode);
+          const upper = String(geoMode).toUpperCase();
+          if (upper.includes('STRICT')) setEnforcementMode('STRICT');
+          else if (upper.includes('SOFT')) setEnforcementMode('SOFT_ANCHOR');
+          else setEnforcementMode('STANDBY');
+        }
         const wardenUrl = dashRes.value?.geofence?.local_warden_url || dashRes.value?.geofence?.local_https_anchor_url;
         if (wardenUrl) setLocalWardenUrl(wardenUrl);
       }
       if (histRes.status === 'fulfilled' && histRes.value.success) setHistory(histRes.value.records || []);
       if (corrRes.status === 'fulfilled' && corrRes.value.success) setCorrections(corrRes.value.corrections || corrRes.value.requests || []);
       if (tickRes.status === 'fulfilled' && tickRes.value.success) setTickets(tickRes.value.tickets || tickRes.value.feedback || []);
-      if (schedRes.status === 'fulfilled' && schedRes.value.success) setScheduleStatus(schedRes.value.schedule || null);
+      if (schedRes.status === 'fulfilled' && schedRes.value.success) {
+        setScheduleStatus(schedRes.value.schedule || null);
+        const schedMode = schedRes.value?.bluetoothEnforcementMode || schedRes.value?.ble_mode || schedRes.value?.schedule?.bluetoothEnforcementMode;
+        if (schedMode) {
+          setActiveBleMode(schedMode);
+          const upper = String(schedMode).toUpperCase();
+          if (upper.includes('STRICT')) setEnforcementMode('STRICT');
+          else if (upper.includes('SOFT')) setEnforcementMode('SOFT_ANCHOR');
+          else setEnforcementMode('STANDBY');
+        }
+      }
     } catch (err) {
       setErrorMsg(err.message || 'Failed to load student data');
     } finally {
@@ -357,89 +374,46 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       const iosAttestation = verifyGenuineIOSDevice(pos);
       const isIOSDevice = iosAttestation.isGenuineIOS || (typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)));
 
-      if (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') {
+      const isStrict = enforcementMode === 'STRICT' || bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' || bleMode === 'STRICT';
+
+      if (isStrict) {
         setCheckinStep('verifying_ble');
+        setBleScanningStatus('Layer 2 Check: Mandatory ESP32 Hardware Beacon Scan (~15m line-of-sight)...');
 
-        if (lanWifiTicket) {
-          // Multi-Router LAN Handshake Ticket verified from floor router ESP32
-          setBleScanningStatus('Layer 2 Check: Floor Router LAN Wi-Fi Ticket Verified...');
-          bleProof = {
-            channel: 'LAN_WIFI_HANDSHAKE',
-            method: 'LAN_WIFI_HANDSHAKE',
-            lanWifiTicket,
-            ticket: lanWifiTicket
-          };
-        } else if (pos.connectedWifi && pos.connectedWifi.isConnected) {
-          // Multi-Router Strict Lock: Authorized Hostel Floor Wi-Fi Anchor (Instant 1-Click Verification)
-          const ssid = (pos.connectedWifi.ssid || '').trim();
-          setBleScanningStatus(`Layer 2 Check: Floor Wi-Fi Anchor Verified (${ssid})...`);
-          setVerifiedWifiAnchor(ssid);
-          bleProof = {
-            channel: 'HOSTEL_WIFI_VERIFIED',
-            method: 'HOSTEL_WIFI_VERIFIED',
-            ssid: pos.connectedWifi.ssid,
-            bssid: pos.connectedWifi.bssid
-          };
-        } else {
-          // Await the concurrent BLE scan result (initiated synchronously on user click tick)
-          setBleScanningStatus('Layer 2 Check: Connecting to nearby hostel ESP32 anchor (~15m range)...');
-          const bleRes = bleScanPromise ? await bleScanPromise : await scanHostelBleBeacon({
-            onProgress: (p) => setBleScanningStatus(p.message),
-            timeSyncPacket: dashboard?.ble_time_sync_packet || dashboard?.schedule?.ble_time_sync_packet,
-            localHttpsAnchorUrl: dashboard?.geofence?.local_https_anchor_url || null,
-            clusterEndpoints: dashboard?.wifi_cluster_endpoints || []
-          });
+        // Await the BLE scan result (MUST be powered ON, no Wi-Fi bypass allowed in STRICT mode)
+        const bleRes = bleScanPromise ? await bleScanPromise : await scanHostelBleBeacon({
+          onProgress: (p) => setBleScanningStatus(p.message),
+          timeSyncPacket: dashboard?.ble_time_sync_packet || dashboard?.schedule?.ble_time_sync_packet,
+          localHttpsAnchorUrl: dashboard?.geofence?.local_https_anchor_url || null,
+          clusterEndpoints: dashboard?.wifi_cluster_endpoints || []
+        });
 
-          if (!bleRes || !bleRes.success) {
-            // Safety fallback: Check if device is connected to floor Wi-Fi or router cluster
-            if (pos.connectedWifi && pos.connectedWifi.isConnected) {
-              const ssid = (pos.connectedWifi.ssid || '').trim();
-              setBleScanningStatus(`Layer 2 Check: Floor Wi-Fi Anchor Verified (${ssid})...`);
-              setVerifiedWifiAnchor(ssid);
-              bleProof = {
-                channel: 'HOSTEL_WIFI_VERIFIED',
-                method: 'HOSTEL_WIFI_VERIFIED',
-                ssid: pos.connectedWifi.ssid,
-                bssid: pos.connectedWifi.bssid
-              };
-            } else {
-              // Surface the exact, actionable Bluetooth error directly to the student
-              let userBleMsg = bleRes?.message || 'Bluetooth connection to ESP32 anchor failed.';
-              if (bleRes?.reason === 'BLUETOOTH_DEVICE_NOT_SELECTED') {
-                userBleMsg = 'Bluetooth Device Not Selected: Please tap Retry and select your floor beacon (e.g. HG-BEACON-BLKA-01) in the list.';
-              } else if (bleRes?.reason === 'BLUETOOTH_API_UNSUPPORTED') {
-                userBleMsg = isIOSDevice
-                  ? 'Apple Safari blocks Bluetooth scanning. You must open HostelGuard in Bluefy Browser on iPhone.'
-                  : 'Web Bluetooth is not supported on this browser. Please open in Google Chrome.';
-              } else if (bleRes?.reason === 'BLUETOOTH_SECURITY_RESTRICTION') {
-                userBleMsg = 'Bluetooth permission blocked. Please ensure Bluetooth permissions are allowed for this browser in Settings.';
-              }
-              setVerifiedBeaconInfo(null);
-              setCheckinError(userBleMsg);
-              setCheckinStep('failed');
-              return;
-            }
-          } else {
-            if (bleRes.lanWifiTicket) {
-              bleProof = {
-                channel: 'LAN_WIFI_HANDSHAKE',
-                lanWifiTicket: bleRes.lanWifiTicket,
-                beaconPublicId: bleRes.beaconPublicId,
-                slot: bleRes.slot
-              };
-            } else {
-              bleProof = {
-                beaconPublicId: bleRes.beaconPublicId,
-                rawAnchorId: bleRes.rawAnchorId || bleRes.beaconPublicId,
-                rawPayload: bleRes.rawPayload || null,
-                rollingCode: bleRes.rollingCode,
-                slot: bleRes.slot
-              };
-            }
-            pendingBeaconInfo = bleRes;
-          }
+        const hasValidBle = Boolean(
+          bleRes &&
+          bleRes.success &&
+          (bleRes.rollingCode || bleRes.rawPayload || bleRes.compactVerified || bleRes.lanWifiTicket)
+        );
+
+        if (!hasValidBle) {
+          // Hard Pre-Camera Block: ESP32 is powered OFF or unreachable
+          setVerifiedBeaconInfo(null);
+          setVerifiedWifiAnchor(null);
+          setCheckinError('STRICT LOCK BLOCKED: No ESP32 Hardware Beacon signal detected. Please turn on Bluetooth and stand within 15m of your floor\'s powered ESP32 anchor.');
+          setCheckinStep('failed');
+          return; // DO NOT call /verify-location and NEVER open camera
         }
-      } else if (bleMode === 'SOFT_ANCHOR') {
+
+        bleProof = {
+          beaconPublicId: bleRes.beaconPublicId,
+          rawAnchorId: bleRes.rawAnchorId || bleRes.beaconPublicId,
+          rawPayload: bleRes.rawPayload || null,
+          rollingCode: bleRes.rollingCode,
+          slot: bleRes.slot,
+          compactVerified: bleRes.compactVerified || false,
+          lanWifiTicket: bleRes.lanWifiTicket || null
+        };
+        pendingBeaconInfo = bleRes;
+      } else if (bleMode === 'SOFT_ANCHOR' || enforcementMode === 'SOFT_ANCHOR') {
         // Soft Anchor: Optional scan for fast pass
         if (typeof navigator !== 'undefined' && navigator.bluetooth) {
           try {
@@ -512,6 +486,14 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       });
 
       if (res.success) {
+        if (isStrict && res.bleVerified !== true && (!pendingBeaconInfo || !pendingBeaconInfo.success)) {
+          setVerifiedBeaconInfo(null);
+          setVerifiedWifiAnchor(null);
+          setCheckinError('STRICT LOCK REJECTED: ESP32 Hardware Beacon cryptographic signature could not be verified by server. Camera is locked.');
+          setCheckinStep('failed');
+          return;
+        }
+
         if (pendingBeaconInfo) {
           setVerifiedBeaconInfo(pendingBeaconInfo);
         }
@@ -1247,6 +1229,27 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           {showMapRadar ? 'Hide Map' : 'Show Map'}
                         </button>
                       </div>
+
+                      {/* Active Enforcement Mode Badge */}
+                      <div className="mb-2 text-start">
+                        {enforcementMode === 'STRICT' ? (
+                          <span className="badge bg-danger-subtle text-danger border border-danger-subtle px-2.5 py-1.5 rounded-pill d-inline-flex align-items-center gap-1.5 fw-semibold small">
+                            <span className="spinner-grow spinner-grow-sm text-danger" style={{ width: '8px', height: '8px' }}></span>
+                            Mode 3: STRICT LOCK (ESP32 BLE + Hostel Wi-Fi Mandatory)
+                          </span>
+                        ) : enforcementMode === 'SOFT_ANCHOR' ? (
+                          <span className="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2.5 py-1.5 rounded-pill d-inline-flex align-items-center gap-1.5 fw-semibold small">
+                            <span className="badge bg-warning rounded-circle p-1"></span>
+                            Mode 2: Soft Anchor (BLE or Screen-Flash Face)
+                          </span>
+                        ) : (
+                          <span className="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-2.5 py-1.5 rounded-pill d-inline-flex align-items-center gap-1.5 fw-semibold small">
+                            <span className="badge bg-secondary rounded-circle p-1"></span>
+                            Mode 1: Standby (GPS + Face)
+                          </span>
+                        )}
+                      </div>
+
                       {showMapRadar && (
                         <GeofenceMap
                           centerLat={dashboard?.geofence?.latitude || 28.5355}
@@ -1260,7 +1263,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           showLegend={true}
                           showDistanceBanner={true}
                           beacons={dashboard?.beacons || []}
-                          bleMode={dashboard?.geofence?.ble_mode || 'STANDBY_OPTIONAL'}
+                          bleMode={enforcementMode === 'STRICT' ? 'STRICT_LOCK' : (dashboard?.geofence?.ble_mode || 'STANDBY_OPTIONAL')}
                           isBeaconDetected={Boolean(verifiedBeaconInfo)}
                           verifiedBeacon={verifiedBeaconInfo}
                         />
