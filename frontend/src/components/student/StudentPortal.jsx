@@ -245,20 +245,17 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       return;
     }
 
-    // 1. Fetch fresh dashboard state to ensure latest authoritative geofence & BLE policy
-    let currentBleMode = dashboard?.geofence?.ble_mode;
-    let currentGeofence = dashboard?.geofence;
-    try {
-      const freshDash = await api.student.getDashboard();
-      if (freshDash?.geofence) {
-        currentGeofence = freshDash.geofence;
-        currentBleMode = freshDash.geofence.ble_mode;
-        setDashboard(freshDash);
-      }
-    } catch (_) {
-      // Fallback to cached dashboard
-    }
-    const bleMode = currentBleMode || 'STRICT_REQUIRED';
+    const bleMode = dashboard?.geofence?.ble_mode || 'STRICT_REQUIRED';
+
+    // 1. Immediately launch Bluetooth scanner on user click tick to preserve WebKit transient user gesture
+    const bleScanPromise = (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && !lanWifiTicket
+      ? scanHostelBleBeacon({
+          onProgress: (p) => setBleScanningStatus(p.message),
+          timeSyncPacket: dashboard?.ble_time_sync_packet || dashboard?.schedule?.ble_time_sync_packet,
+          localHttpsAnchorUrl: dashboard?.geofence?.local_https_anchor_url || null,
+          clusterEndpoints: dashboard?.wifi_cluster_endpoints || []
+        })
+      : null;
 
     setCheckinStep('verifying_gps');
     setCheckinError(null);
@@ -266,7 +263,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     setBleScanningStatus(null);
 
     try {
-      // 1. Acquire Physical Device GPS Location
+      // 2. Concurrently acquire Physical Device GPS Location
       const pos = await getNativeOrBrowserLocation({
         onProgress: (acc) => setGpsLiveAccuracy(acc),
         maxWaitMs: 3500,
@@ -338,17 +335,16 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
             bssid: pos.connectedWifi.bssid
           };
         } else {
-          // Standard BLE Scan or LAN Router Handshake Probe
-          setBleScanningStatus('Layer 2 Check: Connecting to nearby hostel ESP32 anchor / floor Wi-Fi (~15m range)...');
-
-          const bleRes = await scanHostelBleBeacon({
+          // Await the concurrent BLE scan result (initiated synchronously on user click tick)
+          setBleScanningStatus('Layer 2 Check: Connecting to nearby hostel ESP32 anchor (~15m range)...');
+          const bleRes = bleScanPromise ? await bleScanPromise : await scanHostelBleBeacon({
             onProgress: (p) => setBleScanningStatus(p.message),
             timeSyncPacket: dashboard?.ble_time_sync_packet || dashboard?.schedule?.ble_time_sync_packet,
             localHttpsAnchorUrl: dashboard?.geofence?.local_https_anchor_url || null,
             clusterEndpoints: dashboard?.wifi_cluster_endpoints || []
           });
 
-          if (!bleRes.success) {
+          if (!bleRes || !bleRes.success) {
             // Safety fallback: Check if device is connected to floor Wi-Fi or router cluster
             if (pos.connectedWifi && pos.connectedWifi.isConnected) {
               const ssid = (pos.connectedWifi.ssid || '').trim();
@@ -361,12 +357,20 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                 bssid: pos.connectedWifi.bssid
               };
             } else {
-              // Attempt server verification via shared Floor Wi-Fi Router Cluster
-              bleProof = {
-                channel: 'HOSTEL_WIFI_PROXIMITY_CHECK',
-                method: 'HOSTEL_WIFI_PROXIMITY_CHECK',
-                bleErrorMessage: bleRes.message
-              };
+              // Surface the exact, actionable Bluetooth error directly to the student
+              let userBleMsg = bleRes?.message || 'Bluetooth connection to ESP32 anchor failed.';
+              if (bleRes?.reason === 'BLUETOOTH_DEVICE_NOT_SELECTED') {
+                userBleMsg = 'Bluetooth Device Not Selected: Please tap Retry and select your floor beacon (e.g. HG-BEACON-BLKA-01) in the list.';
+              } else if (bleRes?.reason === 'BLUETOOTH_API_UNSUPPORTED') {
+                userBleMsg = isIOSDevice
+                  ? 'Apple Safari blocks Bluetooth scanning. You must open HostelGuard in Bluefy Browser on iPhone.'
+                  : 'Web Bluetooth is not supported on this browser. Please open in Google Chrome.';
+              } else if (bleRes?.reason === 'BLUETOOTH_SECURITY_RESTRICTION') {
+                userBleMsg = 'Bluetooth permission blocked. Please ensure Bluetooth permissions are allowed for this browser in Settings.';
+              }
+              setCheckinError(userBleMsg);
+              setCheckinStep('failed');
+              return;
             }
           } else {
             if (bleRes.lanWifiTicket) {

@@ -710,12 +710,15 @@ export async function scanHostelBleBeacon(options = {}) {
     try {
       if (onProgress) onProgress({ status: 'CONNECTING', message: `Connecting to ${targetDevice.name || 'ESP32 Beacon'}...` });
 
-      const connectPromise = targetDevice.gatt.connect();
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Connection to ESP32 beacon timed out.')), timeoutLimit)
-      );
-
-      server = await Promise.race([connectPromise, timeoutPromise]);
+      if (targetDevice.gatt && targetDevice.gatt.connected) {
+        server = targetDevice.gatt;
+      } else {
+        const connectPromise = targetDevice.gatt.connect();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Connection to ESP32 beacon timed out.')), timeoutLimit)
+        );
+        server = await Promise.race([connectPromise, timeoutPromise]);
+      }
 
       if (onProgress) onProgress({ status: 'READING_TOKEN', message: 'Reading 30-second rolling token...' });
 
@@ -786,13 +789,7 @@ export async function scanHostelBleBeacon(options = {}) {
         timestamp: Date.now()
       };
     } finally {
-      // Release GATT connection with an 800ms grace delay so iOS Bluefy doesn't show a sudden disconnected HUD alert during check-in transition
-      setTimeout(() => {
-        try {
-          if (server && server.connected) server.disconnect();
-          else if (targetDevice?.gatt?.connected) targetDevice.gatt.disconnect();
-        } catch (_) {}
-      }, 800);
+      // Do not force abrupt disconnect in Bluefy to prevent modal HUD alert and preserve warm connection
     }
   };
 
@@ -811,7 +808,8 @@ export async function scanHostelBleBeacon(options = {}) {
         );
         if (knownBeacon) {
           try {
-            const cachedResult = await readTokenFromGatt(knownBeacon, 3500);
+            // Keep timeout short (1500ms) so user activation is preserved if we need interactive picker
+            const cachedResult = await readTokenFromGatt(knownBeacon, 1500);
             if (cachedResult && cachedResult.success) {
               return cachedResult;
             }
