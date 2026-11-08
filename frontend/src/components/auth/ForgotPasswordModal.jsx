@@ -613,7 +613,7 @@ export default function ForgotPasswordModal({
                     autoFocus
                   />
                   <div className="form-text small" style={{ fontSize: '11px' }}>
-                    Enter your official university Roll Number or registered Email Address.
+                    Enter your Roll Number or Email Address.
                   </div>
                 </div>
 

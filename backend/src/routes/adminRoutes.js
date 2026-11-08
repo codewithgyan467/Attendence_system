@@ -1168,7 +1168,7 @@ router.post('/geofence', requireRole('ADMIN'), async (req, res) => {
     const resolvedName = hostel_name || facility_name || 'Main Campus Facility';
 
     if (latitude === undefined || longitude === undefined || latitude === null || longitude === null) {
-      return res.status(400).json({ success: false, error: 'Latitude and Longitude are required.' });
+      return res.status(400).json({ success: false, error: 'Coordinates required.' });
     }
 
     const lat = parseFloat(latitude);

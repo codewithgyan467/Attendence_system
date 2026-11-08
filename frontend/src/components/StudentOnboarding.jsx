@@ -530,7 +530,7 @@ export default function StudentOnboarding({ onComplete }) {
             >
               <Shield size={22} color="#2563eb" style={{ flexShrink: 0, marginTop: '2px' }} />
               <div>
-                <strong style={{ color: '#1e3a8a' }}>Data Privacy Guarantee:</strong> Public student roster lists have been disabled to protect your personal details (room number, course, and phone number). Enter your institutional Roll Number or registered Mobile Number below to find your profile privately.
+                <strong style={{ color: '#1e3a8a' }}>Privacy Protected:</strong> Enter your Roll Number or Mobile Number below to look up your profile.
               </div>
             </div>
 

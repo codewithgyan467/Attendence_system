@@ -82,11 +82,11 @@ const verifyLocationHandler = async (req, res) => {
     const studentRoll = roll_number ? roll_number.trim() : (req.user?.role === 'STUDENT' ? req.user.username : null);
 
     if (!studentRoll) {
-      return res.status(400).json({ success: false, error: 'Student roll number is required.' });
+      return res.status(400).json({ success: false, error: 'Roll number required.' });
     }
 
     if (latitude === undefined || longitude === undefined || latitude === null || longitude === null) {
-      return res.status(400).json({ success: false, error: 'GPS coordinates (latitude and longitude) are required.' });
+      return res.status(400).json({ success: false, error: 'Coordinates required.' });
     }
 
     const parsedLat = parseFloat(latitude);
@@ -96,7 +96,7 @@ const verifyLocationHandler = async (req, res) => {
     if (isNaN(parsedLat) || isNaN(parsedLon) || parsedLat < -90 || parsedLat > 90 || parsedLon < -180 || parsedLon > 180) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid GPS coordinates: latitude must be between -90 and 90, and longitude between -180 and 180.'
+        error: 'Invalid coordinates: latitude [-90,90], longitude [-180,180].'
       });
     }
 
@@ -106,26 +106,26 @@ const verifyLocationHandler = async (req, res) => {
         stepPassed: false,
         isAccuracyIssue: true,
         reason: 'POOR_GPS_ACCURACY',
-        error: `GPS accuracy (±${parsedAcc.toFixed(1)}m) is too poor for reliable hostel perimeter validation. Please move near a window or outdoors.`
+        error: 'Poor GPS accuracy (±100m+).'
       });
     }
 
     // 1. Verify student exists and is active
     const student = await getQuery(`SELECT * FROM students WHERE roll_number = ? OR id = ?`, [studentRoll, studentRoll]);
     if (!student) {
-      return res.status(404).json({ success: false, error: 'Student is not registered. Please complete Phase 2 Onboarding first.' });
+      return res.status(404).json({ success: false, error: 'Student not registered.' });
     }
 
     // Security Guard: Prevent authenticated student from marking another student's attendance
     if (req.user && req.user.role === 'STUDENT' && req.user.username !== student.roll_number) {
       return res.status(403).json({
         success: false,
-        error: `Security violation: Logged in as ${req.user.username}, cannot mark attendance for ${student.roll_number}.`
+        error: `Identity mismatch: Logged in as ${req.user.username}.`
       });
     }
 
     if (student.is_active !== 1) {
-      return res.status(403).json({ success: false, error: 'Student profile has been deactivated.' });
+      return res.status(403).json({ success: false, error: 'Account deactivated.' });
     }
 
     // 2. Enforce 3-Strike Forge Location Lockout
@@ -133,7 +133,7 @@ const verifyLocationHandler = async (req, res) => {
       return res.status(403).json({
         success: false,
         isLocked: true,
-        error: 'Account locked due to 3 consecutive forge location strikes. Please contact hostel administrator to reset strikes.'
+        error: 'Account locked due to 3 location strikes.'
       });
     }
 
@@ -143,7 +143,7 @@ const verifyLocationHandler = async (req, res) => {
     if (alreadyMarked) {
       return res.status(400).json({
         success: false,
-        error: `Attendance is already marked as ${alreadyMarked.status} for today (${alreadyMarked.date} at ${alreadyMarked.time_marked}).`,
+        error: `Attendance already marked today (${alreadyMarked.status}).`,
         isAlreadyPresent: true,
         record: alreadyMarked
       });
@@ -152,7 +152,7 @@ const verifyLocationHandler = async (req, res) => {
     // 4. Fetch active geofence configuration
     const geofence = await getQuery(`SELECT * FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
     if (!geofence) {
-      return res.status(500).json({ success: false, error: 'Active hostel geofence configuration missing.' });
+      return res.status(500).json({ success: false, error: 'Geofence config missing.' });
     }
 
     // 5. Evaluate Multi-Layer Anti-Spoof & Unfair-Means Policy (13 Layers + 5-State Decision Matrix)
@@ -393,22 +393,22 @@ const verifyFaceHandler = async (req, res) => {
     const token = challenge_token || session_token;
 
     if (!token || !live_photo) {
-      return res.status(400).json({ success: false, error: 'Challenge token and live camera photo are required.' });
+      return res.status(400).json({ success: false, error: 'Token and photo required.' });
     }
 
     // 1. Verify Challenge Token from Database
     const challenge = await getQuery(`SELECT * FROM attendance_challenges WHERE challenge_token = ?`, [token]);
 
     if (!challenge) {
-      return res.status(401).json({ success: false, error: 'Attendance challenge token is invalid or expired. Please re-verify location.' });
+      return res.status(401).json({ success: false, error: 'Invalid challenge token.' });
     }
 
     if (challenge.is_used === 1) {
-      return res.status(403).json({ success: false, error: 'Attendance challenge token has already been used (replay rejected).' });
+      return res.status(403).json({ success: false, error: 'Challenge token has already been used.' });
     }
 
     if (new Date(challenge.expires_at).getTime() < Date.now()) {
-      return res.status(401).json({ success: false, error: 'Attendance session expired (window exceeded). Please re-verify location.' });
+      return res.status(401).json({ success: false, error: 'Session expired.' });
     }
 
     // 2. Fetch student and stored embeddings
@@ -469,7 +469,7 @@ const verifyFaceHandler = async (req, res) => {
         return res.status(400).json({
           success: false,
           needsFaceEnrollment: true,
-          error: 'No facial embeddings registered for this student. Please complete onboarding.'
+          error: 'Face not enrolled.'
         });
       }
 
@@ -498,7 +498,7 @@ const verifyFaceHandler = async (req, res) => {
       return res.status(403).json({
         success: false,
         status: 'VIRTUAL_CAMERA_BLOCKED',
-        error: 'Virtual camera or software injection device detected. Please use your device native physical hardware camera.'
+        error: 'Virtual camera detected.'
       });
     }
 
@@ -536,7 +536,7 @@ const verifyFaceHandler = async (req, res) => {
       return res.status(403).json({
         success: false,
         status: 'SPOOF_DETECTED',
-        error: "We couldn't verify that you're physically present. Please look directly at the camera in good lighting and try again.",
+        error: 'Liveness check failed.',
         details: aiResult.details
       });
     }
@@ -546,7 +546,7 @@ const verifyFaceHandler = async (req, res) => {
       return res.status(403).json({
         success: false,
         status: 'FACE_MISMATCH',
-        error: 'Face verification failed: Live photo does not match registered student profile. Please ensure adequate lighting and face the camera directly.',
+        error: 'Face mismatch.',
         similarityScore: aiResult.similarity_score,
         details: aiResult.details
       });
@@ -686,10 +686,7 @@ const offlineSyncHandler = async (req, res) => {
 
     const targetStudentId = studentId;
     if ((!targetStudentId && !roll_number) || !live_photo || !image_hash || !beacon_public_id || slot === undefined || !signature) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required offline sync fields: student_id, frame_base64, image_hash, beacon_id, slot_30s, hw_signature.'
-      });
+      return res.status(400).json({ success: false, error: 'Missing offline sync fields.' });
     }
 
     // 1. Resolve student record
@@ -701,7 +698,7 @@ const offlineSyncHandler = async (req, res) => {
       student = await getQuery(`SELECT * FROM students WHERE roll_number = ? AND is_active = 1`, [roll_number]);
     }
     if (!student) {
-      return res.status(404).json({ success: false, error: 'Student not found or inactive.' });
+      return res.status(404).json({ success: false, error: 'Student not found.' });
     }
 
     // 2. Prevent Replay Attack & Duplicate Attendance Check (IST Date)
@@ -722,9 +719,9 @@ const offlineSyncHandler = async (req, res) => {
 
     if (!sigResult.isValid) {
       const errMap = {
-        'IMAGE_HASH_MISMATCH': { status: 400, msg: 'Biometric image hash mismatch: photo frame was tampered with.' },
-        'BEACON_INACTIVE_OR_REVOKED': { status: 403, msg: 'Floor beacon is revoked or inactive (Kill switch active).' },
-        'HARDWARE_SIGNATURE_INVALID': { status: 403, msg: 'Invalid hardware HMAC signature from ESP32.' }
+        'IMAGE_HASH_MISMATCH': { status: 400, msg: 'Photo frame tampered.' },
+        'BEACON_INACTIVE_OR_REVOKED': { status: 403, msg: 'Beacon inactive.' },
+        'HARDWARE_SIGNATURE_INVALID': { status: 403, msg: 'Invalid hardware signature.' }
       };
       const mapped = errMap[sigResult.reason] || { status: 403, msg: `Offline proof rejected: ${sigResult.reason}` };
       return res.status(mapped.status).json({ success: false, error: mapped.msg, reason: sigResult.reason });
@@ -736,19 +733,13 @@ const offlineSyncHandler = async (req, res) => {
       [student.id, effectiveDate]
     );
     if (existingAttendance) {
-      return res.status(409).json({
-        success: false,
-        error: 'Attendance already recorded for this date (replay attack prevented).'
-      });
+      return res.status(409).json({ success: false, error: 'Attendance already recorded for this date.' });
     }
 
     // 4. Curfew Schedule Window Verification
     const windowStatus = await getAttendanceWindowStatus();
     if (windowStatus.enforced && !windowStatus.isOpen && process.env.NODE_ENV !== 'test' && req.headers['x-test-enforce-schedule'] === 'true') {
-      return res.status(403).json({
-        success: false,
-        error: 'Offline check-in was captured outside the authorized hostel curfew attendance window.'
-      });
+      return res.status(403).json({ success: false, error: 'Curfew window closed.' });
     }
 
     // 5. Biometric Face AI Verification
@@ -768,7 +759,7 @@ const offlineSyncHandler = async (req, res) => {
     }
 
     if (!embeddings || embeddings.length === 0) {
-      return res.status(400).json({ success: false, error: 'Student has not registered facial biometrics.' });
+      return res.status(400).json({ success: false, error: 'Face not enrolled.' });
     }
 
     let aiResult = { is_live: true, is_match: true, similarity_score: 0.88, liveness_score: 0.95 };
@@ -783,7 +774,7 @@ const offlineSyncHandler = async (req, res) => {
         if ((!aiResp.is_match || !aiResp.is_live) && process.env.NODE_ENV !== 'test') {
           return res.status(401).json({
             success: false,
-            error: 'Biometric verification failed: facial likeness does not match enrolled template or presentation attack detected.'
+            error: 'Biometric verification failed.'
           });
         }
       }
@@ -917,7 +908,7 @@ router.post('/request-physical-verification', async (req, res) => {
     );
 
     if (!student) {
-      return res.status(404).json({ success: false, error: 'Student record not found.' });
+      return res.status(404).json({ success: false, error: 'Student not found.' });
     }
 
     const existingRecord = await getQuery(

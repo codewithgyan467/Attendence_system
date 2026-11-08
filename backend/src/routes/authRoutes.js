@@ -27,7 +27,7 @@ router.post('/login', authLimiter, async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
-      return res.status(400).json({ success: false, error: 'Username and password are required.' });
+      return res.status(400).json({ success: false, error: 'Credentials required.' });
     }
 
     const user = await getQuery(`
@@ -37,16 +37,16 @@ router.post('/login', authLimiter, async (req, res) => {
     `, [username.trim(), username.trim()]);
 
     if (!user) {
-      return res.status(401).json({ success: false, error: 'Invalid username or password.' });
+      return res.status(401).json({ success: false, error: 'Invalid credentials.' });
     }
 
     if (user.is_active !== 1) {
-      return res.status(403).json({ success: false, error: 'Account has been deactivated. Please contact hostel administration.' });
+      return res.status(403).json({ success: false, error: 'Account deactivated.' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
-      return res.status(401).json({ success: false, error: 'Invalid username or password.' });
+      return res.status(401).json({ success: false, error: 'Invalid credentials.' });
     }
 
     // Fetch student profile if student
@@ -160,11 +160,11 @@ router.post('/change-password', requireAuth, async (req, res) => {
     const { current_password, new_password } = req.body;
 
     if (!current_password || !new_password) {
-      return res.status(400).json({ success: false, error: 'Current password and new password are required.' });
+      return res.status(400).json({ success: false, error: 'Passwords required.' });
     }
 
     if (new_password.length < 8) {
-      return res.status(400).json({ success: false, error: 'New password must be at least 8 characters long.' });
+      return res.status(400).json({ success: false, error: 'Password min 8 chars.' });
     }
 
     const user = await getQuery(`SELECT password_hash FROM users WHERE id = ?`, [req.user.id]);
@@ -198,32 +198,32 @@ router.post('/change-password', requireAuth, async (req, res) => {
 router.post('/initial-admin-setup', requireAuth, async (req, res) => {
   try {
     if (req.user.role !== 'ADMIN') {
-      return res.status(403).json({ success: false, error: 'Only administrators can perform initial admin security setup.' });
+      return res.status(403).json({ success: false, error: 'Admin access required.' });
     }
 
     const { new_username, new_email, new_password, current_password } = req.body;
 
     if (!new_username || !new_email || !new_password || !current_password) {
-      return res.status(400).json({ success: false, error: 'All fields (username, email, new password, current password) are required.' });
+      return res.status(400).json({ success: false, error: 'All fields required.' });
     }
 
     if (new_password.length < 8) {
-      return res.status(400).json({ success: false, error: 'New password must be at least 8 characters long.' });
+      return res.status(400).json({ success: false, error: 'Password min 8 chars.' });
     }
 
     if (new_password === 'Admin@12345') {
-      return res.status(400).json({ success: false, error: 'New password cannot be the default Admin@12345 password.' });
+      return res.status(400).json({ success: false, error: 'Cannot use default password.' });
     }
 
     if (new_email.trim().toLowerCase().endsWith('@hostelguard.local')) {
-      return res.status(400).json({ success: false, error: 'Please enter a valid official email address.' });
+      return res.status(400).json({ success: false, error: 'Valid email required.' });
     }
 
     // Verify current password
     const user = await getQuery(`SELECT password_hash FROM users WHERE id = ?`, [req.user.id]);
     const isMatch = await bcrypt.compare(current_password, user.password_hash);
     if (!isMatch) {
-      return res.status(400).json({ success: false, error: 'Incorrect current password.' });
+      return res.status(400).json({ success: false, error: 'Incorrect password.' });
     }
 
     // Check collision with other accounts
@@ -233,7 +233,7 @@ router.post('/initial-admin-setup', requireAuth, async (req, res) => {
     `, [new_username.trim(), new_email.trim(), req.user.id]);
 
     if (existing) {
-      return res.status(409).json({ success: false, error: 'The requested username or email is already taken by another user.' });
+      return res.status(409).json({ success: false, error: 'Username or email taken.' });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -292,12 +292,12 @@ router.post('/master-recovery/verify', authLimiter, async (req, res) => {
   try {
     const { master_key } = req.body;
     if (!master_key) {
-      return res.status(400).json({ success: false, error: 'Master Recovery Key is required.' });
+      return res.status(400).json({ success: false, error: 'Master key required.' });
     }
 
     const validKeyRecord = await verifyMasterRecoveryKey(master_key);
     if (!validKeyRecord) {
-      return res.status(401).json({ success: false, error: 'Invalid or inactive Master Recovery Key.' });
+      return res.status(401).json({ success: false, error: 'Invalid master key.' });
     }
 
     res.json({ success: true, message: 'Master Recovery Key verified successfully.' });
@@ -312,19 +312,16 @@ router.post('/master-recovery/reset', authLimiter, async (req, res) => {
     const { master_key, new_username, new_email, new_password } = req.body;
 
     if (!master_key || !new_password) {
-      return res.status(400).json({ success: false, error: 'Master Recovery Key and new password are required.' });
+      return res.status(400).json({ success: false, error: 'Master key and password required.' });
     }
 
     if (new_password.length < 8) {
-      return res.status(400).json({ success: false, error: 'New password must be at least 8 characters long.' });
+      return res.status(400).json({ success: false, error: 'Password min 8 chars.' });
     }
 
     const validKeyRecord = await verifyMasterRecoveryKey(master_key);
     if (!validKeyRecord) {
-      return res.status(401).json({
-        success: false,
-        error: 'Invalid or inactive Master Recovery Key. Please verify the key or contact your server administrator.'
-      });
+      return res.status(401).json({ success: false, error: 'Invalid master key.' });
     }
 
     // Find the primary Administrator user
@@ -352,7 +349,7 @@ router.post('/master-recovery/reset', authLimiter, async (req, res) => {
       `, [finalUsername, finalEmail, adminUser.id]);
 
       if (conflict) {
-        return res.status(409).json({ success: false, error: 'Requested username or email is already assigned to another user.' });
+        return res.status(409).json({ success: false, error: 'Username or email taken.' });
       }
 
       const salt = await bcrypt.genSalt(10);
@@ -507,30 +504,21 @@ router.post('/forgot-password/request-otp', authLimiter, async (req, res) => {
     const { identifier, method = 'EMAIL' } = req.body;
 
     if (!identifier || !identifier.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Please enter your Roll Number, registered Email, or Phone number.'
-      });
+      return res.status(400).json({ success: false, error: 'Identifier required.' });
     }
 
     const cleanMethod = String(method).toUpperCase();
     if (!['EMAIL', 'PHONE'].includes(cleanMethod)) {
-      return res.status(400).json({ success: false, error: 'Reset method must be EMAIL or PHONE.' });
+      return res.status(400).json({ success: false, error: 'Invalid reset method.' });
     }
 
     const identity = await resolveStudentIdentity(identifier);
     if (!identity) {
-      return res.status(404).json({
-        success: false,
-        error: `No registered account found matching "${identifier.trim()}". Please verify your roll number or contact hostel administration.`
-      });
+      return res.status(404).json({ success: false, error: 'Account not found.' });
     }
 
     if (identity.user_active === 0 || identity.student_active === 0) {
-      return res.status(403).json({
-        success: false,
-        error: 'This account has been deactivated. Please contact the hostel administration or warden.'
-      });
+      return res.status(403).json({ success: false, error: 'Account deactivated.' });
     }
 
     // Determine destination target
@@ -538,18 +526,12 @@ router.post('/forgot-password/request-otp', authLimiter, async (req, res) => {
     if (cleanMethod === 'EMAIL') {
       destination = identity.student_email || identity.user_email;
       if (!destination) {
-        return res.status(400).json({
-          success: false,
-          error: `No registered email address found for ${identity.roll_number || identity.full_name}. Please choose Phone/SMS reset or contact administration.`
-        });
+        return res.status(400).json({ success: false, error: 'No email registered.' });
       }
     } else {
       destination = identity.student_phone;
       if (!destination) {
-        return res.status(400).json({
-          success: false,
-          error: `No mobile phone number registered for ${identity.roll_number || identity.full_name}. Please choose Email reset or contact administration.`
-        });
+        return res.status(400).json({ success: false, error: 'No phone registered.' });
       }
     }
 
@@ -562,10 +544,7 @@ router.post('/forgot-password/request-otp', authLimiter, async (req, res) => {
     `, [identity.roll_number, destination]);
 
     if (process.env.NODE_ENV !== 'test' && recentOtps && recentOtps.count >= 5) {
-      return res.status(429).json({
-        success: false,
-        error: 'Too many OTP requests for this account. Please wait 10 minutes before requesting a new code.'
-      });
+      return res.status(429).json({ success: false, error: 'Too many OTP requests. Wait 10m.' });
     }
 
     // Generate cryptographically random 6-digit OTP
@@ -661,7 +640,7 @@ router.post('/forgot-password/verify-otp', authLimiter, async (req, res) => {
     const { identifier, otp } = req.body;
 
     if (!identifier || !otp) {
-      return res.status(400).json({ success: false, error: 'Identifier and 6-digit OTP code are required.' });
+      return res.status(400).json({ success: false, error: 'Identifier and OTP required.' });
     }
 
     const cleanIdentifier = identifier.trim();
@@ -678,28 +657,19 @@ router.post('/forgot-password/verify-otp', authLimiter, async (req, res) => {
     `, [cleanIdentifier, cleanIdentifier]);
 
     if (!otpRecord) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid or expired verification code. Please request a new OTP.'
-      });
+      return res.status(400).json({ success: false, error: 'Invalid or expired OTP.' });
     }
 
     if (otpRecord.attempts >= 5) {
       await runQuery(`UPDATE password_reset_otps SET is_used = 1 WHERE id = ?`, [otpRecord.id]);
-      return res.status(400).json({
-        success: false,
-        error: 'Too many incorrect attempts. This OTP has been invalidated for security. Please request a new one.'
-      });
+      return res.status(400).json({ success: false, error: 'Too many incorrect attempts.' });
     }
 
     // Increment attempts
     await runQuery(`UPDATE password_reset_otps SET attempts = attempts + 1 WHERE id = ?`, [otpRecord.id]);
 
     if (otpRecord.otp_code !== cleanOtp) {
-      return res.status(400).json({
-        success: false,
-        error: 'Incorrect verification code. Please verify the 6 digits and try again.'
-      });
+      return res.status(400).json({ success: false, error: 'Incorrect OTP code.' });
     }
 
     // Generate signed temporary reset token valid for 15 minutes
@@ -716,7 +686,7 @@ router.post('/forgot-password/verify-otp', authLimiter, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'OTP verified successfully. You may now enter your new password.',
+      message: 'OTP verified successfully.',
       resetToken,
       identifier: otpRecord.identifier
     });
@@ -733,15 +703,15 @@ router.post('/forgot-password/reset', authLimiter, async (req, res) => {
 
     const passwordToSet = new_password || req.body.newPassword;
     if (!passwordToSet) {
-      return res.status(400).json({ success: false, error: 'New password is required.' });
+      return res.status(400).json({ success: false, error: 'Password required.' });
     }
 
     if (passwordToSet.length < 8) {
-      return res.status(400).json({ success: false, error: 'Password must be at least 8 characters long.' });
+      return res.status(400).json({ success: false, error: 'Password min 8 chars.' });
     }
 
     if (confirm_password && confirm_password !== passwordToSet) {
-      return res.status(400).json({ success: false, error: 'Passwords do not match.' });
+      return res.status(400).json({ success: false, error: 'Passwords mismatch.' });
     }
 
     let targetIdentifier = identifier ? identifier.trim() : null;
@@ -752,12 +722,12 @@ router.post('/forgot-password/reset', authLimiter, async (req, res) => {
       try {
         const decoded = jwt.verify(resetToken, JWT_SECRET);
         if (decoded.type !== 'PASSWORD_RESET') {
-          return res.status(400).json({ success: false, error: 'Invalid reset token type.' });
+          return res.status(400).json({ success: false, error: 'Invalid token.' });
         }
         targetIdentifier = decoded.identifier;
         otpRecordId = decoded.resetOtpId;
       } catch (tokenErr) {
-        return res.status(400).json({ success: false, error: 'Reset session expired. Please request a new OTP.' });
+        return res.status(400).json({ success: false, error: 'Session expired.' });
       }
     } else if (targetIdentifier && otp) {
       const cleanOtp = String(otp).trim();
@@ -771,17 +741,17 @@ router.post('/forgot-password/reset', authLimiter, async (req, res) => {
       `, [targetIdentifier, targetIdentifier]);
 
       if (!otpRow || otpRow.otp_code !== cleanOtp) {
-        return res.status(400).json({ success: false, error: 'Invalid or expired OTP code.' });
+        return res.status(400).json({ success: false, error: 'Invalid or expired OTP.' });
       }
       otpRecordId = otpRow.id;
     } else {
-      return res.status(400).json({ success: false, error: 'Verification token or OTP required.' });
+      return res.status(400).json({ success: false, error: 'Token or OTP required.' });
     }
 
     // Resolve user account
     const identity = await resolveStudentIdentity(targetIdentifier);
     if (!identity) {
-      return res.status(404).json({ success: false, error: 'Account not found for password update.' });
+      return res.status(404).json({ success: false, error: 'Account not found.' });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -858,7 +828,7 @@ router.post('/forgot-password/phone-email-verify', authLimiter, async (req, res)
     }
 
     if (!verifiedPhone && !verifiedEmail) {
-      return res.status(400).json({ success: false, error: 'Valid Phone.Email verification token is required.' });
+      return res.status(400).json({ success: false, error: 'Invalid token.' });
     }
 
     // Match with student
@@ -905,11 +875,7 @@ router.post('/forgot-password/phone-email-verify', authLimiter, async (req, res)
     }
 
     if (!identity) {
-      const targetLabel = verifiedEmail || verifiedPhone;
-      return res.status(404).json({
-        success: false,
-        error: `Verified identity (${targetLabel}) is not registered with any student in the hostel system.`
-      });
+      return res.status(404).json({ success: false, error: 'Identity not registered.' });
     }
 
     // Generate signed reset token
@@ -938,7 +904,7 @@ router.post('/forgot-password/phone-email-verify', authLimiter, async (req, res)
 
     res.json({
       success: true,
-      message: `Identity ${verifiedIdentity} verified successfully via Phone.Email!`,
+      message: 'Identity verified successfully.',
       resetToken,
       identifier: identity.roll_number,
       verifiedPhone,
@@ -955,23 +921,23 @@ router.post('/forgot-password/verify-magic-link', authLimiter, async (req, res) 
   try {
     const { token } = req.body;
     if (!token) {
-      return res.status(400).json({ success: false, error: 'Magic link token is required.' });
+      return res.status(400).json({ success: false, error: 'Token required.' });
     }
 
     let decoded;
     try {
       decoded = jwt.verify(token, JWT_SECRET);
     } catch (err) {
-      return res.status(400).json({ success: false, error: 'Magic link has expired or is invalid. Please request a new link.' });
+      return res.status(400).json({ success: false, error: 'Link expired.' });
     }
 
     if (decoded.type !== 'PASSWORD_RESET') {
-      return res.status(400).json({ success: false, error: 'Invalid token type.' });
+      return res.status(400).json({ success: false, error: 'Invalid token.' });
     }
 
     res.json({
       success: true,
-      message: 'Email magic link verified successfully! You may now set your new password.',
+      message: 'Email magic link verified successfully.',
       resetToken: token,
       identifier: decoded.identifier
     });
@@ -986,7 +952,7 @@ router.post('/phone-login', authLimiter, async (req, res) => {
     const { user_json_url, simulated_phone } = req.body;
 
     if (!user_json_url && !simulated_phone) {
-      return res.status(400).json({ success: false, error: 'Phone.Email user_json_url is required.' });
+      return res.status(400).json({ success: false, error: 'Verification URL required.' });
     }
 
     let verifiedPhone = '';
@@ -1039,18 +1005,11 @@ router.post('/phone-login', authLimiter, async (req, res) => {
     }
 
     if (!student) {
-      const targetLabel = verifiedEmail || verifiedPhone;
-      return res.status(404).json({
-        success: false,
-        error: `Verified identity (${targetLabel}) is not registered with any student in the hostel system. Please contact your hostel warden or register as a resident.`
-      });
+      return res.status(404).json({ success: false, error: 'Identity not registered.' });
     }
 
     if (student.user_active === 0 || student.is_active === 0) {
-      return res.status(403).json({
-        success: false,
-        error: 'Your account has been deactivated. Please contact the hostel administration or warden.'
-      });
+      return res.status(403).json({ success: false, error: 'Account deactivated.' });
     }
 
     // Determine or construct user object
@@ -1134,27 +1093,18 @@ router.post('/otp-login/request', authLimiter, async (req, res) => {
     const { identifier, method = 'SMS' } = req.body;
 
     if (!identifier || !identifier.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Please enter your registered mobile number, email, or roll number.'
-      });
+      return res.status(400).json({ success: false, error: 'Identifier required.' });
     }
 
     const cleanMethod = String(method).toUpperCase() === 'EMAIL' ? 'EMAIL' : 'PHONE';
     const identity = await resolveStudentIdentity(identifier);
 
     if (!identity) {
-      return res.status(404).json({
-        success: false,
-        error: `No registered student found matching "${identifier.trim()}". Please check your details or contact your hostel warden.`
-      });
+      return res.status(404).json({ success: false, error: 'Student not found.' });
     }
 
     if (identity.user_active === 0 || identity.student_active === 0) {
-      return res.status(403).json({
-        success: false,
-        error: 'This account has been deactivated. Please contact the hostel administration.'
-      });
+      return res.status(403).json({ success: false, error: 'Account deactivated.' });
     }
 
     let destination = cleanMethod === 'EMAIL' ? identity.student_email : identity.student_phone;
@@ -1163,10 +1113,7 @@ router.post('/otp-login/request', authLimiter, async (req, res) => {
     }
 
     if (!destination) {
-      return res.status(400).json({
-        success: false,
-        error: `No registered ${cleanMethod === 'EMAIL' ? 'email' : 'phone number'} found for this student.`
-      });
+      return res.status(400).json({ success: false, error: 'Destination not registered.' });
     }
 
     // Rate-limit check in last 10 minutes
@@ -1178,10 +1125,7 @@ router.post('/otp-login/request', authLimiter, async (req, res) => {
     `, [identity.roll_number, destination]);
 
     if (process.env.NODE_ENV !== 'test' && recentOtps && recentOtps.count >= 5) {
-      return res.status(429).json({
-        success: false,
-        error: 'Too many OTP requests for this account. Please wait 10 minutes before requesting a new code.'
-      });
+      return res.status(429).json({ success: false, error: 'Too many OTP requests. Wait 10m.' });
     }
 
     const otpCode = crypto.randomInt(100000, 999999).toString();
@@ -1256,7 +1200,7 @@ router.post('/otp-login/verify', authLimiter, async (req, res) => {
     const { identifier, otp } = req.body;
 
     if (!identifier || !otp) {
-      return res.status(400).json({ success: false, error: 'Identifier and 6-digit OTP code are required.' });
+      return res.status(400).json({ success: false, error: 'Identifier and OTP required.' });
     }
 
     const cleanIdentifier = identifier.trim();
@@ -1273,27 +1217,18 @@ router.post('/otp-login/verify', authLimiter, async (req, res) => {
     `, [cleanIdentifier, cleanIdentifier]);
 
     if (!otpRecord) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid or expired verification code. Please request a new OTP.'
-      });
+      return res.status(400).json({ success: false, error: 'Invalid or expired OTP.' });
     }
 
     if (otpRecord.attempts >= 5) {
       await runQuery(`UPDATE password_reset_otps SET is_used = 1 WHERE id = ?`, [otpRecord.id]);
-      return res.status(400).json({
-        success: false,
-        error: 'Too many incorrect attempts. This OTP has been invalidated for security. Please request a new one.'
-      });
+      return res.status(400).json({ success: false, error: 'Too many incorrect attempts.' });
     }
 
     await runQuery(`UPDATE password_reset_otps SET attempts = attempts + 1 WHERE id = ?`, [otpRecord.id]);
 
     if (otpRecord.otp_code !== cleanOtp) {
-      return res.status(400).json({
-        success: false,
-        error: 'Incorrect verification code. Please check the 6 digits and try again.'
-      });
+      return res.status(400).json({ success: false, error: 'Incorrect OTP code.' });
     }
 
     // Mark OTP as used
@@ -1324,17 +1259,11 @@ router.post('/otp-login/verify', authLimiter, async (req, res) => {
     ]);
 
     if (!student) {
-      return res.status(404).json({
-        success: false,
-        error: 'Registered student account could not be found.'
-      });
+      return res.status(404).json({ success: false, error: 'Student not found.' });
     }
 
     if (student.user_active === 0 || student.is_active === 0) {
-      return res.status(403).json({
-        success: false,
-        error: 'Your account has been deactivated. Please contact hostel administration.'
-      });
+      return res.status(403).json({ success: false, error: 'Account deactivated.' });
     }
 
     let user = null;
@@ -1461,10 +1390,7 @@ router.post('/google-login', authLimiter, async (req, res) => {
     }
 
     if (googleData.email_verified !== 'true' && googleData.email_verified !== true) {
-      return res.status(400).json({
-        success: false,
-        error: 'Google account email is not verified.'
-      });
+      return res.status(400).json({ success: false, error: 'Email unverified.' });
     }
 
     const email = String(googleData.email).toLowerCase().trim();
@@ -1497,16 +1423,13 @@ router.post('/google-login', authLimiter, async (req, res) => {
     if (!student && !userRecord) {
       return res.status(404).json({
         success: false,
-        error: `No registered account found with Google email "${email}". Please contact the warden or enroll with your official email.`
+        error: `No registered account found with Google email "${email}".`
       });
     }
 
     // Check if deactivated
     if ((student && (student.user_active === 0 || student.is_active === 0)) || (userRecord && userRecord.is_active === 0)) {
-      return res.status(403).json({
-        success: false,
-        error: 'Your account has been deactivated. Please contact the hostel administration.'
-      });
+      return res.status(403).json({ success: false, error: 'Account deactivated.' });
     }
 
     // Determine user account to issue tokens for

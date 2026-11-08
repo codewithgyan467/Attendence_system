@@ -119,16 +119,16 @@ router.post('/corrections/:id/review', async (req, res) => {
     const decision = req.body.decision || req.body.status;
     const resolution_note = req.body.resolution_note || req.body.review_notes || '';
     if (!decision || !['APPROVED', 'REJECTED'].includes(decision)) {
-      return res.status(400).json({ success: false, error: 'Decision must be APPROVED or REJECTED.' });
+      return res.status(400).json({ success: false, error: 'Invalid decision.' });
     }
 
     const correction = await getQuery(`SELECT * FROM attendance_corrections WHERE id = ?`, [req.params.id]);
     if (!correction) {
-      return res.status(404).json({ success: false, error: 'Correction request not found.' });
+      return res.status(404).json({ success: false, error: 'Request not found.' });
     }
 
     if (correction.status !== 'PENDING') {
-      return res.status(400).json({ success: false, error: `This request has already been ${correction.status}.` });
+      return res.status(400).json({ success: false, error: 'Request already resolved.' });
     }
 
     await withTransaction(async ({ runQuery }) => {

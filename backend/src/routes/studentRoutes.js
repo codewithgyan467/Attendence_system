@@ -28,7 +28,7 @@ router.post('/onboarding/lookup', authLimiter, async (req, res) => {
   try {
     const { query } = req.body;
     if (!query || !query.trim()) {
-      return res.status(400).json({ success: false, error: 'Please enter your Roll Number or registered Mobile Number.' });
+      return res.status(400).json({ success: false, error: 'Roll number or mobile required.' });
     }
 
     const clean = query.trim();
@@ -104,7 +104,7 @@ router.post('/onboarding/lookup', authLimiter, async (req, res) => {
     if (!record) {
       return res.status(404).json({
         success: false,
-        error: `No pre-allotted resident profile found matching "${clean}". Please verify your roll number or phone number, or contact the hostel administration.`
+        error: 'Profile not found.'
       });
     }
 
@@ -410,7 +410,7 @@ router.post('/onboard', async (req, res) => {
         `, [newAllotId, st.roll_number, st.full_name, st.room_number || 'A-101', st.hostel_block || 'Block A', st.email, st.phone, st.course]);
         allotment = await getQuery(`SELECT * FROM hostel_allotments WHERE id = ?`, [newAllotId]);
       } else {
-        return res.status(404).json({ success: false, error: 'Selected roll number is not on the hostel allotment roster.' });
+        return res.status(404).json({ success: false, error: 'Roll number not in roster.' });
       }
     }
 
@@ -418,7 +418,7 @@ router.post('/onboard', async (req, res) => {
     if (allotment.is_registered === 1 && existingStudent) {
       const existingFaces = await getQuery(`SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ?`, [existingStudent.id]);
       if (existingFaces && existingFaces.count > 0) {
-        return res.status(400).json({ success: false, error: 'This student has already completed onboarding and face registration.' });
+        return res.status(400).json({ success: false, error: 'Onboarding already completed.' });
       }
     }
 
@@ -435,12 +435,12 @@ router.post('/onboard', async (req, res) => {
     } catch (aiErr) {
       return res.status(400).json({
         success: false,
-        error: `Face processing failed: ${aiErr.message}. Ensure your face is centered with good lighting.`
+        error: 'Face processing failed.'
       });
     }
 
     if (!aiResponse.embeddings || aiResponse.embeddings.length === 0) {
-      return res.status(400).json({ success: false, error: 'Could not detect face in captured photos.' });
+      return res.status(400).json({ success: false, error: 'No face detected.' });
     }
 
     // Generate credentials & IDs
@@ -875,12 +875,12 @@ router.post('/register-face', async (req, res) => {
     } catch (aiErr) {
       return res.status(400).json({
         success: false,
-        error: `Face processing failed: ${aiErr.message}. Ensure your face is centered with good lighting.`
+        error: 'Face processing failed.'
       });
     }
 
     if (!aiResponse.embeddings || aiResponse.embeddings.length === 0) {
-      return res.status(400).json({ success: false, error: 'Could not detect face in captured photos.' });
+      return res.status(400).json({ success: false, error: 'No face detected.' });
     }
 
     // C. ENFORCE ANTI-SPOOFING ON ENROLLMENT: Reject if any capture failed presentation attack detection
