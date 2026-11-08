@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
-import { api } from '../../utils/api';
+import { api, setActiveBleMode, setLocalWardenUrl } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import { getNativeOrBrowserLocation, isNativeMobile, scanHostelBleBeacon, verifyGenuineIOSDevice } from '../../utils/nativeHardware';
 import { Line } from 'react-chartjs-2';
@@ -261,7 +261,13 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         api.attendance.getSchedule()
       ]);
 
-      if (dashRes.status === 'fulfilled' && dashRes.value.success) setDashboard(dashRes.value);
+      if (dashRes.status === 'fulfilled' && dashRes.value.success) {
+        setDashboard(dashRes.value);
+        const geoMode = dashRes.value?.geofence?.ble_mode;
+        if (geoMode) setActiveBleMode(geoMode);
+        const wardenUrl = dashRes.value?.geofence?.local_warden_url || dashRes.value?.geofence?.local_https_anchor_url;
+        if (wardenUrl) setLocalWardenUrl(wardenUrl);
+      }
       if (histRes.status === 'fulfilled' && histRes.value.success) setHistory(histRes.value.records || []);
       if (corrRes.status === 'fulfilled' && corrRes.value.success) setCorrections(corrRes.value.corrections || corrRes.value.requests || []);
       if (tickRes.status === 'fulfilled' && tickRes.value.success) setTickets(tickRes.value.tickets || tickRes.value.feedback || []);

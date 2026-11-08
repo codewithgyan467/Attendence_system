@@ -8,6 +8,17 @@ from PIL import Image
 
 cv2.setNumThreads(2)
 
+# Low-CPU ONNX Runtime Configuration for Dual-Core Warden Office Laptops
+try:
+    import onnxruntime as ort
+    ort_session_options = ort.SessionOptions()
+    ort_session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    ort_session_options.intra_op_num_threads = 2
+    ort_session_options.inter_op_num_threads = 1
+    ort_session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+except ImportError:
+    ort_session_options = None
+
 logger = logging.getLogger("face_engine")
 
 class FaceEngine:
