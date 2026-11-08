@@ -77,11 +77,11 @@ function getNativeDetector() {
   return cachedDetector;
 }
 
-// Shared offscreen canvas for zero-allocation analysis
+// Shared offscreen canvas for zero-allocation analysis (160x120 for optimal performance & responsiveness)
 let offscreenCanvas = null;
 let offscreenCtx = null;
 
-function getOffscreenContext(w = 120, h = 90) {
+function getOffscreenContext(w = 160, h = 120) {
   if (!offscreenCanvas && typeof document !== 'undefined') {
     offscreenCanvas = document.createElement('canvas');
     offscreenCanvas.width = w;
@@ -284,8 +284,8 @@ export function detectBlinkEvent(videoEl) {
     return { blinkDetected: false, confidence: 0 };
   }
 
-  const W = 100;
-  const H = 80;
+  const W = 160;
+  const H = 120;
   const { canvas, ctx } = getOffscreenContext(W, H);
   if (!ctx) return { blinkDetected: false, confidence: 0 };
 

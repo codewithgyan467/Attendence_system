@@ -6,6 +6,8 @@ import logging
 from io import BytesIO
 from PIL import Image
 
+cv2.setNumThreads(2)
+
 logger = logging.getLogger("face_engine")
 
 class FaceEngine:

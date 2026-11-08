@@ -3,6 +3,8 @@ import cv2
 import numpy as np
 import logging
 
+cv2.setNumThreads(2)
+
 logger = logging.getLogger("liveness_detector_v4")
 
 class LivenessDetectorV4:
@@ -398,14 +400,24 @@ class LivenessDetectorV4:
         if len(valid_frames) < 3:
             primary_pad = self.evaluate_deep_pad(valid_frames[0][0], valid_frames[0][1])
             is_live = bool(primary_pad.get("is_live", False) and primary_pad.get("live_prob", 0.0) >= 0.60)
+            reason = primary_pad.get("reason", "Single-frame Deep PAD verified")
+            if is_live and len(valid_frames) == 2:
+                # Check for duplicate static photo presentation
+                try:
+                    diff = np.mean(np.abs(valid_frames[0][0].astype(float) - cv2.resize(valid_frames[1][0], (valid_frames[0][0].shape[1], valid_frames[0][0].shape[0])).astype(float)))
+                    if diff < 0.5:
+                        is_live = False
+                        reason = "Static photo presentation detected (identical duplicate frames submitted)"
+                except Exception:
+                    pass
             return {
                 "is_live": is_live,
                 "liveness_score": primary_pad.get("live_prob", 0.0),
                 "deep_pad_pass": is_live,
                 "active_challenge_pass": True,
-                "temporal_pass": True,
+                "temporal_pass": is_live,
                 "status": "LIVE_VERIFIED" if is_live else "SPOOF_DETECTED",
-                "reason": primary_pad.get("reason", "Single-frame Deep PAD verified")
+                "reason": reason
             }
 
         # 1. Deep PAD on each valid face crop

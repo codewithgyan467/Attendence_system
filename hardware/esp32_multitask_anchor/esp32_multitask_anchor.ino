@@ -50,7 +50,7 @@ String generateRollingToken(uint32_t slot, const String &prefix = "") {
   mbedtls_md_free(&ctx);
 
   char hexToken[9];
-  snprintf(hexToken, sizeof(hexToken), "%02x%02x%02x%02x", hmacResult[0],
+  snprintf(hexToken, sizeof(hexToken), "%02X%02X%02X%02X", hmacResult[0],
            hmacResult[1], hmacResult[2], hmacResult[3]);
   return String(hexToken);
 }
@@ -68,8 +68,12 @@ class TokenCharCallbacks : public NimBLECharacteristicCallbacks {
               NimBLEConnInfo &connInfo) override {
     uint32_t slot = getCurrentSlot();
     String token = generateRollingToken(slot);
-    String response = String(BEACON_ID) + ":" + String(slot) + ":" + token;
-    pCharacteristic->setValue(response.c_str());
+    // Compact 19-byte ASCII payload: <ANCHOR_ID>|<STEP_HEX>|<HMAC_8HEX>
+    // e.g. A01|0001A4|9F8E7D6C (never truncates on iOS CoreBluetooth 20-byte default MTU)
+    char compactPayload[24];
+    snprintf(compactPayload, sizeof(compactPayload), "%s|%06X|%s",
+             "A01", (unsigned int)(slot & 0xFFFFFF), token.c_str());
+    pCharacteristic->setValue(compactPayload);
   }
 };
 
@@ -138,6 +142,7 @@ void setup() {
   wifiMulti.run();
 
   NimBLEDevice::init(SHORT_BLE_NAME);
+  NimBLEDevice::setMTU(128);
   NimBLEDevice::setPower(ESP_PWR_LVL_N6);
 
   NimBLEServer *pServer = NimBLEDevice::createServer();

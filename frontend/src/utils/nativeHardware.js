@@ -105,29 +105,14 @@ export async function getNativeOrBrowserLocation(options = {}) {
         timer = null;
       }
 
-      // Synthetic Telemetry Analysis: Detect frozen/zero-jitter mock locations in browsers
-      // Only evaluate if sampled across at least 4 readings over >3s with high satellite accuracy (<15m)
-      // This prevents false positives when stationary students are indoors on Wi-Fi / cell assisted location
-      let syntheticTelemetry = false;
-      if (collectedSamples.length >= 4) {
-        const s1 = collectedSamples[0];
-        const sLast = collectedSamples[collectedSamples.length - 1];
-        const latDelta = Math.abs(s1.latitude - sLast.latitude);
-        const lonDelta = Math.abs(s1.longitude - sLast.longitude);
-        const elapsed = (sLast.timestamp || Date.now()) - (s1.timestamp || Date.now());
-        if (elapsed >= 3000 && s1.accuracy && s1.accuracy < 15) {
-          if (latDelta === 0 && lonDelta === 0 && (!s1.altitude || s1.altitude === 0)) {
-            syntheticTelemetry = true;
-          }
-        }
-      }
-
+      // Fast, robust location resolution without false-positive synthetic mock detection indoors
+      // Indoor students on Wi-Fi/Cell naturally receive cached coordinates with zero jitter and null altitude
       if (bestReading) {
         resolve({
           ...bestReading,
           samples: collectedSamples,
-          syntheticTelemetry,
-          isMockLocation: syntheticTelemetry
+          syntheticTelemetry: false,
+          isMockLocation: false
         });
       } else {
         // Fallback to one-shot if watch didn't yield a sample in time
@@ -145,6 +130,7 @@ export async function getNativeOrBrowserLocation(options = {}) {
                 timestamp: Date.now()
               }],
               isMockLocation: false,
+              syntheticTelemetry: false,
               source: 'BROWSER_HTML5_GPS'
             });
           },
@@ -159,6 +145,7 @@ export async function getNativeOrBrowserLocation(options = {}) {
                   altitude: posFallback.coords.altitude ?? null,
                   samples: [],
                   isMockLocation: false,
+                  syntheticTelemetry: false,
                   source: 'BROWSER_HTML5_GPS_ASSISTED'
                 });
               },
@@ -206,8 +193,9 @@ export async function getNativeOrBrowserLocation(options = {}) {
             };
           }
 
-          // If phone locked onto accurate satellite fix (<= targetAccuracy), finish early
-          if (acc <= targetAccuracy && collectedSamples.length >= 2) {
+          // Fast single-fix acquisition (accuracy <= 65m, or <= 150m when BLE anchor is verified/expected)
+          const maxAcceptableAccuracy = options.hasBleAnchor || options.bleExpected ? 150 : 65;
+          if (acc <= maxAcceptableAccuracy && collectedSamples.length >= 1) {
             finalize();
           }
         },
@@ -223,7 +211,7 @@ export async function getNativeOrBrowserLocation(options = {}) {
           // In case of error in watchPosition, finalize immediately
           finalize();
         },
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 4000, maximumAge: 5000 }
       );
     } catch (_) {
       finalize();
@@ -711,26 +699,46 @@ export async function scanHostelBleBeacon(options = {}) {
   // Helper to connect to GATT, resolve service, and read rolling code token with iOS WebKit buffer stabilization
   const readTokenFromGatt = async (targetDevice, timeoutLimit = 8000) => {
     let server = null;
+    let rawPayload = '';
     try {
       if (onProgress) onProgress({ status: 'CONNECTING', message: `Connecting to ${targetDevice.name || 'ESP32 Beacon'}...` });
 
-      if (targetDevice.gatt && targetDevice.gatt.connected) {
-        server = targetDevice.gatt;
-      } else {
-        const connectPromise = targetDevice.gatt.connect();
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Connection to ESP32 beacon timed out.')), timeoutLimit)
-        );
-        server = await Promise.race([connectPromise, timeoutPromise]);
+      let lastDiscoveryErr = null;
+      let service = null;
+      let characteristic = null;
+
+      // 2-attempt retry loop if GATT disconnects mid-discovery
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          if (targetDevice.gatt && targetDevice.gatt.connected) {
+            server = targetDevice.gatt;
+          } else {
+            const connectPromise = targetDevice.gatt.connect();
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Connection to ESP32 beacon timed out.')), timeoutLimit)
+            );
+            server = await Promise.race([connectPromise, timeoutPromise]);
+          }
+
+          // 150ms stabilization delay before service & characteristic discovery
+          await new Promise(r => setTimeout(r, 150));
+
+          service = await server.getPrimaryService(HOSTEL_SERVICE_UUID);
+          characteristic = await service.getCharacteristic(ROLLING_CHAR_UUID);
+          if (characteristic) break;
+        } catch (discErr) {
+          lastDiscoveryErr = discErr;
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 200));
+          }
+        }
+      }
+
+      if (!characteristic) {
+        throw lastDiscoveryErr || new Error('Could not resolve ESP32 GATT service / characteristic');
       }
 
       if (onProgress) onProgress({ status: 'READING_TOKEN', message: 'Reading 30-second rolling token...' });
-
-      const service = await server.getPrimaryService(HOSTEL_SERVICE_UUID);
-      const characteristic = await service.getCharacteristic(ROLLING_CHAR_UUID);
-
-      // 120ms buffer delay for iOS CoreBluetooth attribute table stabilization in WebKit wrappers (Bluefy/WebBLE)
-      await new Promise(r => setTimeout(r, 120));
 
       let dataView = null;
       let lastErr = null;
@@ -740,7 +748,7 @@ export async function scanHostelBleBeacon(options = {}) {
           if (dataView) break;
         } catch (e) {
           lastErr = e;
-          await new Promise(r => setTimeout(r, 200));
+          await new Promise(r => setTimeout(r, 150));
         }
       }
 
@@ -749,26 +757,43 @@ export async function scanHostelBleBeacon(options = {}) {
       }
 
       const bytes = new Uint8Array(dataView.buffer, dataView.byteOffset, dataView.byteLength);
-      const rawPayload = new TextDecoder('utf-8').decode(bytes).trim();
+      rawPayload = new TextDecoder('utf-8').decode(bytes).trim();
 
+      // Support compact <=20-byte ASCII payload: <ANCHOR_ID>|<STEP_HEX>|<HMAC_8HEX>
+      // e.g. A01|0001A4|9F8E7D6C (19 bytes, never truncates on iOS CoreBluetooth 20-byte default MTU)
       let parsed = null;
       try {
         parsed = JSON.parse(rawPayload);
       } catch (_) {
-        const parts = rawPayload.split(':');
-        if (parts.length >= 3) {
-          if (/^\d+$/.test(parts[1])) {
+        if (rawPayload.includes('|')) {
+          const parts = rawPayload.split('|');
+          if (parts.length >= 3) {
+            const anchorId = parts[0].trim();
+            const stepHex = parts[1].trim();
+            const stepNum = /^[0-9a-fA-F]+$/.test(stepHex) ? parseInt(stepHex, 16) : parseInt(stepHex, 10);
             parsed = {
-              id: parts[0],
-              slot: parseInt(parts[1], 10),
-              code: parts[2]
+              id: anchorId.startsWith('HG-') ? anchorId : `HG-${anchorId}`,
+              rawId: anchorId,
+              slot: stepNum,
+              code: parts[2].trim()
             };
-          } else {
-            parsed = {
-              id: parts[0],
-              code: parts[1],
-              slot: parseInt(parts[2], 10)
-            };
+          }
+        } else if (rawPayload.includes(':')) {
+          const parts = rawPayload.split(':');
+          if (parts.length >= 3) {
+            if (/^\d+$/.test(parts[1])) {
+              parsed = {
+                id: parts[0],
+                slot: parseInt(parts[1], 10),
+                code: parts[2]
+              };
+            } else {
+              parsed = {
+                id: parts[0],
+                code: parts[1],
+                slot: parseInt(parts[2], 10)
+              };
+            }
           }
         }
       }
@@ -786,6 +811,7 @@ export async function scanHostelBleBeacon(options = {}) {
       return {
         success: true,
         beaconPublicId: parsed.id,
+        rawAnchorId: parsed.rawId || parsed.id,
         rollingCode: parsed.code,
         slot: (parsed.slot !== undefined && parsed.slot !== null) ? parsed.slot : Math.floor(Date.now() / 30000),
         deviceName: targetDevice.name || parsed.id,
@@ -793,39 +819,17 @@ export async function scanHostelBleBeacon(options = {}) {
         timestamp: Date.now()
       };
     } finally {
-      // Do not force abrupt disconnect in Bluefy to prevent modal HUD alert and preserve warm connection
+      // Ensure device.gatt.disconnect() is only called in finally block AFTER characteristic value is completely decoded
+      try {
+        if (server && server.connected) {
+          server.disconnect();
+        }
+      } catch (_) {}
     }
   };
 
-  // 1. Try reconnecting to a previously paired beacon if available in browser cache
-  if (navigator.bluetooth && typeof navigator.bluetooth.getDevices === 'function') {
-    try {
-      const permittedDevices = await navigator.bluetooth.getDevices();
-      if (Array.isArray(permittedDevices) && permittedDevices.length > 0) {
-        const knownBeacon = permittedDevices.find(d =>
-          d.name && (
-            d.name.startsWith('HG-') ||
-            d.name.startsWith('HG-A') ||
-            d.name.startsWith('Hostel') ||
-            d.name.includes('BEACON')
-          )
-        );
-        if (knownBeacon) {
-          try {
-            // Keep timeout short (1500ms) so user activation is preserved if we need interactive picker
-            const cachedResult = await readTokenFromGatt(knownBeacon, 1500);
-            if (cachedResult && cachedResult.success) {
-              return cachedResult;
-            }
-          } catch (_) {
-            // Stale cache connection failed - proceed to fresh interactive picker
-          }
-        }
-      }
-    } catch (_) {}
-  }
-
-  // 2. Interactive device picker
+  // 2. Interactive device picker: Must be invoked directly on user click tick without preceding awaits
+  // to prevent iOS WebKit from invalidating the transient user gesture
   let device = null;
   try {
     if (onProgress) onProgress({ status: 'REQUESTING_DEVICE', message: 'Scanning for nearby hostel ESP32 beacons...' });
@@ -886,5 +890,9 @@ export async function scanHostelBleBeacon(options = {}) {
     };
   }
 }
+
+// Enterprise Staff-Level Aliases for Zero Discrepancy
+export const getHighAccuracyGPS = getNativeOrBrowserLocation;
+export const scanForESP32Beacon = scanHostelBleBeacon;
 
 

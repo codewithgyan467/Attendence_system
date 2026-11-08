@@ -150,10 +150,14 @@ class BleBeaconService {
     if (!publicIdOrId) return null;
     const cleanId = String(publicIdOrId).trim();
 
-    // Alias mapping for 29-byte legacy BLE advertisement frames (Fix 9)
+    // Alias mapping for 29-byte legacy and compact 19-byte BLE advertisement frames
     const ALIAS_MAP = {
+      'A01': 'HG-BEACON-BLKA-01',
       'HG-A01': 'HG-BEACON-BLKA-01',
+      'HG-A1': 'HG-BEACON-BLKA-01',
+      'A02': 'HG-BEACON-BLKA-02',
       'HG-A02': 'HG-BEACON-BLKA-02',
+      'HG-A2': 'HG-BEACON-BLKA-02',
       'HG-BEACON-BLKA-01': 'HG-BEACON-BLKA-01',
       'HG-BEACON-BLKA-02': 'HG-BEACON-BLKA-02'
     };
@@ -327,7 +331,8 @@ class BleBeaconService {
     }
 
     const currentServerSlot = Math.floor(Date.now() / 30000);
-    let candidateSlots = [];
+    const hasClientSlot = timestampSlot !== null && typeof timestampSlot !== 'undefined' && !isNaN(Number(timestampSlot));
+    const clientSlotNum = hasClientSlot ? Number(timestampSlot) : null;
 
     // Support database secret, active firmware secret, and seeded defaults
     const candidateSecrets = Array.from(new Set([
@@ -343,100 +348,81 @@ class BleBeaconService {
       cleanCode ? beacon.beacon_public_id : null,
       'HG-BEACON-BLKA-01',
       'HG-A01',
+      'A01',
       'HG-BEACON-BLKA-02',
-      'HG-A02'
+      'HG-A02',
+      'A02'
     ].filter(Boolean)));
 
-    // Determine candidate slots: NTP-synchronized vs Server-Anchored Epoch-0
-    const hasClientSlot = timestampSlot !== null && typeof timestampSlot !== 'undefined' && !isNaN(Number(timestampSlot));
-    const clientSlotNum = hasClientSlot ? Number(timestampSlot) : null;
-    const isNtpSynced = !hasClientSlot || Math.abs(clientSlotNum - currentServerSlot) <= 5;
+    // Multi-Window Candidate Slots:
+    // 1. If anchor is already calibrated with bootEpochOffset, check monotonic progression and expected window
+    // 2. If uncalibrated, allow client submitted step window (±5 slots) so offline board passes on first tap
+    // 3. Always check ±10 step window around server's Unix epoch step
+    const slotSet = new Set();
+    const anchorState = this.beaconAnchorStates.get(beacon.beacon_public_id);
 
-    if (isNtpSynced) {
-      // 5-Slot Window: [-2, -1, 0, +1, +2] gives ±60s clock drift absorption for bare ESP32
-      const slotSet = new Set([
-        currentServerSlot - 2, currentServerSlot - 1, currentServerSlot, currentServerSlot + 1, currentServerSlot + 2
-      ]);
-      if (clientSlotNum !== null) {
-        for (let d = -2; d <= 2; d++) slotSet.add(clientSlotNum + d);
+    if (anchorState) {
+      // Anchored offline board: Compute expected slot from server's current epoch minus recorded boot offset
+      const expectedSlot = currentServerSlot - anchorState.bootEpochOffset;
+      // If client submitted a slot that is in the PAST relative to the anchor's monotonic progression, reject replay
+      if (clientSlotNum !== null && clientSlotNum < anchorState.lastVerifiedEsp32Slot - 1) {
+        return {
+          isValid: false,
+          reason: 'ROLLING_CODE_MISMATCH',
+          message: 'Historical or replayed token slot rejected for calibrated anchor.',
+          beaconPublicId: beacon.beacon_public_id
+        };
       }
-      candidateSlots = Array.from(slotSet);
+      for (let d = -5; d <= 5; d++) {
+        slotSet.add(expectedSlot + d);
+      }
+      if (clientSlotNum !== null && Math.abs(clientSlotNum - expectedSlot) <= 5) {
+        slotSet.add(clientSlotNum);
+      }
+      for (let d = -10; d <= 10; d++) {
+        slotSet.add(currentServerSlot + d);
+      }
     } else {
-      // Offline bare ESP32 booted at Unix Epoch 0 (1970)
-      let anchor = this.beaconAnchorStates.get(beacon.beacon_public_id);
-      const isLowBootSlot = clientSlotNum <= 5;
-      const isIdleTimeout = anchor ? (Date.now() - anchor.lastUpdatedAt > 10 * 60 * 1000) : true;
-      const isSlotRegressed = anchor && (clientSlotNum < anchor.lastVerifiedEsp32Slot);
-      // Reboot criteria: freshly rebooted board (slot <= 5), or idle timeout (>10 min), or missing anchor
-      const isRebootDetected = anchor && ((isSlotRegressed && isLowBootSlot) || isIdleTimeout);
-
-      if (!anchor || isRebootDetected) {
-        // Calibration Phase: Initial check-in after boot/reboot/idle
-        const testSlots = [clientSlotNum - 2, clientSlotNum - 1, clientSlotNum, clientSlotNum + 1, clientSlotNum + 2];
-        let matchedInitSlot = null;
-
-        for (const sec of candidateSecrets) {
-          for (const id of candidateIds) {
-            for (const s of testSlots) {
-              const expected = this.computeRollingToken(sec, id, s);
-              if (cleanCode === expected || cleanCode === expected.substring(0, 6)) {
-                matchedInitSlot = s;
-                break;
-              }
-            }
-            if (matchedInitSlot !== null) break;
-          }
-          if (matchedInitSlot !== null) break;
+      // Uncalibrated / Initial tap:
+      if (clientSlotNum !== null) {
+        for (let d = -5; d <= 5; d++) {
+          slotSet.add(clientSlotNum + d);
         }
-
-        if (matchedInitSlot !== null) {
-          // Calibrate anchor state
-          anchor = {
-            bootEpochOffset: currentServerSlot - matchedInitSlot,
-            lastVerifiedEsp32Slot: matchedInitSlot,
-            lastVerifiedServerSlot: currentServerSlot,
-            lastUpdatedAt: Date.now()
-          };
-          this.beaconAnchorStates.set(beacon.beacon_public_id, anchor);
-          candidateSlots = [matchedInitSlot];
-        } else {
-          // Uncalibrated candidate slots
-          candidateSlots = testSlots;
-        }
-      } else {
-        // Active phase (<10 min since last checkin): Reject if slot regressed backwards into the past (historical replay)
-        if (isSlotRegressed) {
-          return {
-            isValid: false,
-            reason: 'ROLLING_CODE_MISMATCH',
-            beaconPublicId: beacon.beacon_public_id
-          };
-        }
-
-        // Monotonically advancing slot: Allow expected slots from server clock AND client slot ±2 (absorbs internal RC drift)
-        const expectedEsp32Slot = currentServerSlot - anchor.bootEpochOffset;
-        const slotSet = new Set([
-          expectedEsp32Slot - 2, expectedEsp32Slot - 1, expectedEsp32Slot, expectedEsp32Slot + 1, expectedEsp32Slot + 2,
-          clientSlotNum - 2, clientSlotNum - 1, clientSlotNum, clientSlotNum + 1, clientSlotNum + 2
-        ]);
-        candidateSlots = Array.from(slotSet);
+      }
+      for (let d = -10; d <= 10; d++) {
+        slotSet.add(currentServerSlot + d);
       }
     }
+
+    const candidateSlots = Array.from(slotSet);
 
     let matchFound = false;
     let matchedSlot = null;
 
+    // Comprehensive cryptographic HMAC-SHA256 signature evaluation
     for (const sec of candidateSecrets) {
-      for (const id of candidateIds) {
-        for (const slot of candidateSlots) {
-          const expectedToken = this.computeRollingToken(sec, id, slot);
-          if (cleanCode === expectedToken || cleanCode === expectedToken.substring(0, 6)) {
+      const keyBuf = this._getSecretBuffer(sec);
+      for (const slot of candidateSlots) {
+        // Test standard ID:slot format
+        for (const id of candidateIds) {
+          const expected = this.computeRollingToken(sec, id, slot);
+          if (cleanCode === expected || cleanCode === expected.substring(0, 6)) {
             matchFound = true;
             matchedSlot = slot;
             break;
           }
         }
         if (matchFound) break;
+
+        // Test slot-only HMAC (compact format)
+        try {
+          const slotHmac = crypto.createHmac('sha256', keyBuf).update(String(slot)).digest('hex').toUpperCase();
+          if (cleanCode === slotHmac.substring(0, 8) || cleanCode === slotHmac.substring(0, 6)) {
+            matchFound = true;
+            matchedSlot = slot;
+            break;
+          }
+        } catch (_) {}
       }
       if (matchFound) break;
     }
@@ -459,24 +445,13 @@ class BleBeaconService {
         this.tokenReplayCache.set(studentSlotKey, { timestamp: now, studentId, slot: matchedSlot });
       }
 
-      // Update anchor monotonically if offline beacon (dynamically re-syncs offset to track RC drift)
-      if (clientSlotNum !== null && Math.abs(matchedSlot - currentServerSlot) > 5) {
-        let anc = this.beaconAnchorStates.get(beacon.beacon_public_id);
-        if (!anc) {
-          anc = {
-            bootEpochOffset: currentServerSlot - matchedSlot,
-            lastVerifiedEsp32Slot: matchedSlot,
-            lastVerifiedServerSlot: currentServerSlot,
-            lastUpdatedAt: Date.now()
-          };
-          this.beaconAnchorStates.set(beacon.beacon_public_id, anc);
-        } else {
-          anc.bootEpochOffset = currentServerSlot - matchedSlot; // Continuously tracks RC clock drift
-          anc.lastVerifiedEsp32Slot = Math.max(anc.lastVerifiedEsp32Slot, matchedSlot);
-          anc.lastVerifiedServerSlot = currentServerSlot;
-          anc.lastUpdatedAt = Date.now();
-        }
-      }
+      // Automatically update/calibrate anchor state offset to track RC drift smoothly
+      this.beaconAnchorStates.set(beacon.beacon_public_id, {
+        bootEpochOffset: currentServerSlot - matchedSlot,
+        lastVerifiedEsp32Slot: matchedSlot,
+        lastVerifiedServerSlot: currentServerSlot,
+        lastUpdatedAt: Date.now()
+      });
 
       // Touch last_seen_at for telemetry monitoring (non-blocking)
       try {
@@ -491,15 +466,16 @@ class BleBeaconService {
         beaconId: beacon.id,
         beaconPublicId: beacon.beacon_public_id,
         blockName: beacon.block_name,
-        timeSkewSlots: matchedSlot - currentServerSlot
+        slot: matchedSlot,
+        calibratedOffset: currentServerSlot - matchedSlot
       };
     }
 
     return {
       isValid: false,
       reason: 'ROLLING_CODE_MISMATCH',
-      beaconId: beacon.id,
-      blockName: beacon.block_name
+      message: 'Bluetooth rolling code signature verification failed. Please verify hardware anchor firmware key.',
+      beaconPublicId: beacon.beacon_public_id
     };
   }
 

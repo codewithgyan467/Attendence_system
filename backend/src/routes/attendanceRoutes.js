@@ -217,16 +217,27 @@ const verifyLocationHandler = async (req, res) => {
         reasonCode = 'OUTSIDE_GEOFENCE';
         detailsMsg = `Layer 1 Rejected (Outside Geofence Perimeter): You are ${evaluation.distanceMeters}m away from the hostel center. Permitted boundary is ${evaluation.allowedRadius}m. Please return inside the hostel perimeter.`;
       } else if (isStrictBleFailed) {
-        if (evaluation.reasonCodes?.includes('L3_BLE_TOKEN_REPLAY')) {
-          reasonCode = 'BLE_TOKEN_REPLAY_COOLDOWN';
-          detailsMsg = 'Beacon Token Cooldown: This 30-second Bluetooth verification token was already registered. Please wait 10-15 seconds for your ESP32 board to broadcast the next token slot, then tap Retry.';
-        } else if (evaluation.reasonCodes?.includes('L3_BLE_SIGNAL_WEAK')) {
-          reasonCode = 'STRICT_BLE_ANCHOR_FAILED';
-          detailsMsg = `Layer 2 Rejected (Hardware Bluetooth Beacon Signal Attenuated): Your phone's Bluetooth signal is too weak (below -78 dBm). Please stand within 10-12m line-of-sight of your floor ESP32 anchor.`;
-        } else if (evaluation.reasonCodes?.includes('L3_BLE_CODE_MISMATCH')) {
-          reasonCode = 'STRICT_BLE_ANCHOR_FAILED';
-          detailsMsg = 'Layer 2 Verification: Bluetooth signal detected from anchor, but rolling cryptographic token is synchronizing. Please wait 5-10 seconds and tap Retry.';
+        if (req.body.ble_proof) {
+          // A beacon payload was actually received from the client device
+          const detectedId = req.body.ble_proof.beaconPublicId || req.body.ble_proof.rawAnchorId || 'Floor Anchor';
+          if (evaluation.reasonCodes?.includes('L3_BLE_TOKEN_REPLAY')) {
+            reasonCode = 'BLE_TOKEN_REPLAY_COOLDOWN';
+            detailsMsg = 'Beacon Token Cooldown: This 30-second Bluetooth verification token was already registered. Please wait 10-15 seconds for your ESP32 board to broadcast the next token slot, then tap Retry.';
+          } else if (evaluation.reasonCodes?.includes('L3_BLE_SIGNAL_WEAK')) {
+            reasonCode = 'STRICT_BLE_ANCHOR_FAILED';
+            detailsMsg = `Layer 2 Rejected (Hardware Bluetooth Beacon Signal Attenuated): Your phone's Bluetooth signal is too weak (below -78 dBm). Please stand within 10-12m line-of-sight of your floor ESP32 anchor.`;
+          } else if (evaluation.reasonCodes?.includes('L3_BLE_UNKNOWN_ANCHOR')) {
+            reasonCode = 'STRICT_BLE_ANCHOR_FAILED';
+            detailsMsg = `Layer 2 Check: Detected Bluetooth anchor (${detectedId}) is not registered in the hostel configuration.`;
+          } else if (evaluation.reasonCodes?.includes('L3_BLE_CODE_MISMATCH')) {
+            reasonCode = 'STRICT_BLE_ANCHOR_FAILED';
+            detailsMsg = `Layer 2 Verification: Bluetooth signal detected from anchor (${detectedId}), but cryptographic HMAC signature verification failed. Please check anchor secret key.`;
+          } else {
+            reasonCode = 'STRICT_BLE_ANCHOR_FAILED';
+            detailsMsg = `Layer 2 Verification: Bluetooth signal detected from anchor (${detectedId}), but token verification did not pass. Please tap Retry.`;
+          }
         } else {
+          // No beacon was detected at all by the student's phone
           reasonCode = 'STRICT_BLE_ANCHOR_FAILED';
           detailsMsg = `Layer 2 Rejected (Hardware Bluetooth Beacon Range Required): You are inside the hostel perimeter (${evaluation.distanceMeters}m from center), but outside the physical radio range of an authorized hostel ESP32 beacon (~15m) or the board is powered OFF. Please walk near your floor ESP32 anchor and ensure it is powered ON to proceed to face verification.`;
         }

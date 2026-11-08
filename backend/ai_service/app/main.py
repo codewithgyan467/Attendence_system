@@ -2,6 +2,8 @@ import os
 import logging
 import cv2
 import numpy as np
+
+cv2.setNumThreads(2)
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -204,27 +206,20 @@ def verify_live(req: VerifyLiveRequest):
                 details={"message": "No face detected in live camera frame. Position your face in center."}
             )
 
-    # 2. Build temporal frame burst for multi-frame sequence evaluation
-    temporal_bgr_frames = []
-    temporal_raw_faces = []
+    # 2. Build temporal frame sequence starting with primary frame detection
+    eval_bgr_frames = [primary_bgr]
+    eval_raw_faces = [raw_face]
 
     if req.temporal_frames and len(req.temporal_frames) > 0:
-        for f_b64 in req.temporal_frames[:12]: # evaluate up to 12 burst frames
+        for f_b64 in req.temporal_frames[:3]: # evaluate up to 3 burst frames for fast inference
             try:
                 frame_bgr = face_engine.decode_image(f_b64)
                 _, _, f_face = face_engine.detect_and_align_face(frame_bgr)
-                temporal_bgr_frames.append(frame_bgr)
-                temporal_raw_faces.append(f_face)
+                if f_face is not None:
+                    eval_bgr_frames.append(frame_bgr)
+                    eval_raw_faces.append(f_face)
             except Exception as t_err:
                 logger.warning(f"Error decoding temporal burst frame: {t_err}")
-
-    # If client submitted burst frames, evaluate the burst sequence directly
-    if len(temporal_bgr_frames) >= 3:
-        eval_bgr_frames = temporal_bgr_frames
-        eval_raw_faces = temporal_raw_faces
-    else:
-        eval_bgr_frames = [primary_bgr]
-        eval_raw_faces = [raw_face]
 
     # 3. Enterprise v4.0 Multi-Frame PAD & Active Challenge Evaluation
     if not req.allow_simulation_fallback:
