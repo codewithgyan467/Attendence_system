@@ -337,6 +337,16 @@ class BleBeaconService {
       '5737e7a308d843d6d5a63d512167d7a89702853d9e8ef53195e08472cc1d2859'
     ].filter(Boolean)));
 
+    // Support canonical beacon public ID, short broadcast alias, and database identifiers
+    const candidateIds = Array.from(new Set([
+      beacon.beacon_public_id,
+      cleanCode ? beacon.beacon_public_id : null,
+      'HG-BEACON-BLKA-01',
+      'HG-A01',
+      'HG-BEACON-BLKA-02',
+      'HG-A02'
+    ].filter(Boolean)));
+
     // Determine candidate slots: NTP-synchronized vs Server-Anchored Epoch-0
     const hasClientSlot = timestampSlot !== null && typeof timestampSlot !== 'undefined' && !isNaN(Number(timestampSlot));
     const clientSlotNum = hasClientSlot ? Number(timestampSlot) : null;
@@ -354,23 +364,27 @@ class BleBeaconService {
     } else {
       // Offline bare ESP32 booted at Unix Epoch 0 (1970)
       let anchor = this.beaconAnchorStates.get(beacon.beacon_public_id);
-      // Reboot criteria: low boot slot (<=5) indicating fresh boot, or first check-in after idle timeout (>10 min)
       const isLowBootSlot = clientSlotNum <= 5;
       const isIdleTimeout = anchor ? (Date.now() - anchor.lastUpdatedAt > 10 * 60 * 1000) : true;
-      const isRebootDetected = anchor && (clientSlotNum < anchor.lastVerifiedEsp32Slot) && (isLowBootSlot || isIdleTimeout);
+      const isSlotRegressed = anchor && (clientSlotNum < anchor.lastVerifiedEsp32Slot);
+      // Reboot criteria: freshly rebooted board (slot <= 5), or idle timeout (>10 min), or missing anchor
+      const isRebootDetected = anchor && ((isSlotRegressed && isLowBootSlot) || isIdleTimeout);
 
       if (!anchor || isRebootDetected) {
-        // Calibration Phase: Initial check-in after boot/reboot
+        // Calibration Phase: Initial check-in after boot/reboot/idle
         const testSlots = [clientSlotNum - 2, clientSlotNum - 1, clientSlotNum, clientSlotNum + 1, clientSlotNum + 2];
         let matchedInitSlot = null;
 
         for (const sec of candidateSecrets) {
-          for (const s of testSlots) {
-            const expected = this.computeRollingToken(sec, beacon.beacon_public_id, s);
-            if (cleanCode === expected || cleanCode === expected.substring(0, 6)) {
-              matchedInitSlot = s;
-              break;
+          for (const id of candidateIds) {
+            for (const s of testSlots) {
+              const expected = this.computeRollingToken(sec, id, s);
+              if (cleanCode === expected || cleanCode === expected.substring(0, 6)) {
+                matchedInitSlot = s;
+                break;
+              }
             }
+            if (matchedInitSlot !== null) break;
           }
           if (matchedInitSlot !== null) break;
         }
@@ -386,14 +400,26 @@ class BleBeaconService {
           this.beaconAnchorStates.set(beacon.beacon_public_id, anchor);
           candidateSlots = [matchedInitSlot];
         } else {
-          // Uncalibrated and invalid code
+          // Uncalibrated candidate slots
           candidateSlots = testSlots;
         }
       } else {
-        // Anchored Phase: Enforce expectedEsp32Slot = currentServerSlot - bootEpochOffset
+        // Active phase (<10 min since last checkin): Reject if slot regressed backwards into the past (historical replay)
+        if (isSlotRegressed) {
+          return {
+            isValid: false,
+            reason: 'ROLLING_CODE_MISMATCH',
+            beaconPublicId: beacon.beacon_public_id
+          };
+        }
+
+        // Monotonically advancing slot: Allow expected slots from server clock AND client slot ±2 (absorbs internal RC drift)
         const expectedEsp32Slot = currentServerSlot - anchor.bootEpochOffset;
-        // Strictly only accept ±2 slots around server-anchored expected slot
-        candidateSlots = [expectedEsp32Slot - 2, expectedEsp32Slot - 1, expectedEsp32Slot, expectedEsp32Slot + 1, expectedEsp32Slot + 2];
+        const slotSet = new Set([
+          expectedEsp32Slot - 2, expectedEsp32Slot - 1, expectedEsp32Slot, expectedEsp32Slot + 1, expectedEsp32Slot + 2,
+          clientSlotNum - 2, clientSlotNum - 1, clientSlotNum, clientSlotNum + 1, clientSlotNum + 2
+        ]);
+        candidateSlots = Array.from(slotSet);
       }
     }
 
@@ -401,13 +427,16 @@ class BleBeaconService {
     let matchedSlot = null;
 
     for (const sec of candidateSecrets) {
-      for (const slot of candidateSlots) {
-        const expectedToken = this.computeRollingToken(sec, beacon.beacon_public_id, slot);
-        if (cleanCode === expectedToken || cleanCode === expectedToken.substring(0, 6)) {
-          matchFound = true;
-          matchedSlot = slot;
-          break;
+      for (const id of candidateIds) {
+        for (const slot of candidateSlots) {
+          const expectedToken = this.computeRollingToken(sec, id, slot);
+          if (cleanCode === expectedToken || cleanCode === expectedToken.substring(0, 6)) {
+            matchFound = true;
+            matchedSlot = slot;
+            break;
+          }
         }
+        if (matchFound) break;
       }
       if (matchFound) break;
     }
@@ -430,7 +459,7 @@ class BleBeaconService {
         this.tokenReplayCache.set(studentSlotKey, { timestamp: now, studentId, slot: matchedSlot });
       }
 
-      // Update anchor monotonically if offline beacon
+      // Update anchor monotonically if offline beacon (dynamically re-syncs offset to track RC drift)
       if (clientSlotNum !== null && Math.abs(matchedSlot - currentServerSlot) > 5) {
         let anc = this.beaconAnchorStates.get(beacon.beacon_public_id);
         if (!anc) {
@@ -442,6 +471,7 @@ class BleBeaconService {
           };
           this.beaconAnchorStates.set(beacon.beacon_public_id, anc);
         } else {
+          anc.bootEpochOffset = currentServerSlot - matchedSlot; // Continuously tracks RC clock drift
           anc.lastVerifiedEsp32Slot = Math.max(anc.lastVerifiedEsp32Slot, matchedSlot);
           anc.lastVerifiedServerSlot = currentServerSlot;
           anc.lastUpdatedAt = Date.now();

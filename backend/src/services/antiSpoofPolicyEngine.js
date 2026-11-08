@@ -312,6 +312,8 @@ class AntiSpoofPolicyEngine {
             reasonCodes.push('L3_BLE_TOKEN_REPLAY');
           } else if (beaconRes.reason === 'BEACON_SIGNAL_TOO_WEAK') {
             reasonCodes.push('L3_BLE_SIGNAL_WEAK');
+          } else if (beaconRes.reason === 'ROLLING_CODE_MISMATCH' || beaconRes.reason === 'INVALID_ROLLING_CODE') {
+            reasonCodes.push('L3_BLE_CODE_MISMATCH');
           } else {
             reasonCodes.push('L3_BLE_STRICT_REJECTED');
           }

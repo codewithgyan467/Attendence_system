@@ -223,6 +223,9 @@ const verifyLocationHandler = async (req, res) => {
         } else if (evaluation.reasonCodes?.includes('L3_BLE_SIGNAL_WEAK')) {
           reasonCode = 'STRICT_BLE_ANCHOR_FAILED';
           detailsMsg = `Layer 2 Rejected (Hardware Bluetooth Beacon Signal Attenuated): Your phone's Bluetooth signal is too weak (below -78 dBm). Please stand within 10-12m line-of-sight of your floor ESP32 anchor.`;
+        } else if (evaluation.reasonCodes?.includes('L3_BLE_CODE_MISMATCH')) {
+          reasonCode = 'STRICT_BLE_ANCHOR_FAILED';
+          detailsMsg = 'Layer 2 Verification: Bluetooth signal detected from anchor, but rolling cryptographic token is synchronizing. Please wait 5-10 seconds and tap Retry.';
         } else {
           reasonCode = 'STRICT_BLE_ANCHOR_FAILED';
           detailsMsg = `Layer 2 Rejected (Hardware Bluetooth Beacon Range Required): You are inside the hostel perimeter (${evaluation.distanceMeters}m from center), but outside the physical radio range of an authorized hostel ESP32 beacon (~15m) or the board is powered OFF. Please walk near your floor ESP32 anchor and ensure it is powered ON to proceed to face verification.`;
