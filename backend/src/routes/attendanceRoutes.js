@@ -217,10 +217,16 @@ const verifyLocationHandler = async (req, res) => {
         reasonCode = 'OUTSIDE_GEOFENCE';
         detailsMsg = `Layer 1 Rejected (Outside Geofence Perimeter): You are ${evaluation.distanceMeters}m away from the hostel center. Permitted boundary is ${evaluation.allowedRadius}m. Please return inside the hostel perimeter.`;
       } else if (isStrictBleFailed) {
-        reasonCode = 'STRICT_BLE_ANCHOR_FAILED';
-        detailsMsg = evaluation.reasonCodes?.includes('L3_BLE_SIGNAL_WEAK')
-          ? `Layer 2 Rejected (Hardware Bluetooth Beacon Signal Attenuated): Your phone's Bluetooth signal is too weak (below -78 dBm). Please stand within 10-12m line-of-sight of your floor ESP32 anchor.`
-          : `Layer 2 Rejected (Hardware Bluetooth Beacon Range Required): You are inside the hostel perimeter (${evaluation.distanceMeters}m from center), but outside the physical radio range of an authorized hostel ESP32 beacon (~15m) or the board is powered OFF. Please walk near your floor ESP32 anchor and ensure it is powered ON to proceed to face verification.`;
+        if (evaluation.reasonCodes?.includes('L3_BLE_TOKEN_REPLAY')) {
+          reasonCode = 'BLE_TOKEN_REPLAY_COOLDOWN';
+          detailsMsg = 'Beacon Token Cooldown: This 30-second Bluetooth verification token was already registered. Please wait 10-15 seconds for your ESP32 board to broadcast the next token slot, then tap Retry.';
+        } else if (evaluation.reasonCodes?.includes('L3_BLE_SIGNAL_WEAK')) {
+          reasonCode = 'STRICT_BLE_ANCHOR_FAILED';
+          detailsMsg = `Layer 2 Rejected (Hardware Bluetooth Beacon Signal Attenuated): Your phone's Bluetooth signal is too weak (below -78 dBm). Please stand within 10-12m line-of-sight of your floor ESP32 anchor.`;
+        } else {
+          reasonCode = 'STRICT_BLE_ANCHOR_FAILED';
+          detailsMsg = `Layer 2 Rejected (Hardware Bluetooth Beacon Range Required): You are inside the hostel perimeter (${evaluation.distanceMeters}m from center), but outside the physical radio range of an authorized hostel ESP32 beacon (~15m) or the board is powered OFF. Please walk near your floor ESP32 anchor and ensure it is powered ON to proceed to face verification.`;
+        }
       } else {
         reasonCode = 'LOCATION_POLICY_DENIED';
         detailsMsg = `Location rejected: Policy risk score (${evaluation.totalRiskScore}/100) exceeded safety threshold.`;

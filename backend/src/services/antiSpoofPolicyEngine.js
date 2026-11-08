@@ -308,7 +308,13 @@ class AntiSpoofPolicyEngine {
           // Strict Hardware Lock: Physical ESP32 radio signal mandatory for ALL devices
           riskScore += 85;
           unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
-          reasonCodes.push(beaconRes.reason === 'BEACON_SIGNAL_TOO_WEAK' ? 'L3_BLE_SIGNAL_WEAK' : 'L3_BLE_STRICT_REJECTED');
+          if (beaconRes.reason === 'TOKEN_ALREADY_USED' || beaconRes.reason === 'SLOT_ALREADY_USED') {
+            reasonCodes.push('L3_BLE_TOKEN_REPLAY');
+          } else if (beaconRes.reason === 'BEACON_SIGNAL_TOO_WEAK') {
+            reasonCodes.push('L3_BLE_SIGNAL_WEAK');
+          } else {
+            reasonCodes.push('L3_BLE_STRICT_REJECTED');
+          }
         } else if (bleMode === 'SOFT_ANCHOR') {
           riskScore += 45;
           requiresStepUp = true;

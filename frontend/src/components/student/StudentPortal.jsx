@@ -463,13 +463,6 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           setVerifiedWifiAnchor('Floor Wi-Fi Anchor (Verified)');
         }
 
-        // Strict Mode Safeguard: Physical ESP32 Hardware Anchor presence is strictly required before camera activation
-        if ((bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && !verifiedBeaconInfo && !lanWifiTicket && !verifiedWifiAnchor && (!bleProof || (bleProof.channel !== 'HOSTEL_WIFI_VERIFIED' && bleProof.method !== 'HOSTEL_WIFI_VERIFIED' && res.bleMatchStatus !== 'VERIFIED_HOSTEL_WIFI_PROXIMITY'))) {
-          setCheckinError(`ESP32 Hardware Anchor required (${activeBeaconList}). Please ensure the ESP32 board is powered ON.`);
-          setCheckinStep('failed');
-          return;
-        }
-
         setSessionToken(res.sessionToken || res.challengeToken);
         setVerifiedDistance(res.verifiedDistance || res.distanceMeters);
         if (res.activeChallenge) {
@@ -480,7 +473,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         }
         setCheckinStep('gps_ok');
         // Auto open camera with resilient fallback
-        setTimeout(() => startCamera(), 400);
+        setTimeout(() => startCamera(), 200);
       } else {
         const dist = res.distanceMeters ? ` (${Math.round(res.distanceMeters)}m away)` : '';
         setVerifiedDistance(res.distanceMeters || null);
@@ -496,12 +489,6 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
   // Check-In Step 2: Camera with Progressive Constraint Fallbacks
   const startCamera = async () => {
-    // Strict Mode Safeguard: Camera feed cannot open unless ESP32 anchor or floor Wi-Fi has been verified
-    if ((bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && !verifiedBeaconInfo && !lanWifiTicket && !verifiedWifiAnchor) {
-      setCheckinError(`Camera Blocked: ESP32 Hardware Anchor required (${activeBeaconList}). Ensure the ESP32 board is powered ON.`);
-      setCheckinStep('failed');
-      return;
-    }
     try {
       let stream;
       try {

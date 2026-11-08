@@ -24,7 +24,7 @@
 #define WIFI_PASS_3 "paword123"
 
 #define BACKEND_SYNC_URL \
-  "https://hostelguard-backend.onrender.com/api/admin/wifi-cluster/esp32-heartbeat"
+  "https://hostelguard-backend-oimp.onrender.com/api/v1/admin/wifi-cluster/esp32-heartbeat"
 #define SHARED_SECRET "hostelguard_super_secret_32b_key"
 
 #define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
