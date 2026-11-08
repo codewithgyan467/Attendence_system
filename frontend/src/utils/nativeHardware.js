@@ -702,12 +702,99 @@ export async function scanHostelBleBeacon(options = {}) {
     };
   }
 
-  if (onProgress) onProgress({ status: 'REQUESTING_DEVICE', message: 'Scanning for nearby hostel ESP32 beacons...' });
-
-  let device = null;
   const isIOSDevice = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
-  // Fix 6: Check navigator.bluetooth.getDevices() first to reconnect silently without opening the chooser dialog
+  // Helper to connect to GATT, resolve service, and read rolling code token with iOS WebKit buffer stabilization
+  const readTokenFromGatt = async (targetDevice, timeoutLimit = 8000) => {
+    let server = null;
+    try {
+      if (onProgress) onProgress({ status: 'CONNECTING', message: `Connecting to ${targetDevice.name || 'ESP32 Beacon'}...` });
+
+      const connectPromise = targetDevice.gatt.connect();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Connection to ESP32 beacon timed out.')), timeoutLimit)
+      );
+
+      server = await Promise.race([connectPromise, timeoutPromise]);
+
+      if (onProgress) onProgress({ status: 'READING_TOKEN', message: 'Reading 30-second rolling token...' });
+
+      const service = await server.getPrimaryService(HOSTEL_SERVICE_UUID);
+      const characteristic = await service.getCharacteristic(ROLLING_CHAR_UUID);
+
+      // 120ms buffer delay for iOS CoreBluetooth attribute table stabilization in WebKit wrappers (Bluefy/WebBLE)
+      await new Promise(r => setTimeout(r, 120));
+
+      let dataView = null;
+      let lastErr = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          dataView = await characteristic.readValue();
+          if (dataView) break;
+        } catch (e) {
+          lastErr = e;
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
+
+      if (!dataView) {
+        throw lastErr || new Error('Could not read rolling code from beacon characteristic');
+      }
+
+      const bytes = new Uint8Array(dataView.buffer, dataView.byteOffset, dataView.byteLength);
+      const rawPayload = new TextDecoder('utf-8').decode(bytes).trim();
+
+      let parsed = null;
+      try {
+        parsed = JSON.parse(rawPayload);
+      } catch (_) {
+        const parts = rawPayload.split(':');
+        if (parts.length >= 3) {
+          if (/^\d+$/.test(parts[1])) {
+            parsed = {
+              id: parts[0],
+              slot: parseInt(parts[1], 10),
+              code: parts[2]
+            };
+          } else {
+            parsed = {
+              id: parts[0],
+              code: parts[1],
+              slot: parseInt(parts[2], 10)
+            };
+          }
+        }
+      }
+
+      if (!parsed || !parsed.id || !parsed.code) {
+        return {
+          success: false,
+          reason: 'MALFORMED_BEACON_PAYLOAD',
+          message: `Invalid rolling code format received from beacon: ${rawPayload}`
+        };
+      }
+
+      if (onProgress) onProgress({ status: 'SUCCESS', message: `Verified signal from ${parsed.id}` });
+
+      return {
+        success: true,
+        beaconPublicId: parsed.id,
+        rollingCode: parsed.code,
+        slot: parsed.slot || Math.floor(Date.now() / 30000),
+        deviceName: targetDevice.name || parsed.id,
+        rawPayload,
+        timestamp: Date.now()
+      };
+    } finally {
+      if (server && server.connected) {
+        try { server.disconnect(); } catch (_) {}
+      } else if (targetDevice?.gatt?.connected) {
+        try { targetDevice.gatt.disconnect(); } catch (_) {}
+      }
+    }
+  };
+
+  // 1. Try reconnecting to a previously paired beacon if available in browser cache
   if (navigator.bluetooth && typeof navigator.bluetooth.getDevices === 'function') {
     try {
       const permittedDevices = await navigator.bluetooth.getDevices();
@@ -721,52 +808,56 @@ export async function scanHostelBleBeacon(options = {}) {
           )
         );
         if (knownBeacon) {
-          device = knownBeacon;
-          if (onProgress) onProgress({ status: 'RECONNECTING', message: `Silently connecting to saved beacon (${device.name})...` });
+          try {
+            const cachedResult = await readTokenFromGatt(knownBeacon, 3500);
+            if (cachedResult && cachedResult.success) {
+              return cachedResult;
+            }
+          } catch (_) {
+            // Stale cache connection failed - proceed to fresh interactive picker
+          }
         }
       }
-    } catch (_) {
-      // Fallback to interactive requestDevice chooser
-    }
+    } catch (_) {}
   }
 
-  // If not previously paired, open interactive device chooser with broadened 29-byte short filters
-  if (!device) {
-    try {
-      device = await navigator.bluetooth.requestDevice({
-        filters: [
-          { namePrefix: 'HG-A' },
-          { namePrefix: 'HG-' },
-          { namePrefix: 'HG-BEACON' },
-          { namePrefix: 'HostelGuard' },
-          { namePrefix: 'Hostel' },
-          { services: [HOSTEL_SERVICE_UUID] }
-        ],
-        optionalServices: [HOSTEL_SERVICE_UUID]
-      });
-    } catch (err) {
-      const errMsg = err?.message || (typeof err === 'string' ? err : 'Bluetooth pairing was cancelled');
-      if (err?.name === 'NotFoundError') {
-        return {
-          success: false,
-          reason: 'BLUETOOTH_DEVICE_NOT_SELECTED',
-          message: 'No hostel beacon was selected, or Bluetooth pairing was cancelled. Please ensure your floor ESP32 board is plugged into power and Bluetooth is enabled on your phone.'
-        };
-      }
-      if (err?.name === 'SecurityError') {
-        return {
-          success: false,
-          reason: 'BLUETOOTH_SECURITY_RESTRICTION',
-          message: 'Bluetooth access blocked. Please check browser site permissions and ensure HTTPS or localhost is active.'
-        };
-      }
+  // 2. Interactive device picker
+  let device = null;
+  try {
+    if (onProgress) onProgress({ status: 'REQUESTING_DEVICE', message: 'Scanning for nearby hostel ESP32 beacons...' });
+    device = await navigator.bluetooth.requestDevice({
+      filters: [
+        { namePrefix: 'HG-A' },
+        { namePrefix: 'HG-' },
+        { namePrefix: 'HG-BEACON' },
+        { namePrefix: 'HostelGuard' },
+        { namePrefix: 'Hostel' },
+        { services: [HOSTEL_SERVICE_UUID] }
+      ],
+      optionalServices: [HOSTEL_SERVICE_UUID]
+    });
+  } catch (err) {
+    const errMsg = err?.message || (typeof err === 'string' ? err : 'Bluetooth pairing was cancelled');
+    if (err?.name === 'NotFoundError') {
       return {
         success: false,
-        reason: 'BLUETOOTH_REQUEST_ERROR',
-        isIOS: isIOSDevice,
-        message: errMsg || 'Bluetooth scan failed. Please ensure the ESP32 board is powered ON and Bluetooth is enabled.'
+        reason: 'BLUETOOTH_DEVICE_NOT_SELECTED',
+        message: 'No hostel beacon was selected, or Bluetooth pairing was cancelled. Please select your floor beacon (e.g. HG-A01) in the list.'
       };
     }
+    if (err?.name === 'SecurityError') {
+      return {
+        success: false,
+        reason: 'BLUETOOTH_SECURITY_RESTRICTION',
+        message: 'Bluetooth access blocked. Please check browser site permissions and ensure HTTPS is active.'
+      };
+    }
+    return {
+      success: false,
+      reason: 'BLUETOOTH_REQUEST_ERROR',
+      isIOS: isIOSDevice,
+      message: errMsg || 'Bluetooth scan failed. Please ensure the ESP32 board is powered ON and Bluetooth is enabled.'
+    };
   }
 
   if (!device) {
@@ -777,98 +868,17 @@ export async function scanHostelBleBeacon(options = {}) {
     };
   }
 
-  if (onProgress) onProgress({ status: 'CONNECTING', message: `Connecting to ${device.name || 'ESP32 Beacon'}...` });
-
-  let server = null;
+  // 3. Read token from the freshly selected device
   try {
-    const connectPromise = device.gatt.connect();
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Connection to ESP32 beacon timed out.')), timeoutMs)
-    );
-
-    server = await Promise.race([connectPromise, timeoutPromise]);
-
-    if (onProgress) onProgress({ status: 'READING_TOKEN', message: 'Reading 30-second rolling token...' });
-
-    const service = await server.getPrimaryService(HOSTEL_SERVICE_UUID);
-
-    // Phone Time-Mule write - write server-signed time sync packet to keep offline ESP32 clock calibrated
-    if (timeSyncPacket) {
-      try {
-        const timeChar = await service.getCharacteristic(TIME_SYNC_CHAR_UUID);
-        if (timeChar) {
-          const encoder = new TextEncoder();
-          await timeChar.writeValue(encoder.encode(String(timeSyncPacket)));
-        }
-      } catch (_) {
-        // Non-blocking time calibration relay
-      }
-    }
-
-    const characteristic = await service.getCharacteristic(ROLLING_CHAR_UUID);
-    const dataView = await characteristic.readValue();
-
-    // Safely decode the DataView returned by readValue()
-    const bytes = new Uint8Array(dataView.buffer, dataView.byteOffset, dataView.byteLength);
-    const rawPayload = new TextDecoder('utf-8').decode(bytes).trim();
-
-    let parsed = null;
-    try {
-      parsed = JSON.parse(rawPayload);
-    } catch (_) {
-      const parts = rawPayload.split(':');
-      if (parts.length >= 3) {
-        if (/^\d+$/.test(parts[1])) {
-          parsed = {
-            id: parts[0],
-            slot: parseInt(parts[1], 10),
-            code: parts[2]
-          };
-        } else {
-          parsed = {
-            id: parts[0],
-            code: parts[1],
-            slot: parseInt(parts[2], 10)
-          };
-        }
-      }
-    }
-
-    if (!parsed || !parsed.id || !parsed.code) {
-      return {
-        success: false,
-        reason: 'MALFORMED_BEACON_PAYLOAD',
-        message: `Invalid rolling code format received from beacon: ${rawPayload}`
-      };
-    }
-
-    if (onProgress) onProgress({ status: 'SUCCESS', message: `Verified signal from ${parsed.id}` });
-
-    return {
-      success: true,
-      beaconPublicId: parsed.id,
-      rollingCode: parsed.code,
-      slot: parsed.slot || Math.floor(Date.now() / 30000),
-      deviceName: device.name || parsed.id,
-      rawPayload,
-      timestamp: Date.now()
-    };
+    return await readTokenFromGatt(device, 8000);
   } catch (err) {
     const errMsg = err?.message || (typeof err === 'string' ? err : 'BLE read interrupted');
-    const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
     return {
       success: false,
       reason: 'GATT_COMMUNICATION_ERROR',
-      isIOS,
+      isIOS: isIOSDevice,
       message: `Failed to read beacon token: ${errMsg}`
     };
-  } finally {
-    // Release ESP32 GATT connection slots cleanly AFTER readValue resolves
-    if (server && server.connected) {
-      try { server.disconnect(); } catch (_) {}
-    } else if (device?.gatt?.connected) {
-      try { device.gatt.disconnect(); } catch (_) {}
-    }
   }
 }
 
