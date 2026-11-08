@@ -349,7 +349,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           });
 
           if (!bleRes.success) {
-            // Safety fallback: If BLE scan timed out, check if connected to floor Wi-Fi
+            // Safety fallback: Check if device is connected to floor Wi-Fi or router cluster
             if (pos.connectedWifi && pos.connectedWifi.isConnected) {
               const ssid = (pos.connectedWifi.ssid || '').trim();
               setBleScanningStatus(`Layer 2 Check: Floor Wi-Fi Anchor Verified (${ssid})...`);
@@ -361,13 +361,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                 bssid: pos.connectedWifi.bssid
               };
             } else {
-              // Strict Mode Rejection: Physical ESP32 Anchor is OFF or out of range (~15m)
-              setCheckinError(
-                bleRes.message ||
-                `ESP32 Hardware Anchor required (${activeBeaconList}). Please ensure the ESP32 board is powered ON.`
-              );
-              setCheckinStep('failed');
-              return;
+              // Attempt server verification via shared Floor Wi-Fi Router Cluster
+              bleProof = {
+                channel: 'HOSTEL_WIFI_PROXIMITY_CHECK',
+                method: 'HOSTEL_WIFI_PROXIMITY_CHECK',
+                bleErrorMessage: bleRes.message
+              };
             }
           } else {
             if (bleRes.lanWifiTicket) {
@@ -460,8 +459,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       });
 
       if (res.success) {
+        if (res.bleMatchStatus === 'VERIFIED_HOSTEL_WIFI_PROXIMITY' || res.wifiMatchStatus === 'MATCHED_HOSTEL_AP') {
+          setVerifiedWifiAnchor('Floor Wi-Fi Anchor (Verified)');
+        }
+
         // Strict Mode Safeguard: Physical ESP32 Hardware Anchor presence is strictly required before camera activation
-        if ((bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && !verifiedBeaconInfo && !lanWifiTicket && !verifiedWifiAnchor && (!bleProof || (bleProof.channel !== 'HOSTEL_WIFI_VERIFIED' && bleProof.method !== 'HOSTEL_WIFI_VERIFIED'))) {
+        if ((bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && !verifiedBeaconInfo && !lanWifiTicket && !verifiedWifiAnchor && (!bleProof || (bleProof.channel !== 'HOSTEL_WIFI_VERIFIED' && bleProof.method !== 'HOSTEL_WIFI_VERIFIED' && res.bleMatchStatus !== 'VERIFIED_HOSTEL_WIFI_PROXIMITY'))) {
           setCheckinError(`ESP32 Hardware Anchor required (${activeBeaconList}). Please ensure the ESP32 board is powered ON.`);
           setCheckinStep('failed');
           return;

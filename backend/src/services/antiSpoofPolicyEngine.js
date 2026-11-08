@@ -21,7 +21,7 @@ async function getCachedWifiMetadata(allQueryFn) {
   );
   let clusterRows = [];
   try {
-    clusterRows = await allQueryFn(`SELECT ssid FROM site_wifi_clusters WHERE status = 'ONLINE'`);
+    clusterRows = await allQueryFn(`SELECT ssid, wan_ip, local_ip FROM site_wifi_clusters WHERE status = 'ONLINE'`);
   } catch (_) {}
 
   cachedWifiMetadata = { activeAPs, clusterRows };
@@ -166,6 +166,20 @@ class AntiSpoofPolicyEngine {
       if (c.ssid) knownSSIDs.add(normSsid(c.ssid));
     });
 
+    // Check shared Router WAN IP matching active ESP32 Wi-Fi cluster
+    const cleanClientIp = clientIp ? String(clientIp).replace(/^::ffff:/, '').trim() : '';
+    const isClientOnClusterWan = Boolean(
+      cleanClientIp && cleanClientIp !== '127.0.0.1' && (
+        wifiClusterService.clusterWanIps.has(cleanClientIp) ||
+        clusterRows.some((c) => c.wan_ip && String(c.wan_ip).replace(/^::ffff:/, '').trim() === cleanClientIp)
+      )
+    );
+
+    if (isClientOnClusterWan) {
+      wifiMatchStatus = 'MATCHED_HOSTEL_AP';
+      riskScore = Math.max(0, riskScore - 20); // Multi-router physical proximity booster
+    }
+
     if (wifiScan && (wifiScan.status === 'SCAN_OK' || Array.isArray(wifiScan.bssids) || wifiScan.connectedSsid)) {
       const matchedBssid = Array.isArray(wifiScan.bssids) && wifiScan.bssids.some((b) => knownBSSIDs.has(String(b).toLowerCase()));
       const matchedSsid = wifiScan.connectedSsid && knownSSIDs.has(normSsid(wifiScan.connectedSsid));
@@ -173,7 +187,7 @@ class AntiSpoofPolicyEngine {
       if (matchedBssid || matchedSsid) {
         wifiMatchStatus = 'MATCHED_HOSTEL_AP';
         riskScore = Math.max(0, riskScore - 20); // Confidence booster
-      } else {
+      } else if (!isClientOnClusterWan) {
         wifiMatchStatus = 'NO_HOSTEL_AP_FOUND';
         if (distanceMeters < 5 && activeAPs.length > 0) {
           // GPS claims exact center, but zero hostel APs visible
@@ -183,9 +197,11 @@ class AntiSpoofPolicyEngine {
         }
       }
     } else if (wifiScan && (wifiScan.status === 'SCAN_THROTTLED' || wifiScan.status === 'PERMISSION_DENIED')) {
-      wifiMatchStatus = wifiScan.status;
-      // Zero penalty for OS throttling, but marks for step-up verification
-      requiresStepUp = true;
+      if (!isClientOnClusterWan) {
+        wifiMatchStatus = wifiScan.status;
+        // Zero penalty for OS throttling, but marks for step-up verification
+        requiresStepUp = true;
+      }
     }
 
     // --- Layer 3: Physical Radio Anchoring: Bluetooth Low Energy (BLE) ---
@@ -300,11 +316,11 @@ class AntiSpoofPolicyEngine {
           riskScore += 20;
         }
       }
-    } else if (bleProof && (bleProof.channel === 'HOSTEL_WIFI_VERIFIED' || bleProof.method === 'HOSTEL_WIFI_VERIFIED')) {
+    } else if (bleProof && (bleProof.channel === 'HOSTEL_WIFI_PROXIMITY_CHECK' || bleProof.channel === 'HOSTEL_WIFI_VERIFIED' || bleProof.method === 'HOSTEL_WIFI_VERIFIED')) {
       const bssidMatch = bleProof.bssid && knownBSSIDs.has(String(bleProof.bssid).toLowerCase());
       const ssidMatch = bleProof.ssid && knownSSIDs.has(normSsid(bleProof.ssid));
 
-      if (bssidMatch || ssidMatch || wifiMatchStatus === 'MATCHED_HOSTEL_AP') {
+      if (bssidMatch || ssidMatch || wifiMatchStatus === 'MATCHED_HOSTEL_AP' || isClientOnClusterWan) {
         bleMatchStatus = 'VERIFIED_HOSTEL_WIFI_PROXIMITY';
         riskScore = Math.max(0, riskScore - 25);
         requiresStepUp = false;
@@ -322,8 +338,8 @@ class AntiSpoofPolicyEngine {
     } else {
       // No BLE or LAN proof provided
       if (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') {
-        // Physical anchor check: If device is connected to the authorized hostel Wi-Fi (e.g. AEC_Student_5.0)
-        if (wifiMatchStatus === 'MATCHED_HOSTEL_AP') {
+        // Physical anchor check: If device is connected to the authorized hostel Wi-Fi (e.g. AEC_Student_5.0) or shared router WAN
+        if (wifiMatchStatus === 'MATCHED_HOSTEL_AP' || isClientOnClusterWan) {
           bleMatchStatus = 'VERIFIED_HOSTEL_WIFI_PROXIMITY';
           riskScore = Math.max(0, riskScore - 25);
           requiresStepUp = false;

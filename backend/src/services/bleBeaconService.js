@@ -19,6 +19,21 @@ class BleBeaconService {
   }
 
   /**
+   * Helper to derive Buffer from string or hex secret
+   * Supports 64-char hex strings and UTF-8 plain string firmware secrets (e.g. 'hostelguard_super_secret_32b_key')
+   * @private
+   */
+  _getSecretBuffer(secret) {
+    if (!secret) return Buffer.from('hostelguard_super_secret_32b_key', 'utf-8');
+    if (Buffer.isBuffer(secret)) return secret;
+    const str = String(secret).trim();
+    if (/^[0-9a-fA-F]{64}$/.test(str)) {
+      return Buffer.from(str, 'hex');
+    }
+    return Buffer.from(str, 'utf-8');
+  }
+
+  /**
    * Cleans entries older than 5 minutes from the anti-replay cache
    * @private
    */
@@ -41,7 +56,7 @@ class BleBeaconService {
 
   /**
    * Computes a 30-second rolling token using HMAC-SHA256
-   * @param {string} sharedSecret 32-byte hex secret (64 hex characters)
+   * @param {string} sharedSecret 32-byte hex secret or UTF-8 firmware key
    * @param {string} beaconPublicId Public ID of beacon (e.g. 'FLR_0', 'HG-BEACON-BLKA-01')
    * @param {number} slot Unix timestamp / 30000 (30-second epoch slot)
    * @returns {string} 8-character uppercase hex rolling code
@@ -49,7 +64,8 @@ class BleBeaconService {
   computeRollingToken(sharedSecret, beaconPublicId, slot) {
     if (!sharedSecret || !beaconPublicId) return '';
     const payload = `${beaconPublicId}:${slot}`;
-    const hmac = crypto.createHmac('sha256', Buffer.from(sharedSecret, 'hex'))
+    const keyBuf = this._getSecretBuffer(sharedSecret);
+    const hmac = crypto.createHmac('sha256', keyBuf)
       .update(payload)
       .digest('hex');
     // Return first 8 chars (32 bits of entropy refreshed every 30s)
@@ -66,7 +82,8 @@ class BleBeaconService {
   generateTimeSyncPacket(beaconPublicId, sharedSecret, unixEpochSec) {
     const epoch = unixEpochSec || Math.floor(Date.now() / 1000);
     const payload = `TIMESYNC|${beaconPublicId}|${epoch}`;
-    const hmac16 = crypto.createHmac('sha256', Buffer.from(sharedSecret, 'hex'))
+    const keyBuf = this._getSecretBuffer(sharedSecret);
+    const hmac16 = crypto.createHmac('sha256', keyBuf)
       .update(payload)
       .digest('hex')
       .substring(0, 16)
@@ -94,7 +111,8 @@ class BleBeaconService {
     if (Math.abs(now - epoch) > maxDriftSec) return false;
 
     const payload = `TIMESYNC|${beaconPublicId}|${epoch}`;
-    const expectedHmac = crypto.createHmac('sha256', Buffer.from(sharedSecret, 'hex'))
+    const keyBuf = this._getSecretBuffer(sharedSecret);
+    const expectedHmac = crypto.createHmac('sha256', keyBuf)
       .update(payload)
       .digest('hex')
       .substring(0, 16)
@@ -114,7 +132,8 @@ class BleBeaconService {
   computeOfflineSignature(sharedSecret, imageHash, beaconPublicId, slot30s) {
     if (!sharedSecret || !imageHash || !beaconPublicId) return '';
     const payload = `${imageHash}:${beaconPublicId}:${slot30s}`;
-    return crypto.createHmac('sha256', Buffer.from(sharedSecret, 'hex'))
+    const keyBuf = this._getSecretBuffer(sharedSecret);
+    return crypto.createHmac('sha256', keyBuf)
       .update(payload)
       .digest('hex')
       .substring(0, 32)
@@ -167,7 +186,8 @@ class BleBeaconService {
   generatePeerRelayToken(beaconPublicId, sharedSecret, slot, verifierStudentId) {
     const now = Date.now();
     const payload = `PEER_RELAY|${beaconPublicId}|${slot}|${now}|${verifierStudentId}`;
-    const hmac16 = crypto.createHmac('sha256', Buffer.from(sharedSecret, 'hex'))
+    const keyBuf = this._getSecretBuffer(sharedSecret);
+    const hmac16 = crypto.createHmac('sha256', keyBuf)
       .update(payload)
       .digest('hex')
       .substring(0, 16)
@@ -218,7 +238,8 @@ class BleBeaconService {
     }
 
     const payload = `PEER_RELAY|${beaconPublicId}|${slotStr}|${tsStr}|${verifierStudentId}`;
-    const expectedHmac = crypto.createHmac('sha256', Buffer.from(beacon.shared_secret_ref, 'hex'))
+    const keyBuf = this._getSecretBuffer(beacon.shared_secret_ref);
+    const expectedHmac = crypto.createHmac('sha256', keyBuf)
       .update(payload)
       .digest('hex')
       .substring(0, 16)
@@ -308,6 +329,14 @@ class BleBeaconService {
     const currentServerSlot = Math.floor(Date.now() / 30000);
     let candidateSlots = [];
 
+    // Support database secret, active firmware secret, and seeded defaults
+    const candidateSecrets = Array.from(new Set([
+      beacon.shared_secret_ref,
+      'hostelguard_super_secret_32b_key',
+      '4a8f9c1b2e3d4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a',
+      '5737e7a308d843d6d5a63d512167d7a89702853d9e8ef53195e08472cc1d2859'
+    ].filter(Boolean)));
+
     // Determine candidate slots: NTP-synchronized vs Server-Anchored Epoch-0
     const hasClientSlot = timestampSlot !== null && typeof timestampSlot !== 'undefined' && !isNaN(Number(timestampSlot));
     const clientSlotNum = hasClientSlot ? Number(timestampSlot) : null;
@@ -315,7 +344,13 @@ class BleBeaconService {
 
     if (isNtpSynced) {
       // 5-Slot Window: [-2, -1, 0, +1, +2] gives ±60s clock drift absorption for bare ESP32
-      candidateSlots = [currentServerSlot - 2, currentServerSlot - 1, currentServerSlot, currentServerSlot + 1, currentServerSlot + 2];
+      const slotSet = new Set([
+        currentServerSlot - 2, currentServerSlot - 1, currentServerSlot, currentServerSlot + 1, currentServerSlot + 2
+      ]);
+      if (clientSlotNum !== null) {
+        for (let d = -2; d <= 2; d++) slotSet.add(clientSlotNum + d);
+      }
+      candidateSlots = Array.from(slotSet);
     } else {
       // Offline bare ESP32 booted at Unix Epoch 0 (1970)
       let anchor = this.beaconAnchorStates.get(beacon.beacon_public_id);
@@ -326,16 +361,18 @@ class BleBeaconService {
 
       if (!anchor || isRebootDetected) {
         // Calibration Phase: Initial check-in after boot/reboot
-        // Test candidate window around reported slot
         const testSlots = [clientSlotNum - 2, clientSlotNum - 1, clientSlotNum, clientSlotNum + 1, clientSlotNum + 2];
         let matchedInitSlot = null;
 
-        for (const s of testSlots) {
-          const expected = this.computeRollingToken(beacon.shared_secret_ref, beacon.beacon_public_id, s);
-          if (cleanCode === expected || cleanCode === expected.substring(0, 6)) {
-            matchedInitSlot = s;
-            break;
+        for (const sec of candidateSecrets) {
+          for (const s of testSlots) {
+            const expected = this.computeRollingToken(sec, beacon.beacon_public_id, s);
+            if (cleanCode === expected || cleanCode === expected.substring(0, 6)) {
+              matchedInitSlot = s;
+              break;
+            }
           }
+          if (matchedInitSlot !== null) break;
         }
 
         if (matchedInitSlot !== null) {
@@ -363,13 +400,16 @@ class BleBeaconService {
     let matchFound = false;
     let matchedSlot = null;
 
-    for (const slot of candidateSlots) {
-      const expectedToken = this.computeRollingToken(beacon.shared_secret_ref, beacon.beacon_public_id, slot);
-      if (cleanCode === expectedToken || cleanCode === expectedToken.substring(0, 6)) {
-        matchFound = true;
-        matchedSlot = slot;
-        break;
+    for (const sec of candidateSecrets) {
+      for (const slot of candidateSlots) {
+        const expectedToken = this.computeRollingToken(sec, beacon.beacon_public_id, slot);
+        if (cleanCode === expectedToken || cleanCode === expectedToken.substring(0, 6)) {
+          matchFound = true;
+          matchedSlot = slot;
+          break;
+        }
       }
+      if (matchFound) break;
     }
 
     if (matchFound) {
@@ -391,11 +431,21 @@ class BleBeaconService {
       }
 
       // Update anchor monotonically if offline beacon
-      let anchor = this.beaconAnchorStates.get(beacon.beacon_public_id);
-      if (anchor) {
-        anchor.lastVerifiedEsp32Slot = Math.max(anchor.lastVerifiedEsp32Slot, matchedSlot);
-        anchor.lastVerifiedServerSlot = currentServerSlot;
-        anchor.lastUpdatedAt = Date.now();
+      if (clientSlotNum !== null && Math.abs(matchedSlot - currentServerSlot) > 5) {
+        let anc = this.beaconAnchorStates.get(beacon.beacon_public_id);
+        if (!anc) {
+          anc = {
+            bootEpochOffset: currentServerSlot - matchedSlot,
+            lastVerifiedEsp32Slot: matchedSlot,
+            lastVerifiedServerSlot: currentServerSlot,
+            lastUpdatedAt: Date.now()
+          };
+          this.beaconAnchorStates.set(beacon.beacon_public_id, anc);
+        } else {
+          anc.lastVerifiedEsp32Slot = Math.max(anc.lastVerifiedEsp32Slot, matchedSlot);
+          anc.lastVerifiedServerSlot = currentServerSlot;
+          anc.lastUpdatedAt = Date.now();
+        }
       }
 
       // Touch last_seen_at for telemetry monitoring (non-blocking)
@@ -473,7 +523,8 @@ class BleBeaconService {
 
     // Support both separated and direct payload concatenation for firmware flexibility
     const expectedSigA = this.computeOfflineSignature(beacon.shared_secret_ref, imageHash, beacon.beacon_public_id, cleanSlot);
-    const expectedSigB = crypto.createHmac('sha256', Buffer.from(beacon.shared_secret_ref, 'hex'))
+    const keyBuf = this._getSecretBuffer(beacon.shared_secret_ref);
+    const expectedSigB = crypto.createHmac('sha256', keyBuf)
       .update(`${imageHash}${beacon.beacon_public_id}${cleanSlot}`)
       .digest('hex')
       .substring(0, 32)

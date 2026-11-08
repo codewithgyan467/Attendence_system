@@ -780,17 +780,19 @@ export async function scanHostelBleBeacon(options = {}) {
         success: true,
         beaconPublicId: parsed.id,
         rollingCode: parsed.code,
-        slot: parsed.slot || Math.floor(Date.now() / 30000),
+        slot: (parsed.slot !== undefined && parsed.slot !== null) ? parsed.slot : Math.floor(Date.now() / 30000),
         deviceName: targetDevice.name || parsed.id,
         rawPayload,
         timestamp: Date.now()
       };
     } finally {
-      if (server && server.connected) {
-        try { server.disconnect(); } catch (_) {}
-      } else if (targetDevice?.gatt?.connected) {
-        try { targetDevice.gatt.disconnect(); } catch (_) {}
-      }
+      // Release GATT connection with an 800ms grace delay so iOS Bluefy doesn't show a sudden disconnected HUD alert during check-in transition
+      setTimeout(() => {
+        try {
+          if (server && server.connected) server.disconnect();
+          else if (targetDevice?.gatt?.connected) targetDevice.gatt.disconnect();
+        } catch (_) {}
+      }, 800);
     }
   };
 
