@@ -44,7 +44,7 @@ echo   [1] Connect this laptop to the floor Hostel Wi-Fi router.
 echo   [2] Ensure floor ESP32 BLE anchor (HG-BEACON) is powered ON.
 echo   [3] Students must be connected to the Hostel Wi-Fi router.
 echo   [4] Students open http://%LAN_IP%:5000 in Chrome (Android) or Bluefy (iOS).
-echo   [5] When roll-call ends, click 'Push & Sync Local Vault to Cloud DB' in Admin.
+echo   [5] When roll-call ends, click 'Push ^& Sync Local Vault to Cloud DB' in Admin.
 echo ================================================================================
 echo.
 
