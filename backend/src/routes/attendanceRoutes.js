@@ -857,14 +857,11 @@ const offlineSyncHandler = async (req, res) => {
   }
 };
 
-// Route registrations and aliases
+// Route registrations
 router.post('/challenge', attendanceLimiter, verifyLocationHandler);
 router.post('/offline-sync', attendanceLimiter, offlineSyncHandler);
 router.post('/verify-location', attendanceLimiter, verifyLocationHandler);
-router.post('/check-geofence', attendanceLimiter, verifyLocationHandler);
-
 router.post('/verify-face', attendanceLimiter, verifyFaceHandler);
-router.post('/mark', attendanceLimiter, verifyFaceHandler);
 
 // 3. Attendance Status Lookup
 router.get('/status/:identifier', async (req, res) => {
