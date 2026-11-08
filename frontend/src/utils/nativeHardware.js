@@ -762,11 +762,9 @@ export async function scanHostelBleBeacon(options = {}) {
       }
       return {
         success: false,
-        reason: isIOSDevice ? 'BLE_FALLBACK_TO_IOS_SILENT' : 'BLUETOOTH_REQUEST_ERROR',
+        reason: 'BLUETOOTH_REQUEST_ERROR',
         isIOS: isIOSDevice,
-        message: isIOSDevice
-          ? 'Apple Safari blocks Bluetooth scanning. You must use Bluefy Browser to mark attendance.'
-          : (errMsg || 'Failed to initialize Bluetooth scan. Please ensure Bluetooth is ON in Android Settings.')
+        message: errMsg || 'Bluetooth scan failed. Please ensure the ESP32 board is powered ON and Bluetooth is enabled.'
       };
     }
   }
@@ -860,7 +858,7 @@ export async function scanHostelBleBeacon(options = {}) {
     const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
     return {
       success: false,
-      reason: isIOS ? 'BLE_FALLBACK_TO_IOS_SILENT' : 'GATT_COMMUNICATION_ERROR',
+      reason: 'GATT_COMMUNICATION_ERROR',
       isIOS,
       message: `Failed to read beacon token: ${errMsg}`
     };

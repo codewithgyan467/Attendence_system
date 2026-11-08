@@ -77,6 +77,9 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     /iPad|iPhone|iPod/.test(navigator.userAgent || '') ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   );
+  // True only if running on iOS inside Safari or a browser that lacks Web Bluetooth
+  const isSafariOnIOS = isIOSDevice && (typeof navigator === 'undefined' || !navigator.bluetooth);
+
   const [bluefyQrUrl, setBluefyQrUrl] = useState('');
 
   useEffect(() => {
@@ -86,32 +89,6 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       color: { dark: '#0f172a', light: '#ffffff' }
     }).then(setBluefyQrUrl).catch(() => {});
   }, []);
-
-  // If on iOS and check-in fails due to hardware beacon/Bluetooth requirement, attempt direct redirect to Bluefy browser
-  useEffect(() => {
-    if (checkinStep === 'failed' && isIOSDevice) {
-      const errLower = (checkinError || '').toLowerCase();
-      const isBle = errLower.includes('layer 2') || errLower.includes('bluetooth') || errLower.includes('beacon') || errLower.includes('esp32') || errLower.includes('hardware') || errLower.includes('strict') || errLower.includes('safari');
-      if (isBle && typeof window !== 'undefined') {
-        const bluefyUrl = `bluefy://open?url=${encodeURIComponent(window.location.href)}`;
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = bluefyUrl;
-        document.body.appendChild(iframe);
-        const timer = setTimeout(() => {
-          try {
-            if (iframe.parentNode) document.body.removeChild(iframe);
-          } catch (_) {}
-        }, 1500);
-        return () => {
-          clearTimeout(timer);
-          try {
-            if (iframe.parentNode) document.body.removeChild(iframe);
-          } catch (_) {}
-        };
-      }
-    }
-  }, [checkinStep, checkinError, isIOSDevice]);
 
   // Dynamic beacon list from active admin configuration
   const activeBeaconList = Array.isArray(dashboard?.beacons) && dashboard.beacons.length > 0
@@ -1723,8 +1700,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                                 <LifeBuoy size={14} /> Submit Strike Appeal to Warden
                               </button>
                             </div>
-                          ) : (isBleError && isIOSDevice) ? (
-                            /* CASE C1: iOS - Bluefy Browser Required */
+                          ) : (isBleError && isSafariOnIOS) ? (
+                            /* CASE C1: Safari on iOS - Bluefy Browser Required */
                             <div className="d-flex flex-column align-items-center gap-2">
                               <div className="card border-0 shadow-sm p-3.5 rounded-3 mb-2 text-center" style={{ maxWidth: '440px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
                                 <div className="d-flex justify-content-center mb-2">
