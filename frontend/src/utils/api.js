@@ -48,42 +48,53 @@ export const probeLocalWardenIp = async (manualIp = null) => {
 
   const candidates = manualIp
     ? [manualIp.startsWith('http') ? manualIp : `http://${manualIp}`]
-    : [
-        ...(savedWarden ? [savedWarden.replace(/\/api\/v1\/?$/, '')] : []),
-        ...(browserOrigin ? [browserOrigin] : []),
+    : Array.from(new Set([
         'http://172.20.10.2:5000',
+        'http://172.20.10.3:5000',
+        'http://172.20.10.4:5000',
+        'http://172.20.10.1:5000',
         'http://192.168.137.1:5000',
+        'http://192.168.43.1:5000',
         'http://192.168.1.100:5000',
+        'http://192.168.1.1:5000',
         'http://192.168.0.100:5000',
-        'http://localhost:5000'
-      ];
+        'http://192.168.0.1:5000',
+        'http://localhost:5000',
+        ...(savedWarden ? [savedWarden.replace(/\/api\/v1\/?$/, '')] : []),
+        ...(browserOrigin ? [browserOrigin] : [])
+      ]));
 
-  // Also query cloud time-window to retrieve current wardenLanApiUrl if available
-  try {
-    const cloudRes = await fetch('https://hostelguard-backend-oimp.onrender.com/api/v1/attendance/time-window', {
-      signal: AbortSignal.timeout(2000)
-    });
-    if (cloudRes && cloudRes.ok) {
-      const cloudData = await cloudRes.json().catch(() => ({}));
-      if (cloudData?.wardenLanApiUrl && !candidates.includes(cloudData.wardenLanApiUrl)) {
-        candidates.unshift(cloudData.wardenLanApiUrl);
-      }
-    }
-  } catch (_) {}
-
-  for (let cand of candidates) {
+  const probeCandidate = async (cand) => {
     const cleanCand = cand.replace(/\/+$/, '');
     const probeUrl = cleanCand.endsWith('/api/v1') ? `${cleanCand}/health` : `${cleanCand}/api/v1/health`;
+    const res = await fetch(probeUrl, { signal: AbortSignal.timeout(1800) });
+    if (res && res.ok) {
+      const fullApi = cleanCand.endsWith('/api/v1') ? cleanCand : `${cleanCand}/api/v1`;
+      setLocalWardenUrl(fullApi);
+      return fullApi;
+    }
+    throw new Error('Candidate unreachable');
+  };
+
+  try {
+    const winnerUrl = await Promise.any(candidates.map(probeCandidate));
+    return { success: true, url: winnerUrl };
+  } catch (_) {
+    // Cloud fallback discovery if internet is available
     try {
-      const res = await fetch(probeUrl, { signal: AbortSignal.timeout(1200) });
-      if (res && res.ok) {
-        const fullApi = cleanCand.endsWith('/api/v1') ? cleanCand : `${cleanCand}/api/v1`;
-        setLocalWardenUrl(fullApi);
-        return { success: true, url: fullApi };
+      const cloudRes = await fetch('https://hostelguard-backend-oimp.onrender.com/api/v1/attendance/time-window', {
+        signal: AbortSignal.timeout(1800)
+      });
+      if (cloudRes && cloudRes.ok) {
+        const cloudData = await cloudRes.json().catch(() => ({}));
+        if (cloudData?.wardenLanApiUrl) {
+          const cloudUrl = await probeCandidate(cloudData.wardenLanApiUrl);
+          return { success: true, url: cloudUrl };
+        }
       }
     } catch (_) {}
+    return { success: false };
   }
-  return { success: false };
 };
 
 // Dynamically determine the API base URL:
@@ -231,62 +242,36 @@ async function request(endpoint, options = {}, isRetry = false) {
   } catch (networkErr) {
     // Bidirectional resilient failover between Local Warden Server and Cloud:
     if (localWarden && activeUrl.includes(localWarden)) {
-      // 1. Fast local probe for common host/hotspot IPs (e.g. iPhone hotspot 172.20.10.2, Windows hotspot 192.168.137.1)
-      const candidateIps = [
-        'http://172.20.10.2:5000/api/v1',
-        'http://192.168.137.1:5000/api/v1',
-        'http://192.168.1.100:5000/api/v1',
-        'http://192.168.0.100:5000/api/v1'
-      ].filter(u => u !== localWarden && `${u}${endpoint}` !== activeUrl);
-
-      let probedSuccess = false;
-      for (const cand of candidateIps) {
+      // 1. Fast parallel probe for active Warden LAN server (e.g. 172.20.10.2:5000, 192.168.137.1:5000)
+      const probeRes = await probeLocalWardenIp();
+      if (probeRes.success) {
         try {
-          const candUrl = `${cand}${endpoint}`;
-          const candRes = await performFetch(candUrl, 1000);
-          if (candRes && (candRes.ok || candRes.status === 401 || candRes.status === 403 || candRes.status === 400)) {
-            response = candRes;
-            probedSuccess = true;
-            setLocalWardenUrl(cand);
-            break;
-          }
+          const recoveredUrl = `${probeRes.url}${endpoint}`;
+          response = await performFetch(recoveredUrl, options.timeout || 15000);
         } catch (_) {}
       }
 
-      if (!probedSuccess) {
+      if (!response) {
         // Try Cloud fallback if internet is available
         try {
           const fallbackUrl = `${cloudBase}${endpoint}`;
           response = await performFetch(fallbackUrl, options.timeout || 15000);
         } catch (cloudErr) {
           throw new Error(
-            `Unable to reach Warden server (${localWarden}) or Cloud. Please verify your phone is on the same Wi-Fi as the Warden laptop.`
+            `Unable to reach Warden server (${localWarden}) or Cloud. Please verify your phone is on the same Wi-Fi as the Warden laptop (e.g. http://172.20.10.2:5000).`
           );
         }
       }
     } else if (activeUrl.startsWith(cloudBase)) {
       // 2. Cloud failed (Hostel has NO INTERNET): Failover automatically to local Warden server on LAN!
-      const candidateIps = [
-        ...(localWarden ? [localWarden] : []),
-        'http://172.20.10.2:5000/api/v1',
-        'http://192.168.137.1:5000/api/v1',
-        'http://192.168.1.100:5000/api/v1',
-        'http://192.168.0.100:5000/api/v1'
-      ];
-      let offlineRecovered = false;
-      for (const cand of candidateIps) {
+      const probeRes = await probeLocalWardenIp();
+      if (probeRes.success) {
         try {
-          const candUrl = `${cand}${endpoint}`;
-          const candRes = await performFetch(candUrl, 1200);
-          if (candRes && (candRes.ok || candRes.status === 401 || candRes.status === 403 || candRes.status === 400)) {
-            response = candRes;
-            offlineRecovered = true;
-            setLocalWardenUrl(cand);
-            break;
-          }
+          const recoveredUrl = `${probeRes.url}${endpoint}`;
+          response = await performFetch(recoveredUrl, options.timeout || 15000);
         } catch (_) {}
       }
-      if (!offlineRecovered) {
+      if (!response) {
         throw new Error(
           `Offline: Unable to connect to Warden server or Cloud. Please ensure your phone is connected to the Hostel Wi-Fi / Hotspot (e.g. http://172.20.10.2:5000).`
         );

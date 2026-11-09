@@ -38,6 +38,17 @@ export default function LoginPage({ onNavigateOnboarding }) {
     }
   }, []);
 
+  // Silently probe local Warden server on mount so phone auto-connects to live Warden laptop on Wi-Fi
+  useEffect(() => {
+    let active = true;
+    probeLocalWardenIp().then((res) => {
+      if (active && res.success) {
+        setCurrentWardenUrl(res.url);
+      }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!username.trim() || !password) {
@@ -138,6 +149,72 @@ export default function LoginPage({ onNavigateOnboarding }) {
 
         {/* Card Body */}
         <div className="card-body p-3 p-sm-3.5">
+          {/* Active Server Connection Status Pill */}
+          <div className="d-flex align-items-center justify-content-between px-2.5 py-1.5 mb-2.5 rounded-3 bg-light border small">
+            <div className="d-flex align-items-center gap-1.5 text-truncate" style={{ fontSize: '11px' }}>
+              <span className={`badge rounded-pill p-1 ${currentWardenUrl ? 'bg-success' : 'bg-primary'}`}> </span>
+              <span className="text-muted">Hostel Server:</span>
+              <span className="fw-semibold text-dark text-truncate">
+                {currentWardenUrl ? `Wi-Fi (${currentWardenUrl.replace('http://', '').replace('/api/v1', '')})` : 'Cloud / Auto'}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn btn-link btn-sm p-0 text-decoration-none text-primary fw-medium"
+              style={{ fontSize: '11px' }}
+              onClick={() => setShowServerSettings(!showServerSettings)}
+            >
+              {showServerSettings ? 'Close' : 'Change'}
+            </button>
+          </div>
+
+          {showServerSettings && (
+            <div className="p-2.5 mb-2.5 bg-light border rounded-3 text-start shadow-xs">
+              <div className="fw-bold small text-dark mb-1" style={{ fontSize: '11.5px' }}>
+                Warden Server Connection
+              </div>
+              <div className="text-muted small mb-2" style={{ fontSize: '11px', lineHeight: '1.35' }}>
+                Active: <code className="text-dark bg-white border px-1 py-0.5 rounded">{currentWardenUrl || 'Cloud Server'}</code>
+              </div>
+
+              <div className="d-flex gap-1.5 mb-2">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm flex-fill py-1 px-2 fw-semibold"
+                  style={{ fontSize: '11px' }}
+                  onClick={handleAutoDiscoverWarden}
+                  disabled={discoveringWarden}
+                >
+                  <RefreshCw size={12} className={discoveringWarden ? 'spin' : ''} />
+                  {discoveringWarden ? 'Detecting...' : '🔄 Auto-Detect on Wi-Fi'}
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary btn-sm py-1 px-2"
+                  style={{ fontSize: '11px' }}
+                  onClick={handleUseCloudServer}
+                >
+                  Cloud
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveManualIp} className="d-flex gap-1">
+                <input
+                  type="text"
+                  className="form-control form-control-sm"
+                  style={{ fontSize: '11px' }}
+                  placeholder="e.g. 172.20.10.2:5000"
+                  value={manualIp}
+                  onChange={(e) => setManualIp(e.target.value)}
+                />
+                <button type="submit" className="btn btn-dark btn-sm px-2 fw-semibold" style={{ fontSize: '11px' }}>
+                  Save
+                </button>
+              </form>
+            </div>
+          )}
+
           {successBanner && (
             <div className="alert alert-success d-flex align-items-center gap-2 py-1.5 px-3 small mb-2.5" role="alert">
               <CheckCircle2 size={15} className="text-success flex-shrink-0" />
@@ -294,66 +371,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
             </button>
           </div>
 
-          {/* Server Settings (Wi-Fi LAN IP / Cloud) */}
-          <div className="text-center mt-2 pt-1 border-top">
-            <button
-              type="button"
-              className="btn btn-link btn-sm text-decoration-none text-muted p-0 d-inline-flex align-items-center gap-1"
-              style={{ fontSize: '10.5px' }}
-              onClick={() => setShowServerSettings(!showServerSettings)}
-            >
-              <Wifi size={11} />
-              <span>Hostel Server: {currentWardenUrl ? `Wi-Fi (${currentWardenUrl.replace('http://', '').replace('/api/v1', '')})` : 'Cloud (Default)'}</span>
-              <Settings size={10} className="ms-0.5" />
-            </button>
 
-            {showServerSettings && (
-              <div className="p-2.5 mt-2 bg-light border rounded-3 text-start shadow-xs">
-                <div className="fw-bold small text-dark mb-1" style={{ fontSize: '11.5px' }}>
-                  Warden Server Connection
-                </div>
-                <div className="text-muted small mb-2" style={{ fontSize: '11px', lineHeight: '1.35' }}>
-                  Active: <code className="text-dark bg-white border px-1 py-0.5 rounded">{currentWardenUrl || 'Cloud Server'}</code>
-                </div>
-
-                <div className="d-flex gap-1.5 mb-2">
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm flex-fill py-1 px-2 fw-semibold"
-                    style={{ fontSize: '11px' }}
-                    onClick={handleAutoDiscoverWarden}
-                    disabled={discoveringWarden}
-                  >
-                    <RefreshCw size={12} className={discoveringWarden ? 'spin' : ''} />
-                    {discoveringWarden ? 'Detecting...' : '🔄 Auto-Detect on Wi-Fi'}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-outline-secondary btn-sm py-1 px-2"
-                    style={{ fontSize: '11px' }}
-                    onClick={handleUseCloudServer}
-                  >
-                    Cloud
-                  </button>
-                </div>
-
-                <form onSubmit={handleSaveManualIp} className="d-flex gap-1">
-                  <input
-                    type="text"
-                    className="form-control form-control-sm"
-                    style={{ fontSize: '11px' }}
-                    placeholder="e.g. 172.20.10.2:5000"
-                    value={manualIp}
-                    onChange={(e) => setManualIp(e.target.value)}
-                  />
-                  <button type="submit" className="btn btn-dark btn-sm px-2 fw-semibold" style={{ fontSize: '11px' }}>
-                    Save
-                  </button>
-                </form>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
