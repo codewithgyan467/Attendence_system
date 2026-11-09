@@ -60,8 +60,9 @@ export const probeLocalWardenIp = async (manualIp = null) => {
     !window.location.hostname.endsWith('onrender.com') && 
     !window.location.hostname.endsWith('vercel.app')) ? window.location.origin : null;
 
+  const isMobileClient = isNative || (typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || ''));
   const savedWarden = getLocalWardenUrl();
-  const validSavedWarden = (isNative && savedWarden && (savedWarden.includes('localhost') || savedWarden.includes('127.0.0.1')))
+  const validSavedWarden = (isMobileClient && savedWarden && (savedWarden.includes('localhost') || savedWarden.includes('127.0.0.1')))
     ? null
     : savedWarden;
 
@@ -78,14 +79,14 @@ export const probeLocalWardenIp = async (manualIp = null) => {
         'http://192.168.1.1:5000',
         'http://192.168.0.100:5000',
         'http://192.168.0.1:5000',
-        ...(isNative ? [] : ['http://localhost:5000']),
+        ...(isMobileClient ? [] : ['http://localhost:5000']),
         ...(validSavedWarden ? [validSavedWarden.replace(/\/api\/v1\/?$/, '')] : []),
-        ...(browserOrigin ? [browserOrigin] : [])
+        ...((browserOrigin && !browserOrigin.includes('localhost')) ? [browserOrigin] : [])
       ]));
 
   const probeCandidate = async (cand) => {
-    if (isNative && (cand.includes('localhost') || cand.includes('127.0.0.1'))) {
-      throw new Error('Localhost is not the Warden PC on native mobile');
+    if ((isMobileClient || window?.location?.protocol === 'https:') && (cand.includes('localhost') || cand.includes('127.0.0.1'))) {
+      throw new Error('Localhost is not the Warden PC on mobile client');
     }
     const cleanCand = cand.replace(/\/+$/, '');
     const probeUrl = cleanCand.endsWith('/api/v1') ? `${cleanCand}/health` : `${cleanCand}/api/v1/health`;
@@ -180,7 +181,21 @@ export const getServerRootUrl = () => {
   return base.replace(/\/api\/v1\/?$/, '');
 };
 
-// Token Management
+// Token Management & Stable Persistent Device ID (UUIDv4)
+export const getDeviceId = () => {
+  if (typeof window === 'undefined') return 'DEV-SERVER';
+  let devId = localStorage.getItem('hg_device_id');
+  if (!devId) {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      devId = crypto.randomUUID();
+    } else {
+      devId = 'dev-' + Math.random().toString(36).substring(2, 15) + '-' + Date.now().toString(36);
+    }
+    localStorage.setItem('hg_device_id', devId);
+  }
+  return devId;
+};
+
 export const authStorage = {
   getToken: () => localStorage.getItem('hg_token'),
   setToken: (token) => localStorage.setItem('hg_token', token),
@@ -188,6 +203,7 @@ export const authStorage = {
   getRefreshToken: () => localStorage.getItem('hg_refresh_token'),
   setRefreshToken: (token) => localStorage.setItem('hg_refresh_token', token),
   clearRefreshToken: () => localStorage.removeItem('hg_refresh_token'),
+  getDeviceId: () => getDeviceId(),
   getUser: () => {
     try {
       const u = localStorage.getItem('hg_user');
@@ -208,9 +224,11 @@ export const authStorage = {
 // Central fetch helper with automatic Authorization header and transparent refresh token rotation
 async function request(endpoint, options = {}, isRetry = false) {
   const token = authStorage.getToken();
+  const deviceId = getDeviceId();
   const headers = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    'X-Device-Id': deviceId,
     ...options.headers
   };
 
@@ -253,12 +271,12 @@ async function request(endpoint, options = {}, isRetry = false) {
     !window.location.hostname.endsWith('vercel.app');
 
   if (isAuthEndpoint) {
-    if (isDirectLan) {
-      activeUrl = primaryUrl;
-    } else if (isNative && localWarden) {
+    if (localWarden) {
       const cleanWarden = localWarden.replace(/\/+$/, '');
       const wardenBase = cleanWarden.endsWith('/api/v1') ? cleanWarden : `${cleanWarden}/api/v1`;
       activeUrl = `${wardenBase}${endpoint}`;
+    } else if (isDirectLan) {
+      activeUrl = primaryUrl;
     } else {
       activeUrl = `${cloudBase}${endpoint}`;
     }
@@ -373,7 +391,7 @@ export const api = {
 
   // Authentication
   auth: {
-    login: (credentials) => request('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
+    login: (credentials) => request('/auth/login', { method: 'POST', body: JSON.stringify({ device_id: getDeviceId(), ...credentials }) }),
     refreshToken: (refreshToken) => request('/auth/refresh', { method: 'POST', body: JSON.stringify({ refreshToken }) }),
     getMe: () => request('/auth/me'),
     changePassword: (data) => request('/auth/change-password', { method: 'POST', body: JSON.stringify(data) }),
@@ -402,6 +420,7 @@ export const api = {
     updateSecurityProfile: (data) => request('/admin/security/update-profile', { method: 'POST', body: JSON.stringify(data) }),
     regenerateMasterKey: (data) => request('/admin/security/regenerate-master-key', { method: 'POST', body: JSON.stringify(data) }),
     resetStudentPassword: (id, data) => request(`/admin/students/${encodeURIComponent(id)}/reset-password`, { method: 'POST', body: JSON.stringify(data || {}) }),
+    resetStudentDevice: (id) => request(`/admin/students/${encodeURIComponent(id)}/reset-device`, { method: 'POST' }),
     getStudents: (params = {}) => {
       const q = new URLSearchParams(params).toString();
       return request(`/admin/students${q ? '?' + q : ''}`);
@@ -543,12 +562,13 @@ export const api = {
 
   // Daily Attendance APIs
   attendance: {
-    verifyLocation: (data) => request('/attendance/verify-location', { method: 'POST', body: JSON.stringify(data) }),
-    verifyFace: (data) => request('/attendance/verify-face', { method: 'POST', body: JSON.stringify(data) }),
+    verifyLocation: (data) => request('/attendance/verify-location', { method: 'POST', body: JSON.stringify({ device_id: getDeviceId(), ...data }) }),
+    verifyFace: (data) => request('/attendance/verify-face', { method: 'POST', body: JSON.stringify({ device_id: getDeviceId(), ...data }) }),
+    mark: (data) => request('/attendance/mark', { method: 'POST', body: JSON.stringify({ device_id: getDeviceId(), ...data }) }),
     getStatus: (identifier) => request(`/attendance/status/${encodeURIComponent(identifier)}`),
-    offlineSync: (data) => request('/attendance/offline-sync', { method: 'POST', body: JSON.stringify(data) }),
+    offlineSync: (data) => request('/attendance/offline-sync', { method: 'POST', body: JSON.stringify({ device_id: getDeviceId(), ...data }) }),
     getSchedule: () => request('/attendance/schedule'),
-    requestPhysicalVerification: (data) => request('/attendance/request-physical-verification', { method: 'POST', body: JSON.stringify(data) })
+    requestPhysicalVerification: (data) => request('/attendance/request-physical-verification', { method: 'POST', body: JSON.stringify({ device_id: getDeviceId(), ...data }) })
   },
 
   // Onboarding Privacy-Preserving OTP Helpers

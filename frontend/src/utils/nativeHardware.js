@@ -588,16 +588,17 @@ export async function scanHostelBleBeacon(options = {}) {
         if (onProgress) onProgress({ status: 'CONNECTING', message: `Connecting to ${foundDevice.name || 'ESP32'}...` });
         await BleClient.connect(foundDevice.deviceId);
 
-        if (timeSyncPacket) {
-          try {
-            await BleClient.write(
-              foundDevice.deviceId,
-              HOSTEL_SERVICE_UUID,
-              TIME_SYNC_CHAR_UUID,
-              numbersToDataView(new TextEncoder().encode(String(timeSyncPacket)))
-            );
-          } catch (_) {}
-        }
+        // Write current Unix epoch seconds immediately before reading to calibrate ESP32 clock
+        const currentEpochSec = Math.floor(Date.now() / 1000).toString();
+        const syncPayload = timeSyncPacket ? String(timeSyncPacket) : currentEpochSec;
+        try {
+          await BleClient.write(
+            foundDevice.deviceId,
+            HOSTEL_SERVICE_UUID,
+            TIME_SYNC_CHAR_UUID,
+            numbersToDataView(new TextEncoder().encode(syncPayload))
+          );
+        } catch (_) {}
 
         const dataView = await BleClient.read(foundDevice.deviceId, HOSTEL_SERVICE_UUID, ROLLING_CHAR_UUID);
         const rawPayload = dataViewToText(dataView);

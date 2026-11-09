@@ -464,21 +464,19 @@ async function verifyBeaconInLocalVault(rawPayloadOrId, stepNum, receivedCode) {
  * Records an offline attendance check-in into local_attendance_vault
  */
 async function recordLocalAttendance(entry) {
-  const {
-    id = crypto.randomUUID(),
-    studentId,
-    rollNo,
-    hostelId = 'Block A',
-    status = 'PRESENT',
-    latitude = 0,
-    longitude = 0,
-    distanceMeters = 0,
-    bleBeaconId = 'HG-BEACON-BLKA-01',
-    bleHmacToken = '',
-    faceSimilarity = 1.0,
-    livenessScore = 1.0,
-    clientIp = '127.0.0.1'
-  } = entry;
+  const id = entry.id || crypto.randomUUID();
+  const studentId = entry.studentId || entry.student_id;
+  const rollNo = entry.rollNo || entry.roll_no;
+  const hostelId = entry.hostelId || entry.hostel_id || 'Block A';
+  const status = entry.status || 'PRESENT';
+  const latitude = entry.latitude ?? 0;
+  const longitude = entry.longitude ?? 0;
+  const distanceMeters = entry.distanceMeters ?? entry.distance_m ?? 0;
+  const bleBeaconId = entry.bleBeaconId || entry.ble_beacon_id || 'HG-BEACON-BLKA-01';
+  const bleHmacToken = entry.bleHmacToken || entry.ble_hmac_token || '';
+  const faceSimilarity = entry.faceSimilarity ?? entry.face_similarity ?? 1.0;
+  const livenessScore = entry.livenessScore ?? entry.liveness_score ?? 1.0;
+  const clientIp = entry.clientIp || entry.client_ip || '127.0.0.1';
 
   await runVaultQuery(`
     INSERT INTO local_attendance_vault

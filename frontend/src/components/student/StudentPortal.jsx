@@ -1074,7 +1074,11 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
       const res = await api.attendance.verifyFace({
         session_token: sessionToken,
+        challenge_token: sessionToken,
         live_photo: livePhotoBase64,
+        faceImage: livePhotoBase64,
+        bleToken: verifiedBeaconInfo?.rawPayload || verifiedBeaconInfo?.token || verifiedBeaconInfo?.code || null,
+        gpsCoords: verifiedDistance !== null ? { distance: verifiedDistance } : null,
         frames: frames,
         temporal_frames: frames,
         face_crop_112: faceCrop112,

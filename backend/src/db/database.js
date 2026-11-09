@@ -620,7 +620,11 @@ const initDatabase = async () => {
     request_nonce_hash: 'TEXT',
     requires_step_up: 'INTEGER DEFAULT 0',
     step_up_color_sequence: 'TEXT',
-    active_challenge: "TEXT DEFAULT 'HOLD_STILL'"
+    active_challenge: "TEXT DEFAULT 'HOLD_STILL'",
+    verified_lat: 'REAL',
+    verified_lon: 'REAL',
+    ble_beacon_id: 'TEXT',
+    ble_token: 'TEXT'
   });
 
   await ensureColumns('security_audit_logs', {

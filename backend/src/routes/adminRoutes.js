@@ -2768,6 +2768,36 @@ router.post('/students/:id/reset-password', async (req, res) => {
   }
 });
 
+// Admin One-Click Device Binding Reset for Student
+router.post('/students/:id/reset-device', async (req, res) => {
+  try {
+    const student = await getQuery(`SELECT * FROM students WHERE id = ? OR roll_number = ?`, [req.params.id, req.params.id]);
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Student not found.' });
+    }
+
+    await runQuery(`UPDATE students SET device_id = NULL, device_model = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [student.id]);
+    await runQuery(`UPDATE student_registered_devices SET is_active = 0, revoked_at = CURRENT_TIMESTAMP, revocation_reason = 'Admin device reset' WHERE student_id = ?`, [student.id]);
+
+    await recordAuditEvent(
+      req.user.id,
+      req.user.username,
+      'ADMIN_RESET_STUDENT_DEVICE',
+      'STUDENT',
+      student.id,
+      `Device binding reset for student ${student.roll_number} (${student.full_name})`,
+      req
+    );
+
+    res.json({
+      success: true,
+      message: `Device binding for student ${student.roll_number} (${student.full_name}) has been cleared. The student may now bind their new phone on next sign-in.`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 12. SQLite Database Backup & Recovery Engine
 router.post('/backup/create', requireRole('ADMIN'), async (req, res) => {
   try {

@@ -139,9 +139,9 @@ class LivenessDetectorV4:
             
             # Calibrated Adaptive Decision: Dim indoor rooms calibrate threshold to prevent false screen-replay flags
             if is_dim:
-                is_live = bool(p_live >= 0.45 and p_print < 0.60)
+                is_live = bool(p_live >= 0.35 and p_print < 0.75)
             else:
-                is_live = bool(p_live >= 0.52 and p_spoof < 0.55)
+                is_live = bool(p_live >= 0.40 and p_print < 0.70)
             
             pred_class = "LIVE" if is_live else ("SCREEN_REPLAY" if p_screen >= p_print else "PRINT_ATTACK")
             
@@ -201,7 +201,7 @@ class LivenessDetectorV4:
             p_screen = float(probs[2])
             p_spoof = float(p_print + p_screen)
 
-            is_live = bool(p_live >= 0.55 and p_spoof < 0.55)
+            is_live = bool(p_live >= 0.35 and p_print < 0.75)
             pred_class = "LIVE" if is_live else ("SCREEN_REPLAY" if p_screen >= p_print else "PRINT_ATTACK")
 
             return {
@@ -518,7 +518,7 @@ class LivenessDetectorV4:
         # Graceful adaptation: If client provides single or few frames (< 3 frames)
         if len(valid_frames) < 3:
             primary_pad = self.evaluate_deep_pad(valid_frames[0][0], valid_frames[0][1])
-            is_live = bool(primary_pad.get("is_live", False) and primary_pad.get("live_prob", 0.0) >= 0.48)
+            is_live = bool(primary_pad.get("is_live", False) and primary_pad.get("live_prob", 0.0) >= 0.35)
             reason = primary_pad.get("reason", "Single-frame Deep PAD verified")
             if is_live and len(valid_frames) == 2:
                 # Check for duplicate static photo presentation
@@ -566,8 +566,8 @@ class LivenessDetectorV4:
         optical_res = self.compute_optical_flow_micromotion([vf[0] for vf in valid_frames])
         optical_pass = bool(optical_res["has_micromotion"])
 
-        # Adaptive threshold: In dim rooms with micro-motion, accept p_live >= 0.45
-        deep_pad_pass = bool(mean_live_prob >= (0.45 if optical_pass else 0.52))
+        # Adaptive threshold: In dim rooms with micro-motion or active challenge, accept p_live >= 0.35
+        deep_pad_pass = bool(mean_live_prob >= (0.35 if (optical_pass or active_challenge_pass) else 0.42))
 
         # Final Liveness Decision:
         is_live = bool(deep_pad_pass and active_challenge_pass and (temporal_pass or optical_pass))

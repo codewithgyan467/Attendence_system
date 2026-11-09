@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
 const { getQuery, runQuery } = require('../db/database');
 const {
   generateToken,
@@ -64,6 +65,43 @@ router.post('/login', authLimiter, async (req, res) => {
         studentProfile.hasFaceRegistered = isEnrolled;
         studentProfile.face_enrollment_status = isEnrolled ? 'ENROLLED' : 'NOT_ENROLLED';
         studentProfile.enrollmentStatus = isEnrolled ? 'ENROLLED' : 'NOT_ENROLLED';
+
+        // Strict & Adaptive Device Binding
+        const incomingDeviceId = (req.body.device_id || req.headers['x-device-id'] || '').trim();
+        const incomingDeviceModel = (req.body.device_model || req.headers['x-device-model'] || '').trim();
+
+        if (incomingDeviceId) {
+          if (!studentProfile.device_id) {
+            // Unregistered/empty device: Bind automatically on login
+            await runQuery(
+              `UPDATE students SET device_id = ?, device_model = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+              [incomingDeviceId, incomingDeviceModel || 'Mobile Device', studentProfile.id]
+            );
+            studentProfile.device_id = incomingDeviceId;
+            studentProfile.device_model = incomingDeviceModel || 'Mobile Device';
+
+            await runQuery(`
+              INSERT OR REPLACE INTO student_registered_devices (id, student_id, device_id, device_model, browser_ua, is_active, last_used_at)
+              VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+            `, [uuidv4(), studentProfile.id, incomingDeviceId, incomingDeviceModel || 'Mobile Device', req.headers['user-agent'] || 'App']);
+          } else if (studentProfile.device_id !== incomingDeviceId) {
+            const isStrictBinding = process.env.STRICT_DEVICE_BINDING === 'true';
+            if (isStrictBinding) {
+              return res.status(403).json({
+                success: false,
+                code: 'DEVICE_MISMATCH',
+                error: 'Account bound to another device. If you changed your device, contact your Hostel Warden or Administrator to reset your bound device.',
+                registeredDeviceId: studentProfile.device_id
+              });
+            } else {
+              // Soft-enforced: Record new active device into registered devices list
+              await runQuery(`
+                INSERT OR REPLACE INTO student_registered_devices (id, student_id, device_id, device_model, browser_ua, is_active, last_used_at)
+                VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+              `, [uuidv4(), studentProfile.id, incomingDeviceId, incomingDeviceModel || 'Mobile Device', req.headers['user-agent'] || 'App']);
+            }
+          }
+        }
       }
     }
 

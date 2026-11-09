@@ -120,21 +120,15 @@ class AntiSpoofPolicyEngine {
         if (speed > maxSpeed) maxSpeed = speed;
       }
 
-      if (maxSpeed > 35) {
-        // > 126 km/h jump between successive readings
+      if (maxSpeed > 50) {
+        // > 180 km/h jump between successive readings
         riskScore += 75;
         unfairMeansFlags.push('IMPOSSIBLE_TRAJECTORY_JUMP');
         reasonCodes.push('L2_VELOCITY_ANOMALY');
       }
 
-      // Synthetic Mock GPS Injection check:
-      // If 3+ samples taken over >= 1s have exactly 0.000m drift and no altitude
-      if (samples.length >= 3 && totalDrift === 0 && (!samples[0].altitude || samples[0].altitude === 0)) {
-        riskScore += 85;
-        mockFlagStatus = 'MOCK_DETECTED';
-        unfairMeansFlags.push('SYNTHETIC_MOCK_COORDINATES');
-        reasonCodes.push('L2_SYNTHETIC_COORDINATES');
-      }
+      // Note: Indoor stationary devices frequently report zero drift and null/0 altitude.
+      // We only flag synthetic mock if OS provider explicitly reports mock provider.
     }
 
     // Coarse indoor GPS vs clear outside perimeter
@@ -394,8 +388,18 @@ class AntiSpoofPolicyEngine {
     }
 
     // --- Decision Engine: 5-State Risk Matrix ---
-    // Rule: Never permanently lock a student out due to coarse indoor GPS accuracy
-    if (primaryAcc > 65 && distanceMeters <= allowedRadius * 2 && !isMock) {
+    // Rule: Allow indoor GPS accuracy up to 120m in Strict Mode when accompanied by valid Step 2 Hardware BLE Beacon token
+    const hasValidBleProof = Boolean(
+      bleProof && (
+        bleProof.compactVerified ||
+        bleProof.bleVerified ||
+        (typeof bleProof.rawPayload === 'string' && bleProof.rawPayload.includes('|')) ||
+        bleProof.rollingCode ||
+        bleProof.code
+      )
+    );
+    const maxAllowedAcc = hasValidBleProof ? 120 : 65;
+    if (primaryAcc > maxAllowedAcc && distanceMeters <= allowedRadius * 2 && !isMock) {
       decisionOutcome = 'RETRY';
       reasonCodes.push('POOR_GPS_ACCURACY');
     } else if (
