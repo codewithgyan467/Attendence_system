@@ -97,6 +97,11 @@ export default function AdminDashboard({ onNavigate }) {
   const [vaultSyncing, setVaultSyncing] = useState(false);
   const [vaultMsg, setVaultMsg] = useState(null);
   const [resettingStrikes, setResettingStrikes] = useState(false);
+  const [beacons, setBeacons] = useState([]);
+  const [authorizedWifiList, setAuthorizedWifiList] = useState([]);
+  const [authorizingWifi, setAuthorizingWifi] = useState(false);
+  const [scanningBle, setScanningBle] = useState(false);
+  const [scanResult, setScanResult] = useState(null);
 
 
 
@@ -175,22 +180,80 @@ export default function AdminDashboard({ onNavigate }) {
       ]);
 
       if (bleData.status === 'fulfilled' && bleData.value?.success) {
-
         setBleMode(bleData.value.ble_mode || 'STANDBY_OPTIONAL');
-
+        setBeacons(bleData.value.beacons || []);
       }
 
       if (vData.status === 'fulfilled' && vData.value?.success) {
-
         setVaultStatus(vData.value);
-
       }
 
+      api.admin.getAuthorizedWifi().then(r => {
+        if (r?.success) setAuthorizedWifiList(r.authorizedList || []);
+      }).catch(() => {});
     } catch (_) {}
-
   };
 
+  const handleAuthorizeCurrentWifi = async () => {
+    setAuthorizingWifi(true);
+    try {
+      const res = await api.admin.authorizeCurrentWifi('Warden Connected Wi-Fi');
+      if (res?.success) {
+        setAuthorizedWifiList(res.authorizedList || []);
+        setVaultMsg(`📶 Wi-Fi Router Authorized! Subnet: ${res.clientIp || res.lanIp}. Students on this router can now check in.`);
+      }
+    } catch (err) {
+      setVaultMsg(`Failed to authorize Wi-Fi: ${err.message}`);
+    } finally {
+      setAuthorizingWifi(false);
+    }
+  };
 
+  const handleScanNearbyBeacon = async () => {
+    setScanningBle(true);
+    setScanResult(null);
+    try {
+      const { scanHostelBleBeacon } = await import('../../utils/nativeHardware');
+      const res = await scanHostelBleBeacon({ timeoutMs: 5000 });
+      if (res?.success) {
+        setScanResult({
+          success: true,
+          message: `✅ Found ${res.beaconPublicId || res.deviceName}! Rolling Code: ${res.rollingCode} (Step: ${res.slot})`
+        });
+      } else {
+        setScanResult({
+          success: false,
+          message: res?.message || 'No ESP32 beacon detected. Ensure the board is powered on.'
+        });
+      }
+    } catch (err) {
+      setScanResult({
+        success: false,
+        message: err.message || 'Bluetooth scan cancelled or unavailable.'
+      });
+    } finally {
+      setScanningBle(false);
+    }
+  };
+
+  const handleToggleBeacon = async (b) => {
+    try {
+      await api.admin.toggleBleBeacon(b.id);
+      fetchBleAndVault();
+    } catch (err) {
+      setVaultMsg(`Failed to toggle beacon: ${err.message}`);
+    }
+  };
+
+  const handleDeleteBeacon = async (id) => {
+    if (!window.confirm('Are you sure you want to remove this floor box beacon?')) return;
+    try {
+      await api.admin.deleteBleBeacon(id);
+      fetchBleAndVault();
+    } catch (err) {
+      setVaultMsg(`Failed to delete beacon: ${err.message}`);
+    }
+  };
 
   const handleModeChange = async (newMode) => {
 
@@ -973,6 +1036,109 @@ export default function AdminDashboard({ onNavigate }) {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* 1-Click Multi-Floor Boxes & Multi-Wi-Fi Manager */}
+      <div className="card border-0 rounded-4 shadow-sm mb-4 overflow-hidden bg-white">
+        <div className="card-header bg-light py-3 px-4 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <div className="d-flex align-items-center gap-2">
+            <Radio size={18} className="text-primary" />
+            <h6 className="fw-bold mb-0 text-dark">🏢 Floor Boxes &amp; Multi-Wi-Fi Fleet Manager</h6>
+          </div>
+          <div className="d-flex align-items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-outline-primary btn-sm fw-bold d-inline-flex align-items-center gap-1.5 shadow-sm"
+              onClick={handleAuthorizeCurrentWifi}
+              disabled={authorizingWifi}
+              title="Adds current router/broadband IP to authorized list so students on this Wi-Fi can check in"
+            >
+              <Radio size={13} />
+              {authorizingWifi ? 'Authorizing...' : '📶 Authorize Current Wi-Fi'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline-dark btn-sm fw-bold d-inline-flex align-items-center gap-1.5 shadow-sm"
+              onClick={handleScanNearbyBeacon}
+              disabled={scanningBle}
+              title="Tests Bluetooth reception by scanning for nearby ESP32 beacon"
+            >
+              <RefreshCw size={13} className={scanningBle ? 'spin' : ''} />
+              {scanningBle ? 'Scanning Beacon...' : '🔍 Scan Nearby Box via Bluetooth'}
+            </button>
+          </div>
+        </div>
+        <div className="card-body p-4">
+          {scanResult && (
+            <div className={`alert ${scanResult.success ? 'alert-success' : 'alert-warning'} py-2 px-3 small mb-3`} style={{ fontSize: '12px' }}>
+              {scanResult.message}
+            </div>
+          )}
+
+          {/* Floor Box Cards */}
+          <div className="row g-3 mb-3">
+            {beacons && beacons.length > 0 ? (
+              beacons.map((b) => (
+                <div key={b.id || b.beacon_public_id} className="col-12 col-md-6 col-lg-4">
+                  <div className="card h-100 p-3 border shadow-xs rounded-3 bg-light position-relative">
+                    <div className="d-flex align-items-center justify-content-between mb-2">
+                      <span className={`badge ${b.is_active ? 'bg-success text-white' : 'bg-secondary text-white'} fw-semibold`} style={{ fontSize: '10.5px' }}>
+                        {b.is_active ? '🟢 ACTIVE' : '⚪ DISABLED'}
+                      </span>
+                      <code className="text-dark bg-white border px-1.5 py-0.5 rounded small" style={{ fontSize: '11px' }}>
+                        {b.beacon_public_id}
+                      </code>
+                    </div>
+                    <h6 className="fw-bold mb-1 text-dark" style={{ fontSize: '13.5px' }}>
+                      {b.block_name || 'Floor Anchor'}
+                    </h6>
+                    <div className="text-muted small mb-2.5" style={{ fontSize: '11px' }}>
+                      {b.last_seen_at ? `Last Seen: ${new Date(b.last_seen_at).toLocaleTimeString()}` : 'Ready / In-Range'}
+                    </div>
+                    <div className="d-flex align-items-center gap-2 mt-auto pt-2 border-top">
+                      <button
+                        type="button"
+                        className={`btn btn-sm py-1 px-2.5 fw-semibold ${b.is_active ? 'btn-outline-secondary' : 'btn-outline-success'}`}
+                        style={{ fontSize: '11px' }}
+                        onClick={() => handleToggleBeacon(b)}
+                      >
+                        {b.is_active ? 'Disable' : 'Enable'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline-danger btn-sm py-1 px-2.5 fw-semibold"
+                        style={{ fontSize: '11px' }}
+                        onClick={() => handleDeleteBeacon(b.id)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="col-12 text-muted small py-2">
+                No floor boxes registered yet. Click &quot;Geofence Perimeter&quot; in the left sidebar to add a new ESP32 anchor.
+              </div>
+            )}
+          </div>
+
+          {/* Authorized Wi-Fi Router Subnets */}
+          {authorizedWifiList && authorizedWifiList.length > 0 && (
+            <div className="pt-2 border-top">
+              <div className="fw-semibold text-dark small mb-1.5" style={{ fontSize: '12px' }}>
+                Authorized Wi-Fi Gateways &amp; Routers ({authorizedWifiList.length})
+              </div>
+              <div className="d-flex flex-wrap gap-2">
+                {authorizedWifiList.map((w, idx) => (
+                  <span key={idx} className="badge bg-white border text-dark fw-normal py-1 px-2.5 d-inline-flex align-items-center gap-1.5" style={{ fontSize: '11px' }}>
+                    <span className="text-success">●</span> {w.label || 'Hostel Wi-Fi'}: <code>{w.subnet || w.ip}</code>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

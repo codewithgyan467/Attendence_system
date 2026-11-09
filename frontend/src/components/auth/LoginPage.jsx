@@ -51,7 +51,19 @@ export default function LoginPage({ onNavigateOnboarding }) {
     try {
       await login(username.trim(), password);
     } catch (err) {
-      setErrorMsg(err.message || 'Invalid credentials or inactive account.');
+      // If failed due to unreachable local server, auto-clear local IP and retry via Cloud
+      if (err.message && (err.message.includes('unreachable') || err.message.toLowerCase().includes('failed to fetch') || err.message.includes('NetworkError'))) {
+        clearLocalWardenUrl();
+        setCurrentWardenUrl(null);
+        try {
+          await login(username.trim(), password);
+          return;
+        } catch (retryErr) {
+          setErrorMsg(retryErr.message || 'Invalid credentials or inactive account.');
+        }
+      } else {
+        setErrorMsg(err.message || 'Invalid credentials or inactive account.');
+      }
     } finally {
       setLoading(false);
     }

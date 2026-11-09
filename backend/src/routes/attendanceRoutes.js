@@ -16,6 +16,7 @@ const beaconCache = require('../services/beaconCache');
 const { getIstTime12h, getIstDateString } = require('../utils/istTime');
 const localVaultDb = require('../config/localVaultDb');
 const { strictLanGuard } = require('../middleware/strictLanGuard');
+const authorizedWifiService = require('../services/authorizedWifiService');
 
 // Lightweight FIFO Semaphore Queue for Low-Spec Warden Laptop (Prevents CPU/RAM spikes)
 class FifoSemaphore {
@@ -304,6 +305,8 @@ const verifyLocationHandler = async (req, res) => {
         ble_proof.compactVerified = true;
         ble_proof.slot = compactRes.step;
         ble_proof.rawAnchorId = compactRes.anchorId;
+        // Auto-learn student Wi-Fi router on valid hardware HMAC proof
+        authorizedWifiService.authorizeIp(clientIp, `Floor Beacon ${compactRes.anchorId}`, true);
       }
     }
 
@@ -708,18 +711,22 @@ const verifyFaceHandler = async (req, res) => {
 
     // 5. Check Liveness / Anti-Spoofing
     if (!aiResult.is_live) {
+      const isActualSpoof = Boolean(aiResult.details?.spoof_detected || (aiResult.details?.pad_score && aiResult.details.pad_score > 0.85));
+      const incidentType = isActualSpoof ? 'FACE_SPOOF_ATTEMPT' : 'FACE_FRAMING_RETRY';
       await runQuery(`
         INSERT INTO security_audit_logs (
           id, student_id, roll_number, incident_type, calculated_distance, details,
           ip_address, risk_score, decision_outcome, reason_codes
-        ) VALUES (?, ?, ?, 'FACE_SPOOF_ATTEMPT', ?, ?, ?, 90, 'DENY', 'L8_BIOMETRIC_PAD_FAILED')
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DENY', 'L8_BIOMETRIC_PAD_FAILED')
       `, [
         uuidv4(),
         student.id,
         student.roll_number,
+        incidentType,
         challenge.verified_distance,
-        aiResult.details?.message || 'Liveness anti-spoof check failed',
-        clientIp
+        aiResult.details?.message || 'Face positioning / lighting check failed',
+        clientIp,
+        isActualSpoof ? 90 : 20
       ]);
 
       return res.status(403).json({

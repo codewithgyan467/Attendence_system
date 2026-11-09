@@ -20,6 +20,8 @@ const embeddingCache = require('../services/embeddingCache');
 const bleBeaconService = require('../services/bleBeaconService');
 const beaconCache = require('../services/beaconCache');
 const { getAllStudentsAttendanceSummary } = require('../services/attendanceStatsService');
+const authorizedWifiService = require('../services/authorizedWifiService');
+const lanDiscovery = require('../utils/lanDiscovery');
 
 // Security Hardened Multer Configuration: 10MB limit and strict file format filter
 const uploadDir = path.join(__dirname, '../../uploads');
@@ -1393,6 +1395,57 @@ router.post('/ble/generate-secret', requireRole('ADMIN'), async (req, res) => {
   try {
     const secret = bleBeaconService.generateBeaconSecret();
     res.json({ success: true, secret });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4d. Multi-Wi-Fi & Changing Broadband Subnet Management
+router.post('/wifi/authorize-current', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const clientIp = (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) || req.ip || req.connection?.remoteAddress;
+    const lanIp = lanDiscovery.getPrimaryLanIp();
+    const label = req.body.label || `Hostel Wi-Fi (${new Date().toLocaleTimeString()})`;
+
+    // Authorize current caller IP and detected primary LAN IP
+    if (clientIp) authorizedWifiService.authorizeIp(clientIp, `${label} (Warden Device)`, false);
+    if (lanIp && lanIp !== '127.0.0.1') authorizedWifiService.authorizeIp(lanIp, `${label} (Laptop Server)`, false);
+    await authorizedWifiService.saveToDb(runQuery);
+
+    res.json({
+      success: true,
+      message: 'Current Wi-Fi router / subnet authorized successfully!',
+      clientIp,
+      lanIp,
+      authorizedList: authorizedWifiService.getAll()
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/wifi/authorized', requireRole('ADMIN'), async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      authorizedList: authorizedWifiService.getAll(),
+      primaryLanIp: lanDiscovery.getPrimaryLanIp()
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/wifi/authorized/:ip', requireRole('ADMIN'), async (req, res) => {
+  try {
+    const { ip } = req.params;
+    authorizedWifiService.remove(decodeURIComponent(ip));
+    await authorizedWifiService.saveToDb(runQuery);
+    res.json({
+      success: true,
+      message: `Removed ${ip} from authorized Wi-Fi list.`,
+      authorizedList: authorizedWifiService.getAll()
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

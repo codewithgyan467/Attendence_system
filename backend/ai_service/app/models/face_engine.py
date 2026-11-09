@@ -6,7 +6,8 @@ import logging
 from io import BytesIO
 from PIL import Image
 
-cv2.setNumThreads(2)
+# Optimize OpenCV thread pool for sub-500ms multi-core execution
+cv2.setNumThreads(min(4, os.cpu_count() or 2))
 
 # Low-CPU ONNX Runtime Configuration for Dual-Core Warden Office Laptops
 try:
@@ -92,6 +93,15 @@ class FaceEngine:
         pil_img = Image.open(BytesIO(image_bytes)).convert("RGB")
         rgb_arr = np.array(pil_img)
         bgr_arr = cv2.cvtColor(rgb_arr, cv2.COLOR_RGB2BGR)
+
+        # Proportionally downscale large images > 512px for sub-500ms inference
+        h, w = bgr_arr.shape[:2]
+        max_dim = max(h, w)
+        if max_dim > 512:
+            scale = 512.0 / max_dim
+            new_w, new_h = int(w * scale), int(h * scale)
+            bgr_arr = cv2.resize(bgr_arr, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
         return bgr_arr
 
     def apply_clahe_lab(self, bgr_img: np.ndarray) -> np.ndarray:

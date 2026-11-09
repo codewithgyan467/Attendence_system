@@ -77,7 +77,7 @@ export const getApiBaseUrl = () => {
     const bleMode = localStorage.getItem('hg_ble_mode') || 'STANDBY';
     const localWarden = localStorage.getItem('hg_local_warden_url');
 
-    // In STRICT mode, point API calls directly to the Warden's local office server
+    // In STRICT mode, point attendance check-in calls to Warden's local office server if available
     if ((bleMode === 'STRICT' || bleMode === 'STRICT_LOCK' || bleMode === 'STRICT_REQUIRED') && localWarden) {
       const cleanWarden = localWarden.replace(/\/+$/, '');
       return cleanWarden.endsWith('/api/v1') ? cleanWarden : `${cleanWarden}/api/v1`;
@@ -165,26 +165,39 @@ async function request(endpoint, options = {}, isRetry = false) {
 
   const cloudBase = 'https://hostelguard-backend-oimp.onrender.com/api/v1';
 
+  // For authentication endpoints, prioritize Cloud if localWarden is not localhost,
+  // preventing stale local Wi-Fi IPs from locking students out of the app.
+  let activeUrl = primaryUrl;
+  const isAuthEndpoint = endpoint.startsWith('/auth');
+  if (isAuthEndpoint && localWarden && !localWarden.includes('localhost') && !localWarden.includes('127.0.0.1')) {
+    // If running in browser hosted on local server, use primaryUrl; otherwise use Cloud for auth
+    const isLocalOrigin = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(window.location.hostname));
+    if (!isLocalOrigin) {
+      activeUrl = `${cloudBase}${endpoint}`;
+    }
+  }
+
   try {
-    const isLocalRequest = Boolean(localWarden && primaryUrl.includes(localWarden));
-    const defaultTimeout = isLocalRequest ? 2500 : (options.timeout || (endpoint === '/auth/me' ? 8000 : 35000));
-    response = await performFetch(primaryUrl, defaultTimeout);
+    const isLocalRequest = Boolean(localWarden && activeUrl.includes(localWarden));
+    // Sub-1800ms fast timeout for local server so cross-subnet devices fail over immediately without lagging
+    const defaultTimeout = isLocalRequest ? 1800 : (options.timeout || (endpoint === '/auth/me' ? 8000 : 35000));
+    response = await performFetch(activeUrl, defaultTimeout);
   } catch (networkErr) {
-    // If primary was an unreachable local warden IP, probe current LAN hotspot IPs and Cloud fallback
-    if (localWarden && primaryUrl.includes(localWarden)) {
+    // If active was an unreachable local warden IP, probe current LAN hotspot IPs and fail over smoothly to Cloud
+    if (localWarden && activeUrl.includes(localWarden)) {
       // 1. Fast local probe for common host/hotspot IPs (e.g. iPhone hotspot 172.20.10.2, Windows hotspot 192.168.137.1)
       const candidateIps = [
         'http://172.20.10.2:5000/api/v1',
         'http://192.168.137.1:5000/api/v1',
         'http://192.168.1.100:5000/api/v1',
         'http://192.168.0.100:5000/api/v1'
-      ].filter(u => u !== localWarden && `${u}${endpoint}` !== primaryUrl);
+      ].filter(u => u !== localWarden && `${u}${endpoint}` !== activeUrl);
 
       let probedSuccess = false;
       for (const cand of candidateIps) {
         try {
           const candUrl = `${cand}${endpoint}`;
-          const candRes = await performFetch(candUrl, 1500);
+          const candRes = await performFetch(candUrl, 1000);
           if (candRes && (candRes.ok || candRes.status === 401 || candRes.status === 403 || candRes.status === 400)) {
             response = candRes;
             probedSuccess = true;
@@ -197,27 +210,25 @@ async function request(endpoint, options = {}, isRetry = false) {
       if (probedSuccess && response) {
         // Recovered via auto-discovered local LAN IP!
       } else {
-        // 2. Fall back to Cloud API
+        // 2. Clear stale local warden IP and fail over seamlessly to Cloud API
+        clearLocalWardenUrl();
         try {
           const fallbackUrl = `${cloudBase}${endpoint}`;
           response = await performFetch(fallbackUrl, options.timeout || 15000);
-          // If cloud succeeds, check if we can refresh the latest warden LAN IP from cloud
-          performFetch(`${cloudBase}/attendance/time-window`, 5000).then(async (twRes) => {
+          // If cloud succeeds, asynchronously refresh the latest warden LAN IP from cloud in background
+          performFetch(`${cloudBase}/attendance/time-window`, 4000).then(async (twRes) => {
             if (twRes && twRes.ok) {
               const twData = await twRes.json().catch(() => ({}));
               if (twData?.wardenLanApiUrl) setLocalWardenUrl(twData.wardenLanApiUrl);
             }
           }).catch(() => {});
         } catch (cloudErr) {
-          if (isStrictMode && endpoint.startsWith('/attendance')) {
-            throw new Error(
-              `Warden's local hostel server (${localWarden}) is unreachable on Wi-Fi. Please ensure the Warden's laptop is powered on and connected to the same Wi-Fi ("iPhone").`
-            );
-          }
-          throw cloudErr;
+          throw new Error(
+            `Unable to reach hostel server (${cloudErr.message || networkErr.message || 'Offline'}). Please ensure you have internet or Wi-Fi access.`
+          );
         }
       }
-    } else if (!primaryUrl.startsWith(cloudBase)) {
+    } else if (!activeUrl.startsWith(cloudBase)) {
       try {
         const fallbackUrl = `${cloudBase}${endpoint}`;
         response = await performFetch(fallbackUrl, options.timeout || 35000);
@@ -358,6 +369,10 @@ export const api = {
     getStrictVaultStatus: () => request('/admin/strict-vault/status'),
     prepareStrictVaultOffline: () => request('/admin/strict-vault/prepare-offline', { method: 'POST' }),
     syncStrictVaultToCloud: () => request('/admin/strict-vault/sync-to-cloud', { method: 'POST' }),
+    authorizeCurrentWifi: (label) => request('/admin/wifi/authorize-current', { method: 'POST', body: JSON.stringify({ label }) }),
+    getAuthorizedWifi: () => request('/admin/wifi/authorized'),
+    deleteAuthorizedWifi: (ip) => request(`/admin/wifi/authorized/${encodeURIComponent(ip)}`, { method: 'DELETE' }),
+    unlockAllStrikes: () => request('/admin/strikes/unlock-all', { method: 'POST' }),
     getReports: (params = {}) => {
       const q = new URLSearchParams(params).toString();
       return request(`/admin/reports${q ? '?' + q : ''}`);

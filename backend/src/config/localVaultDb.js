@@ -299,15 +299,36 @@ async function prepareOfflineCache(cloudDb) {
   // 1. Pull Students with Biometrics from Cloud
   try {
     const students = await cloudDb.allQuery(`
-      SELECT s.id as student_id, s.full_name as name, s.roll_no, s.roll_number, s.hostel_block as hostel_id, s.room_number as room_no,
-             fe.embedding_vector as face_embedding
+      SELECT s.id as student_id, s.full_name as name, s.roll_number as roll_no, s.roll_number, s.hostel_block as hostel_id, s.room_number as room_no
       FROM students s
-      LEFT JOIN student_face_embeddings fe ON (s.id = fe.student_id OR s.roll_number = fe.student_id)
       WHERE s.is_active = 1
     `);
 
+    // Fetch all face embeddings for enrolled students
+    let embeddingsMap = new Map();
+    try {
+      const allEmbeddings = await cloudDb.allQuery(`
+        SELECT student_id, angle_label, embedding_vector
+        FROM student_face_embeddings
+      `);
+      for (const emb of allEmbeddings) {
+        if (!embeddingsMap.has(emb.student_id)) {
+          embeddingsMap.set(emb.student_id, {});
+        }
+        const stEmbs = embeddingsMap.get(emb.student_id);
+        const angle = (emb.angle_label || 'FRONT').toUpperCase();
+        if (angle === 'FRONT') stEmbs.front = emb.embedding_vector;
+        else if (angle === 'LEFT') stEmbs.left = emb.embedding_vector;
+        else if (angle === 'RIGHT') stEmbs.right = emb.embedding_vector;
+        else if (!stEmbs.front) stEmbs.front = emb.embedding_vector;
+      }
+    } catch (_) {}
+
     for (const st of students) {
       const roll = st.roll_no || st.roll_number || st.student_id;
+      const embs = embeddingsMap.get(st.student_id) || embeddingsMap.get(roll) || {};
+      const primaryEmb = embs.front || embs.left || embs.right || null;
+
       await runVaultQuery(`
         INSERT OR REPLACE INTO local_students_cache
           (student_id, name, roll_no, hostel_id, room_no, face_embedding, face_descriptor_front, face_descriptor_left, face_descriptor_right, is_enrolled)
@@ -318,10 +339,10 @@ async function prepareOfflineCache(cloudDb) {
         roll,
         st.hostel_id || 'Block A',
         st.room_no || '',
-        st.face_embedding || null,
-        st.face_descriptor_front || null,
-        st.face_descriptor_left || null,
-        st.face_descriptor_right || null
+        primaryEmb,
+        embs.front || primaryEmb,
+        embs.left || null,
+        embs.right || null
       ]);
       cachedStudents++;
     }

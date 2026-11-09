@@ -778,6 +778,16 @@ export async function scanHostelBleBeacon(options = {}) {
         throw lastDiscoveryErr || new Error('Could not resolve ESP32 GATT service / characteristic');
       }
 
+      // Time-Sync Write: Syncs ESP32 internal clock to phone Unix epoch without needing Wi-Fi
+      try {
+        const timeSyncChar = await service.getCharacteristic(TIME_SYNC_CHAR_UUID);
+        if (timeSyncChar) {
+          const currentEpochSec = Math.floor(Date.now() / 1000);
+          const syncValue = timeSyncPacket || String(currentEpochSec);
+          await timeSyncChar.writeValue(new TextEncoder().encode(String(syncValue)));
+        }
+      } catch (_) {}
+
       if (onProgress) onProgress({ status: 'READING_TOKEN', message: 'Reading 30-second rolling token...' });
 
       let dataView = null;

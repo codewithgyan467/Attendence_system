@@ -19,8 +19,9 @@
 #define ANCHOR_HMAC_SECRET   "HG_STRICT_ANCHOR_SECRET_2026" // Must match backend .env
 
 // Must match SERVICE_UUID and CHARACTERISTIC_UUID in frontend/src/utils/nativeHardware.js
-#define HG_SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define HG_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define HG_SERVICE_UUID              "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define HG_CHARACTERISTIC_UUID       "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define HG_TIME_SYNC_CHAR_UUID       "beb5483e-36e1-4688-b7f5-ea07361b26a9"
 
 // ============================================================================
 // 2. TIMING & WATCHDOG CONSTANTS
@@ -58,8 +59,16 @@ char currentPayload[20] = {0}; // Strictly 19 chars + null terminator (<20-byte 
  * Example: "A01|0001A4|9F8E7D6C" (19 bytes total -> 0% truncation on iOS Bluefy)
  */
 void updateRollingToken(bool forceUpdate = false) {
-  uint64_t uptimeMs = esp_timer_get_time() / 1000ULL;
-  uint32_t currentStep = (uint32_t)(uptimeMs / TOTP_STEP_MS);
+  // If clock was synced via BLE or NTP (epoch > 2023), use real 30s epoch step
+  time_t nowSec;
+  time(&nowSec);
+  uint32_t currentStep = 0;
+  if (nowSec > 1700000000LL) {
+    currentStep = (uint32_t)(nowSec / 30);
+  } else {
+    uint64_t uptimeMs = esp_timer_get_time() / 1000ULL;
+    currentStep = (uint32_t)(uptimeMs / TOTP_STEP_MS);
+  }
 
   if (!forceUpdate && currentStep == lastComputedStep) {
     return;
@@ -135,6 +144,28 @@ class HGCharacteristicCallbacks : public BLECharacteristicCallbacks {
   }
 };
 
+class HGTimeSyncCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* pCharacteristic) override {
+    std::string rxValue = pCharacteristic->getValue();
+    if (rxValue.length() > 0) {
+      long long receivedEpoch = 0;
+      if (rxValue.find(':') != std::string::npos) {
+        receivedEpoch = atoll(rxValue.substr(0, rxValue.find(':')).c_str());
+      } else {
+        receivedEpoch = atoll(rxValue.c_str());
+      }
+      if (receivedEpoch > 1700000000LL) {
+        struct timeval tv;
+        tv.tv_sec = (time_t)receivedEpoch;
+        tv.tv_usec = 0;
+        settimeofday(&tv, NULL);
+        Serial.printf("[HG-ANCHOR] Clock synced via BLE to epoch: %lld\n", receivedEpoch);
+        updateRollingToken(true);
+      }
+    }
+  }
+};
+
 // ============================================================================
 // 6. XIAO ESP32C6 HARDWARE RF ANTENNA INITIALIZATION
 // ============================================================================
@@ -180,6 +211,13 @@ void setup() {
   );
   pTokenCharacteristic->addDescriptor(new BLE2902());
   pTokenCharacteristic->setCallbacks(new HGCharacteristicCallbacks());
+
+  // Characteristic for zero-config BLE Clock Sync from student phone
+  BLECharacteristic* pTimeSyncChar = pService->createCharacteristic(
+    HG_TIME_SYNC_CHAR_UUID,
+    BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR
+  );
+  pTimeSyncChar->setCallbacks(new HGTimeSyncCallbacks());
 
   // Populate initial cryptographic token
   updateRollingToken(true);

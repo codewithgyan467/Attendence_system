@@ -85,9 +85,9 @@ echo   [5] When roll-call ends, click 'Push and Sync Local Vault to Cloud DB' in
 echo ================================================================================
 echo.
 
-:: 7. Verify frontend build exists
+:: 7. Ensure optimized production web portal is compiled
 if not exist "frontend\dist\index.html" (
-    echo [i] Building optimized production web portal for local hosting...
+    echo [i] First-time setup: Building optimized web portal for local hosting...
     cd frontend && call npm.cmd run build && cd ..
     echo [i] Production build ready!
 )

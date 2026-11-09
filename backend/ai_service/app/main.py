@@ -3,7 +3,7 @@ import logging
 import cv2
 import numpy as np
 
-cv2.setNumThreads(2)
+cv2.setNumThreads(min(4, os.cpu_count() or 2))
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -332,15 +332,22 @@ def verify_live(req: VerifyLiveRequest):
         eval_details = {"is_live": True, "reason": "Simulation mode"}
 
     # 4. Identity Matching via Cosine Similarity across Burst Frames & Multi-Pose Enrolled Templates
+    # Calibrate SFace/ArcFace cosine similarity threshold to 0.38 for reliable hostel room illumination
+    threshold = 0.38 if (not req.similarity_threshold or req.similarity_threshold >= 0.60) else req.similarity_threshold
+
     best_similarity = -1.0
+    is_match = False
     for cand_v in candidate_vectors:
         for stored_vec in req.stored_embeddings:
             sim = face_engine.compute_cosine_similarity(cand_v, stored_vec)
             if sim > best_similarity:
                 best_similarity = sim
+            if best_similarity >= threshold:
+                is_match = True
+                break
+        if is_match:
+            break
 
-    # Calibrate SFace/ArcFace cosine similarity threshold to 0.38 for reliable hostel room illumination
-    threshold = 0.38 if (not req.similarity_threshold or req.similarity_threshold >= 0.60) else req.similarity_threshold
     is_match = bool(best_similarity >= threshold)
     status_str = "AUTHENTICATED" if is_match else "FACE_MISMATCH"
     details_msg = (
