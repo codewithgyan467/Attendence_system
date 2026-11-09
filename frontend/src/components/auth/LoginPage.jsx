@@ -51,16 +51,17 @@ export default function LoginPage({ onNavigateOnboarding }) {
     try {
       await login(username.trim(), password);
     } catch (err) {
-      // If failed due to unreachable local server, auto-clear local IP and retry via Cloud
-      if (err.message && (err.message.includes('unreachable') || err.message.toLowerCase().includes('failed to fetch') || err.message.includes('NetworkError'))) {
-        clearLocalWardenUrl();
-        setCurrentWardenUrl(null);
+      // If failed due to unreachable server / network glitch, probe local Warden server (e.g. 172.20.10.2:5000)
+      if (err.message && (err.message.includes('unreachable') || err.message.toLowerCase().includes('failed to fetch') || err.message.includes('NetworkError') || err.message.includes('Offline'))) {
         try {
-          await login(username.trim(), password);
-          return;
-        } catch (retryErr) {
-          setErrorMsg(retryErr.message || 'Invalid credentials or inactive account.');
-        }
+          const probeRes = await probeLocalWardenIp();
+          if (probeRes.success) {
+            setCurrentWardenUrl(probeRes.url);
+            await login(username.trim(), password);
+            return;
+          }
+        } catch (_) {}
+        setErrorMsg('Unable to connect to server. If offline, ensure your phone is connected to the Hostel Wi-Fi / Hotspot and tap "Server Wi-Fi Settings" below to connect to the Warden PC.');
       } else {
         setErrorMsg(err.message || 'Invalid credentials or inactive account.');
       }

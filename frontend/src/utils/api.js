@@ -40,9 +40,17 @@ export const clearLocalWardenUrl = () => {
 };
 
 export const probeLocalWardenIp = async (manualIp = null) => {
+  const browserOrigin = (typeof window !== 'undefined' && window.location.origin && 
+    !window.location.hostname.endsWith('onrender.com') && 
+    !window.location.hostname.endsWith('vercel.app')) ? window.location.origin : null;
+
+  const savedWarden = getLocalWardenUrl();
+
   const candidates = manualIp
     ? [manualIp.startsWith('http') ? manualIp : `http://${manualIp}`]
     : [
+        ...(savedWarden ? [savedWarden.replace(/\/api\/v1\/?$/, '')] : []),
+        ...(browserOrigin ? [browserOrigin] : []),
         'http://172.20.10.2:5000',
         'http://192.168.137.1:5000',
         'http://192.168.1.100:5000',
@@ -79,19 +87,27 @@ export const probeLocalWardenIp = async (manualIp = null) => {
 };
 
 // Dynamically determine the API base URL:
+// - If browser opened from Warden LAN IP (e.g. http://172.20.10.2:5000), use relative '/api/v1' directly (100% offline support)
 // - If enforcement mode is STRICT / STRICT_LOCK, point to Warden's local hostel server IP
-// - If enforcement mode is STANDBY or SOFT_ANCHOR, point to Cloud URL
-// - Native Mobile (Capacitor) switches seamlessly between local Wi-Fi and Cloud
+// - Native Mobile (Capacitor) uses local warden IP if set, or Cloud URL when off-campus
 export const getApiBaseUrl = () => {
   if (typeof window !== 'undefined') {
     const custom = localStorage.getItem('hg_backend_url');
     if (custom) return custom.replace(/\/+$/, '');
 
+    const isNative = Capacitor.isNativePlatform();
+    // Direct LAN Web browser access on Warden laptop IP (e.g. http://172.20.10.2:5000 or localhost)
+    if (!isNative && window.location.hostname && 
+        !window.location.hostname.endsWith('onrender.com') && 
+        !window.location.hostname.endsWith('vercel.app')) {
+      return '/api/v1';
+    }
+
     const bleMode = localStorage.getItem('hg_ble_mode') || 'STANDBY';
     const localWarden = localStorage.getItem('hg_local_warden_url');
 
-    // In STRICT mode, point attendance check-in calls to Warden's local office server if available
-    if ((bleMode === 'STRICT' || bleMode === 'STRICT_LOCK' || bleMode === 'STRICT_REQUIRED') && localWarden) {
+    // In STRICT mode or if local warden server is configured, route to local warden server
+    if ((bleMode === 'STRICT' || bleMode === 'STRICT_LOCK' || bleMode === 'STRICT_REQUIRED' || isNative) && localWarden) {
       const cleanWarden = localWarden.replace(/\/+$/, '');
       return cleanWarden.endsWith('/api/v1') ? cleanWarden : `${cleanWarden}/api/v1`;
     }
@@ -101,8 +117,13 @@ export const getApiBaseUrl = () => {
     return import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, '');
   }
 
-  // Capacitor Native App in STANDBY / SOFT_ANCHOR mode routes to Cloud
+  // Capacitor Native App: use local warden if on hostel Wi-Fi, otherwise Cloud
   if (Capacitor.isNativePlatform()) {
+    const localWarden = typeof window !== 'undefined' ? localStorage.getItem('hg_local_warden_url') : null;
+    if (localWarden) {
+      const cleanWarden = localWarden.replace(/\/+$/, '');
+      return cleanWarden.endsWith('/api/v1') ? cleanWarden : `${cleanWarden}/api/v1`;
+    }
     return 'https://hostelguard-backend-oimp.onrender.com/api/v1';
   }
 
@@ -178,28 +199,37 @@ async function request(endpoint, options = {}, isRetry = false) {
 
   const cloudBase = 'https://hostelguard-backend-oimp.onrender.com/api/v1';
 
-  // For authentication endpoints, ALWAYS authenticate through Cloud on mobile devices and apps,
-  // preventing stale local Wi-Fi IPs or disconnected local servers from locking students out.
+  // For authentication endpoints:
+  // - Direct browser access on LAN (e.g. http://172.20.10.2:5000): Authenticate directly with local server (100% offline support)
+  // - Native app with local warden IP: Use local warden server
+  // - Otherwise: Authenticate with Cloud API (with seamless offline fallback)
   let activeUrl = primaryUrl;
   const isAuthEndpoint = endpoint.startsWith('/auth');
+  const isNative = Capacitor.isNativePlatform();
+  const isDirectLan = !isNative && typeof window !== 'undefined' && 
+    window.location.hostname && 
+    !window.location.hostname.endsWith('onrender.com') && 
+    !window.location.hostname.endsWith('vercel.app');
+
   if (isAuthEndpoint) {
-    const isNative = Capacitor.isNativePlatform();
-    // Only use local server for auth if directly opened on Warden PC's browser (localhost:5000)
-    const isDirectHost = !isNative && typeof window !== 'undefined' && 
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && 
-      window.location.port === '5000';
-    if (!isDirectHost) {
+    if (isDirectLan) {
+      activeUrl = primaryUrl;
+    } else if (isNative && localWarden) {
+      const cleanWarden = localWarden.replace(/\/+$/, '');
+      const wardenBase = cleanWarden.endsWith('/api/v1') ? cleanWarden : `${cleanWarden}/api/v1`;
+      activeUrl = `${wardenBase}${endpoint}`;
+    } else {
       activeUrl = `${cloudBase}${endpoint}`;
     }
   }
 
   try {
-    const isLocalRequest = Boolean(localWarden && activeUrl.includes(localWarden));
+    const isLocalRequest = Boolean((localWarden && activeUrl.includes(localWarden)) || isDirectLan);
     // Sub-1800ms fast timeout for local server so cross-subnet devices fail over immediately without lagging
     const defaultTimeout = isLocalRequest ? 1800 : (options.timeout || (endpoint === '/auth/me' ? 8000 : 35000));
     response = await performFetch(activeUrl, defaultTimeout);
   } catch (networkErr) {
-    // If active was an unreachable local warden IP, probe current LAN hotspot IPs and fail over smoothly to Cloud
+    // Bidirectional resilient failover between Local Warden Server and Cloud:
     if (localWarden && activeUrl.includes(localWarden)) {
       // 1. Fast local probe for common host/hotspot IPs (e.g. iPhone hotspot 172.20.10.2, Windows hotspot 192.168.137.1)
       const candidateIps = [
@@ -223,40 +253,46 @@ async function request(endpoint, options = {}, isRetry = false) {
         } catch (_) {}
       }
 
-      if (probedSuccess && response) {
-        // Recovered via auto-discovered local LAN IP!
-      } else {
-        // 2. Clear stale local warden IP and fail over seamlessly to Cloud API
-        clearLocalWardenUrl();
+      if (!probedSuccess) {
+        // Try Cloud fallback if internet is available
         try {
           const fallbackUrl = `${cloudBase}${endpoint}`;
           response = await performFetch(fallbackUrl, options.timeout || 15000);
-          // If cloud succeeds, asynchronously refresh the latest warden LAN IP from cloud in background
-          performFetch(`${cloudBase}/attendance/time-window`, 4000).then(async (twRes) => {
-            if (twRes && twRes.ok) {
-              const twData = await twRes.json().catch(() => ({}));
-              if (twData?.wardenLanApiUrl) setLocalWardenUrl(twData.wardenLanApiUrl);
-            }
-          }).catch(() => {});
         } catch (cloudErr) {
           throw new Error(
-            `Unable to reach hostel server (${cloudErr.message || networkErr.message || 'Offline'}). Please ensure you have internet or Wi-Fi access.`
+            `Unable to reach Warden server (${localWarden}) or Cloud. Please verify your phone is on the same Wi-Fi as the Warden laptop.`
           );
         }
       }
-    } else if (!activeUrl.startsWith(cloudBase)) {
-      try {
-        const fallbackUrl = `${cloudBase}${endpoint}`;
-        response = await performFetch(fallbackUrl, options.timeout || 35000);
-      } catch (_) {
+    } else if (activeUrl.startsWith(cloudBase)) {
+      // 2. Cloud failed (Hostel has NO INTERNET): Failover automatically to local Warden server on LAN!
+      const candidateIps = [
+        ...(localWarden ? [localWarden] : []),
+        'http://172.20.10.2:5000/api/v1',
+        'http://192.168.137.1:5000/api/v1',
+        'http://192.168.1.100:5000/api/v1',
+        'http://192.168.0.100:5000/api/v1'
+      ];
+      let offlineRecovered = false;
+      for (const cand of candidateIps) {
+        try {
+          const candUrl = `${cand}${endpoint}`;
+          const candRes = await performFetch(candUrl, 1200);
+          if (candRes && (candRes.ok || candRes.status === 401 || candRes.status === 403 || candRes.status === 400)) {
+            response = candRes;
+            offlineRecovered = true;
+            setLocalWardenUrl(cand);
+            break;
+          }
+        } catch (_) {}
+      }
+      if (!offlineRecovered) {
         throw new Error(
-          `Unable to reach server (${networkErr.message || 'Connection failed'}). Please check your connection.`
+          `Offline: Unable to connect to Warden server or Cloud. Please ensure your phone is connected to the Hostel Wi-Fi / Hotspot (e.g. http://172.20.10.2:5000).`
         );
       }
     } else {
-      throw new Error(
-        `Unable to reach server (${networkErr.message || 'Connection failed'}). Please check your connection.`
-      );
+      throw networkErr;
     }
   }
 
