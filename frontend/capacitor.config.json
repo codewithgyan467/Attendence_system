@@ -4,10 +4,14 @@
   "webDir": "dist",
   "bundledWebRuntime": false,
   "server": {
-    "androidScheme": "https",
-    "cleartext": true
+    "androidScheme": "http",
+    "cleartext": true,
+    "allowNavigation": ["*"]
   },
   "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
     "Geolocation": {
       "permissions": ["location"]
     },

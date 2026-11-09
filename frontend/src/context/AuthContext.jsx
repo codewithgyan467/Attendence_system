@@ -72,7 +72,7 @@ export function AuthProvider({ children }) {
       setUser(res.user);
       return res.user;
     }
-    throw new Error('Authentication failed');
+    throw new Error(res?.error || res?.message || 'Authentication failed: Server returned an invalid response.');
   };
 
   const logout = async () => {

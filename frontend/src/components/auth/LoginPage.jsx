@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, CheckCircle2, Download, QrCode, Smartphone, RefreshCw, Settings, Wifi } from 'lucide-react';
+import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, CheckCircle2, Download, QrCode, Smartphone, RefreshCw, Settings, Wifi, Eye, EyeOff } from 'lucide-react';
 import ForgotPasswordModal from './ForgotPasswordModal';
 import GoogleSignInButton from './GoogleSignInButton';
 import AppDownloadModal from './AppDownloadModal';
@@ -10,6 +10,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
   const { login, loginWithGoogle } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successBanner, setSuccessBanner] = useState('');
@@ -329,14 +330,52 @@ export default function LoginPage({ onNavigateOnboarding }) {
                   <Lock size={15} className="text-muted" />
                 </span>
                 <input
-                  type="password"
-                  className="form-control border-start-0 ps-0"
+                  type={showPassword ? 'text' : 'password'}
+                  className="form-control border-start-0 border-end-0 ps-0"
                   placeholder="Enter password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
                   required
                 />
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary border-start-0 bg-light px-2"
+                  onClick={() => setShowPassword(!showPassword)}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff size={13} className="text-muted" /> : <Eye size={13} className="text-muted" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Demo Autofill Pills for Offline Testing */}
+            <div className="d-flex align-items-center justify-content-between mb-2 px-1">
+              <span className="text-muted" style={{ fontSize: '10.5px' }}>⚡ 1-Tap Fill:</span>
+              <div className="d-flex gap-1">
+                <button
+                  type="button"
+                  className="btn btn-outline-primary btn-sm py-0 px-1.5"
+                  style={{ fontSize: '10.5px' }}
+                  onClick={() => {
+                    setUsername('2023CS01');
+                    setPassword('Student@12345');
+                  }}
+                >
+                  👤 2023CS01
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary btn-sm py-0 px-1.5"
+                  style={{ fontSize: '10.5px' }}
+                  onClick={() => {
+                    setUsername('warden');
+                    setPassword('Warden@12345');
+                  }}
+                >
+                  🛡️ Warden
+                </button>
               </div>
             </div>
 

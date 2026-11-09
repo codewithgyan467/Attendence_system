@@ -265,9 +265,8 @@ async function request(endpoint, options = {}, isRetry = false) {
   }
 
   try {
-    const isLocalRequest = Boolean((localWarden && activeUrl.includes(localWarden)) || isDirectLan);
-    // Sub-1800ms fast timeout for local server so cross-subnet devices fail over immediately without lagging
-    const defaultTimeout = isLocalRequest ? 1800 : (options.timeout || (endpoint === '/auth/me' ? 8000 : 35000));
+    // 15-second standard timeout for local Wi-Fi and mobile networks to avoid premature aborts
+    const defaultTimeout = options.timeout || (endpoint === '/auth/me' ? 8000 : 15000);
     response = await performFetch(activeUrl, defaultTimeout);
   } catch (networkErr) {
     // Bidirectional resilient failover between Local Warden Server and Cloud:
@@ -309,6 +308,14 @@ async function request(endpoint, options = {}, isRetry = false) {
     } else {
       throw networkErr;
     }
+  }
+
+  const contentType = (response && response.headers && typeof response.headers.get === 'function') 
+    ? (response.headers.get('content-type') || '') 
+    : '';
+
+  if (response.ok && contentType && !contentType.includes('application/json')) {
+    throw new Error('Hostel server connection error: received HTML instead of API response. Please verify the Warden Server IP (e.g. http://172.20.10.2:5000).');
   }
 
   const data = await response.json().catch(() => ({}));
