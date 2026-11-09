@@ -21,8 +21,9 @@ export const setActiveBleMode = (mode) => {
 export const getLocalWardenUrl = () => {
   if (typeof window !== 'undefined') {
     const url = localStorage.getItem('hg_local_warden_url');
-    // On native mobile (Capacitor), 'localhost' refers to the phone itself, never the Warden's laptop
-    if (url && Capacitor.isNativePlatform() && (url.includes('localhost') || url.includes('127.0.0.1'))) {
+    const isMobile = Capacitor.isNativePlatform() || (typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || ''));
+    // On mobile devices / Capacitor, 'localhost' is the phone's internal WebView, never the Warden's PC
+    if (url && (isMobile || window.location.protocol === 'https:') && (url.includes('localhost') || url.includes('127.0.0.1'))) {
       localStorage.removeItem('hg_local_warden_url');
       return null;
     }
@@ -35,14 +36,15 @@ export const setLocalWardenUrl = (url) => {
   if (typeof window !== 'undefined') {
     if (!url) {
       localStorage.removeItem('hg_local_warden_url');
-    } else {
-      const clean = url.replace(/\/+$/, '');
-      if (Capacitor.isNativePlatform() && (clean.includes('localhost') || clean.includes('127.0.0.1'))) {
-        localStorage.removeItem('hg_local_warden_url');
-        return;
-      }
-      localStorage.setItem('hg_local_warden_url', clean);
+      return;
     }
+    const clean = url.replace(/\/+$/, '');
+    const isMobile = Capacitor.isNativePlatform() || (typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || ''));
+    if ((isMobile || window.location.protocol === 'https:') && (clean.includes('localhost') || clean.includes('127.0.0.1'))) {
+      localStorage.removeItem('hg_local_warden_url');
+      return;
+    }
+    localStorage.setItem('hg_local_warden_url', clean);
   }
 };
 
@@ -81,11 +83,11 @@ export const probeLocalWardenIp = async (manualIp = null) => {
         'http://192.168.0.1:5000',
         ...(isMobileClient ? [] : ['http://localhost:5000']),
         ...(validSavedWarden ? [validSavedWarden.replace(/\/api\/v1\/?$/, '')] : []),
-        ...((browserOrigin && !browserOrigin.includes('localhost')) ? [browserOrigin] : [])
-      ]));
+        ...((browserOrigin && !browserOrigin.includes('localhost') && !browserOrigin.includes('127.0.0.1')) ? [browserOrigin] : [])
+      ])).filter(c => !isMobileClient || (!c.includes('localhost') && !c.includes('127.0.0.1')));
 
   const probeCandidate = async (cand) => {
-    if ((isMobileClient || window?.location?.protocol === 'https:') && (cand.includes('localhost') || cand.includes('127.0.0.1'))) {
+    if (!cand || ((isMobileClient || window?.location?.protocol === 'https:') && (cand.includes('localhost') || cand.includes('127.0.0.1')))) {
       throw new Error('Localhost is not the Warden PC on mobile client');
     }
     const cleanCand = cand.replace(/\/+$/, '');

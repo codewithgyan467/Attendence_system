@@ -4,6 +4,30 @@ const bleBeaconService = require('./bleBeaconService');
 const beaconCache = require('./beaconCache');
 
 /**
+ * Normalizes BSSID to 5-octet prefix to handle dual-band (2.4 GHz vs 5 GHz) router band switching
+ * e.g. "AA:BB:CC:DD:EE:01" -> "AA:BB:CC:DD:EE"
+ * @param {string} bssid
+ * @returns {string}
+ */
+const normalizeBssidPrefix = (bssid) => {
+  if (!bssid) return '';
+  return bssid.trim().toUpperCase().split(':').slice(0, 5).join(':');
+};
+
+/**
+ * Validates a client BSSID against registered BSSIDs using 5-octet prefix matching
+ * @param {string} clientBssid
+ * @param {Array<string>|Set<string>} registeredBssids
+ * @returns {boolean}
+ */
+function validateWifiAnchor(clientBssid, registeredBssids) {
+  const clientPrefix = normalizeBssidPrefix(clientBssid);
+  if (!clientPrefix) return false;
+  const list = Array.isArray(registeredBssids) ? registeredBssids : Array.from(registeredBssids || []);
+  return list.some(validMac => normalizeBssidPrefix(validMac) === clientPrefix);
+}
+
+/**
  * HostelGuard Enterprise v3.4 - Multi-Router Strict Lock Cluster Service
  * Coordinates floor ESP32 multitasking gateways (BLE + LAN WebServer + Cloud Heartbeat),
  * tracks router WAN/LAN subnets, and verifies zero-cost cryptographic LAN Wi-Fi tickets.
@@ -310,6 +334,20 @@ class WifiClusterService {
 
     return endpoints;
   }
+
+  normalizeBssidPrefix(bssid) {
+    return normalizeBssidPrefix(bssid);
+  }
+
+  validateWifiAnchor(clientBssid, registeredBssids) {
+    return validateWifiAnchor(clientBssid, registeredBssids);
+  }
 }
 
-module.exports = new WifiClusterService();
+const serviceInstance = new WifiClusterService();
+serviceInstance.normalizeBssidPrefix = normalizeBssidPrefix;
+serviceInstance.validateWifiAnchor = validateWifiAnchor;
+
+module.exports = serviceInstance;
+module.exports.normalizeBssidPrefix = normalizeBssidPrefix;
+module.exports.validateWifiAnchor = validateWifiAnchor;

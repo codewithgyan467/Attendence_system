@@ -1,14 +1,15 @@
 import os
 import logging
+import asyncio
+import threading
 import cv2
 import numpy as np
 
 cv2.setNumThreads(min(4, os.cpu_count() or 2))
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -23,6 +24,10 @@ app = FastAPI(
     description="Facial Verification, MiniFASNet Deep Learning Anti-Spoofing, and Active Liveness Engine",
     version="4.0.0"
 )
+
+# Concurrency Limiter: Queues peak high-volume check-ins smoothly in RAM (max 4 concurrent)
+INFERENCE_SEMAPHORE = asyncio.Semaphore(4)
+INFERENCE_LOCK = threading.Lock()
 
 app.add_middleware(
     CORSMiddleware,
@@ -120,14 +125,7 @@ def health_check():
         "cost": "$0.00 (100% FOSS & Local Edge Inference)"
     }
 
-@app.post("/api/v1/faces/extract-embeddings", response_model=ExtractEmbeddingsResponse)
-async def extract_embeddings(req: ExtractEmbeddingsRequest):
-    """
-    Phase 2: Student Onboarding - Multi-angle facial vector generation.
-    Takes 1 to N photos, validates presence of human face, runs MiniFASNet deep PAD,
-    and returns 128D mathematical embedding vectors.
-    CPU-bound inference is offloaded to run_in_threadpool so the async event loop never blocks.
-    """
+async def _do_extract_embeddings(req: ExtractEmbeddingsRequest):
     results: List[EmbeddingResult] = []
 
     for item in req.photos:
@@ -200,14 +198,16 @@ async def extract_embeddings(req: ExtractEmbeddingsRequest):
         embeddings=results
     )
 
-@app.post("/api/v1/faces/verify-live", response_model=VerifyLiveResponse)
-async def verify_live(req: VerifyLiveRequest):
+@app.post("/api/v1/faces/extract-embeddings", response_model=ExtractEmbeddingsResponse)
+async def extract_embeddings(req: ExtractEmbeddingsRequest):
     """
-    HostelGuard Enterprise v4.0 Attendance Verification & Presentation Attack Detection:
-    Supports ultra-fast pre-cropped client pipeline for low-spec Warden laptops,
-    bypassing YuNet full-frame scans and evaluating MiniFASNet & SFace in <25ms.
-    All CPU-bound model inference is offloaded to run_in_threadpool so the async event loop never blocks.
+    Phase 2: Student Onboarding - Multi-angle facial vector generation.
+    Protected by INFERENCE_SEMAPHORE (max 4 concurrent).
     """
+    async with INFERENCE_SEMAPHORE:
+        return await _do_extract_embeddings(req)
+
+async def _do_verify_live(req: VerifyLiveRequest):
     # 0. Fast-Path Pre-Cropped Biometric Inference (Low-Spec Warden Laptop Mode)
     if req.face_crop_112 and req.pad_crop_80:
         try:
@@ -391,3 +391,74 @@ async def verify_live(req: VerifyLiveRequest):
             "pad_evaluation": eval_details
         }
     )
+
+@app.post("/api/v1/faces/verify-live", response_model=VerifyLiveResponse)
+async def verify_live(req: VerifyLiveRequest):
+    """
+    HostelGuard Enterprise v4.0 Attendance Verification & Presentation Attack Detection.
+    Protected by INFERENCE_SEMAPHORE (max 4 concurrent) to eliminate latency spikes.
+    """
+    async with INFERENCE_SEMAPHORE:
+        return await _do_verify_live(req)
+
+def run_biometric_pipeline(image_bytes: bytes) -> dict:
+    """Synchronous CPU-bound pipeline for single-image verification protected by inference mutex."""
+    with INFERENCE_LOCK:
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            raise ValueError("Invalid image file format")
+        vec, aligned, raw_face, conf = face_engine.extract_full_face_data(img)
+        if raw_face is None:
+            return {
+                "is_match": False,
+                "is_live": False,
+                "status": "FACE_NOT_DETECTED",
+                "confidence": 0.0,
+                "liveness_score": 0.0,
+                "details": {"message": "No face detected in submitted frame"}
+            }
+        pad_eval = liveness_detector.evaluate_deep_pad(img, raw_face)
+        is_live = bool(pad_eval.get("is_live", True))
+        return {
+            "is_match": True,
+            "is_live": is_live,
+            "status": "AUTHENTICATED" if is_live else "SPOOF_DETECTED",
+            "confidence": float(conf or 0.95),
+            "liveness_score": float(pad_eval.get("live_prob", 0.95)),
+            "details": pad_eval
+        }
+
+@app.post("/verify-attendance")
+async def verify_attendance(file: Optional[UploadFile] = File(None), request: Request = None):
+    """
+    Step 3: High-concurrency curfew attendance verification route.
+    Protected by INFERENCE_SEMAPHORE (max 4 concurrent) to eliminate CPU freeze and OOM.
+    """
+    async with INFERENCE_SEMAPHORE:
+        try:
+            image_bytes = None
+            if file is not None:
+                image_bytes = await file.read()
+            elif request is not None:
+                content_type = request.headers.get("content-type", "")
+                if "application/json" in content_type:
+                    body = await request.json()
+                    b64_str = body.get("image_base64") or body.get("live_image_base64") or body.get("image")
+                    if b64_str:
+                        if "," in b64_str:
+                            b64_str = b64_str.split(",")[1]
+                        import base64
+                        image_bytes = base64.b64decode(b64_str)
+                else:
+                    image_bytes = await request.body()
+
+            if not image_bytes or len(image_bytes) == 0:
+                raise HTTPException(status_code=400, detail="Missing image file or payload for verification")
+
+            result = await run_in_threadpool(run_biometric_pipeline, image_bytes)
+            return result
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Biometric engine error: {str(e)}")

@@ -60,12 +60,21 @@ function getZonedTime(now = new Date(), timezone = 'Asia/Kolkata') {
  * Determine live attendance window status for today
  */
 async function getAttendanceWindowStatus(customDate = null, customTime = null) {
-  const config = (await getQuery(`SELECT * FROM attendance_schedule_configs WHERE id = 'default_schedule' LIMIT 1`)) || {
-    default_start_time: '19:00',
-    default_end_time: '19:30',
+  const dbConfig = await getQuery(`SELECT * FROM attendance_schedule_configs WHERE id = 'default_schedule' LIMIT 1`);
+  const config = dbConfig || {
+    default_start_time: process.env.ATTENDANCE_WINDOW_START || '20:00',
+    default_end_time: process.env.ATTENDANCE_WINDOW_END || '21:00',
     is_enabled: 1,
     timezone: 'Asia/Kolkata'
   };
+
+  // Allow env vars to override default timing if set explicitly
+  if (process.env.ATTENDANCE_WINDOW_START && !dbConfig) {
+    config.default_start_time = process.env.ATTENDANCE_WINDOW_START;
+  }
+  if (process.env.ATTENDANCE_WINDOW_END && !dbConfig) {
+    config.default_end_time = process.env.ATTENDANCE_WINDOW_END;
+  }
 
   const tz = config.timezone || 'Asia/Kolkata';
   const now = new Date();

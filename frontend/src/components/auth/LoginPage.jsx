@@ -20,7 +20,14 @@ export default function LoginPage({ onNavigateOnboarding }) {
   const [discoveringWarden, setDiscoveringWarden] = useState(false);
   const [showServerSettings, setShowServerSettings] = useState(false);
   const [manualIp, setManualIp] = useState('');
-  const [currentWardenUrl, setCurrentWardenUrl] = useState(() => getLocalWardenUrl());
+  const [currentWardenUrl, setCurrentWardenUrl] = useState(() => {
+    const u = getLocalWardenUrl();
+    if (u && (typeof window !== 'undefined' && (/iPad|iPhone|Android/i.test(navigator.userAgent) || window.location.protocol === 'https:') && (u.includes('localhost') || u.includes('127.0.0.1')))) {
+      clearLocalWardenUrl();
+      return null;
+    }
+    return u;
+  });
 
   // Check URL query parameters (e.g. ?mode=reset or ?token=... or ?roll=2023CS01)
   useEffect(() => {

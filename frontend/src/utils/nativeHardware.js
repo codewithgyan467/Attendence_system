@@ -44,12 +44,23 @@ export async function getNativeOrBrowserLocation(options = {}) {
 
       // Fast-path: If native Android hardware LocationManager returned a fresh, accurate GPS fix, use it immediately
       let coordinates = null;
-      if (!hardwareLoc || !hardwareLoc.latitude || (hardwareLoc.accuracy && hardwareLoc.accuracy > 35)) {
-        coordinates = await Geolocation.getCurrentPosition({
-          enableHighAccuracy: true,
-          timeout: 6000,
-          maximumAge: 3000
-        });
+      if (!hardwareLoc || !hardwareLoc.latitude || (hardwareLoc.accuracy && hardwareLoc.accuracy > 45)) {
+        try {
+          coordinates = await Geolocation.getCurrentPosition({
+            enableHighAccuracy: true,
+            timeout: 3500,
+            maximumAge: 60000
+          });
+        } catch (_) {
+          // Indoor Fallback: If satellite lock takes >3.5s due to concrete ceilings, use fused cell/Wi-Fi assisted fix
+          try {
+            coordinates = await Geolocation.getCurrentPosition({
+              enableHighAccuracy: false,
+              timeout: 3500,
+              maximumAge: 300000
+            });
+          } catch (_) {}
+        }
       }
 
       const isMock = Boolean(
@@ -63,22 +74,33 @@ export async function getNativeOrBrowserLocation(options = {}) {
 
       const lat = hardwareLoc?.latitude ?? coordinates?.coords?.latitude;
       const lon = hardwareLoc?.longitude ?? coordinates?.coords?.longitude;
-      const acc = hardwareLoc?.accuracy ?? coordinates?.coords?.accuracy ?? 10;
+      const acc = hardwareLoc?.accuracy ?? coordinates?.coords?.accuracy ?? 15;
       const alt = hardwareLoc?.altitude ?? coordinates?.coords?.altitude ?? null;
 
-      return {
-        latitude: parseFloat(lat.toFixed(6)),
-        longitude: parseFloat(lon.toFixed(6)),
-        accuracy: acc,
-        altitude: alt,
-        isMockLocation: isMock,
-        mockReason: nativeMockResult?.mockReason || hardwareLoc?.mockReason || (isMock ? 'NATIVE_MOCK_DETECTED' : 'NONE'),
-        detectedApps: nativeMockResult?.detectedApps || hardwareLoc?.detectedApps || [],
-        satellitesVisible: hardwareLoc?.satellitesVisible ?? nativeMockResult?.satellitesVisible ?? null,
-        satellitesUsed: hardwareLoc?.satellitesUsed ?? nativeMockResult?.satellitesUsed ?? null,
-        connectedWifi: wifiInfo,
-        source: hardwareLoc?.source || 'CAPACITOR_NATIVE_GPS'
-      };
+      if (lat !== undefined && lat !== null && lon !== undefined && lon !== null && !isNaN(lat) && !isNaN(lon)) {
+        const result = {
+          latitude: parseFloat(Number(lat).toFixed(6)),
+          longitude: parseFloat(Number(lon).toFixed(6)),
+          accuracy: acc,
+          altitude: alt,
+          isMockLocation: isMock,
+          mockReason: nativeMockResult?.mockReason || hardwareLoc?.mockReason || (isMock ? 'NATIVE_MOCK_DETECTED' : 'NONE'),
+          detectedApps: nativeMockResult?.detectedApps || hardwareLoc?.detectedApps || [],
+          satellitesVisible: hardwareLoc?.satellitesVisible ?? nativeMockResult?.satellitesVisible ?? null,
+          satellitesUsed: hardwareLoc?.satellitesUsed ?? nativeMockResult?.satellitesUsed ?? null,
+          connectedWifi: wifiInfo,
+          source: hardwareLoc?.source || 'CAPACITOR_NATIVE_GPS'
+        };
+
+        // Cache last valid fix for indoor room continuity
+        try {
+          if (typeof window !== 'undefined' && !isMock) {
+            localStorage.setItem('hg_last_gps_fix', JSON.stringify({ ...result, cachedAt: Date.now() }));
+          }
+        } catch (_) {}
+
+        return result;
+      }
     } catch (err) {
       console.warn('Native GPS error, falling back to browser API:', err);
     }
@@ -150,6 +172,20 @@ export async function getNativeOrBrowserLocation(options = {}) {
                 });
               },
               (errFallback) => {
+                // If indoors and satellite timed out, check if we have a recent cached fix within the last 30 minutes
+                try {
+                  const cachedStr = localStorage.getItem('hg_last_gps_fix');
+                  if (cachedStr) {
+                    const cached = JSON.parse(cachedStr);
+                    if (cached && cached.latitude && cached.longitude && (Date.now() - (cached.cachedAt || 0) < 30 * 60 * 1000)) {
+                      return resolve({
+                        ...cached,
+                        source: 'BROWSER_INDOOR_CACHED_GPS'
+                      });
+                    }
+                  }
+                } catch (_) {}
+
                 // Detect Android OS master Location toggle turned off
                 if (err && err.code === 2) {
                   return reject(new Error('LOCATION_SWITCH_OFF: Android Location (GPS) switch is turned OFF. Please turn ON Location in your phone\'s quick-settings shade to enable Bluetooth & GPS verification.'));

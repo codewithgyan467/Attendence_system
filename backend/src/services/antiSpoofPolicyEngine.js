@@ -154,7 +154,7 @@ class AntiSpoofPolicyEngine {
     const normSsid = (s) => String(s || '').replace(/[\u2018\u2019]/g, "'").trim().toLowerCase();
     let wifiMatchStatus = 'SCAN_UNAVAILABLE';
     const { activeAPs, clusterRows } = await getCachedWifiMetadata(allQuery);
-    const knownBSSIDs = new Set(activeAPs.map((ap) => (ap.bssid || '').toLowerCase()));
+    const knownBSSIDs = activeAPs.map((ap) => ap.bssid).filter(Boolean);
     const knownSSIDs = new Set(activeAPs.map((ap) => normSsid(ap.ssid_label)));
     clusterRows.forEach((c) => {
       if (c.ssid) knownSSIDs.add(normSsid(c.ssid));
@@ -175,7 +175,8 @@ class AntiSpoofPolicyEngine {
     }
 
     if (wifiScan && (wifiScan.status === 'SCAN_OK' || Array.isArray(wifiScan.bssids) || wifiScan.connectedSsid)) {
-      const matchedBssid = Array.isArray(wifiScan.bssids) && wifiScan.bssids.some((b) => knownBSSIDs.has(String(b).toLowerCase()));
+      // 5-Octet BSSID normalization prevents false rejections when phone roams between 2.4 GHz & 5 GHz bands
+      const matchedBssid = Array.isArray(wifiScan.bssids) && wifiScan.bssids.some((b) => wifiClusterService.validateWifiAnchor(b, knownBSSIDs));
       const matchedSsid = wifiScan.connectedSsid && knownSSIDs.has(normSsid(wifiScan.connectedSsid));
 
       if (matchedBssid || matchedSsid) {
@@ -328,7 +329,7 @@ class AntiSpoofPolicyEngine {
         }
       }
     } else if (bleProof && (bleProof.channel === 'HOSTEL_WIFI_PROXIMITY_CHECK' || bleProof.channel === 'HOSTEL_WIFI_VERIFIED' || bleProof.method === 'HOSTEL_WIFI_VERIFIED')) {
-      const bssidMatch = bleProof.bssid && knownBSSIDs.has(String(bleProof.bssid).toLowerCase());
+      const bssidMatch = bleProof.bssid && wifiClusterService.validateWifiAnchor(bleProof.bssid, knownBSSIDs);
       const ssidMatch = bleProof.ssid && knownSSIDs.has(normSsid(bleProof.ssid));
 
       if (bssidMatch || ssidMatch || wifiMatchStatus === 'MATCHED_HOSTEL_AP' || isClientOnClusterWan) {
@@ -398,7 +399,7 @@ class AntiSpoofPolicyEngine {
         bleProof.code
       )
     );
-    const maxAllowedAcc = hasValidBleProof ? 120 : 65;
+    const maxAllowedAcc = hasValidBleProof ? 150 : (distanceMeters <= allowedRadius ? 120 : 85);
     if (primaryAcc > maxAllowedAcc && distanceMeters <= allowedRadius * 2 && !isMock) {
       decisionOutcome = 'RETRY';
       reasonCodes.push('POOR_GPS_ACCURACY');

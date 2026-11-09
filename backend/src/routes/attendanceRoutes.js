@@ -251,7 +251,7 @@ const verifyLocationHandler = async (req, res) => {
         effectiveBle.code
       )
     );
-    const maxAccuracy = hasBleSignal ? 120 : 100;
+    const maxAccuracy = hasBleSignal ? 150 : 120;
 
     if (parsedAcc > maxAccuracy) {
       return res.status(400).json({

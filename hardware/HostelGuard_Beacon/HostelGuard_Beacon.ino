@@ -194,10 +194,10 @@ void setup() {
   BLEDevice::init(BLE_DEVICE_NAME);
   BLEDevice::setMTU(128);
 
-  // Boost BLE TX Power to +9 dBm for reliable 15-meter indoor room penetration
-  BLEDevice::setPower(ESP_PWR_LVL_P9, ESP_BLE_PWR_TYPE_DEFAULT);
-  BLEDevice::setPower(ESP_PWR_LVL_P9, ESP_BLE_PWR_TYPE_ADV);
-  BLEDevice::setPower(ESP_PWR_LVL_P9, ESP_BLE_PWR_TYPE_CONN_HDL0);
+  // Calibrate BLE TX Power to 0 dBm (~12-15m corridor range, eliminates vertical floor-slab bleed)
+  BLEDevice::setPower(ESP_PWR_LVL_N0, ESP_BLE_PWR_TYPE_DEFAULT);
+  BLEDevice::setPower(ESP_PWR_LVL_N0, ESP_BLE_PWR_TYPE_ADV);
+  BLEDevice::setPower(ESP_PWR_LVL_N0, ESP_BLE_PWR_TYPE_CONN_HDL0);
 
   // Create GATT Server & Service
   pServer = BLEDevice::createServer();
