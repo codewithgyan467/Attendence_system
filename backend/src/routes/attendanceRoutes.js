@@ -96,16 +96,20 @@ function verifyCompactEsp32Payload(rawPayload, secret = process.env.ANCHOR_HMAC_
 }
 
 // Public / Authenticated Live Attendance Schedule Status
-router.get('/schedule', async (req, res) => {
+router.get(['/schedule', '/status'], async (req, res) => {
   try {
     const schedule = await getAttendanceWindowStatus();
-    const geofence = await getQuery(`SELECT ble_mode FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
+    const geofence = await getQuery(`SELECT ble_mode, local_warden_url FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
     const activeMode = global.activeEnforcementMode || geofence?.ble_mode || 'STANDBY_OPTIONAL';
+    const wardenLanApiUrl = global.wardenLanApiUrl || geofence?.local_warden_url || null;
     res.json({
       success: true,
       schedule,
       bluetoothEnforcementMode: activeMode,
-      ble_mode: activeMode
+      ble_mode: activeMode,
+      wardenLanApiUrl,
+      local_warden_url: wardenLanApiUrl,
+      temporaryRelaxUntil: global.temporaryRelaxUntil || null
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -116,14 +120,18 @@ router.get('/schedule', async (req, res) => {
 router.get('/time-window', async (req, res) => {
   try {
     const schedule = await getAttendanceWindowStatus();
-    const geofence = await getQuery(`SELECT ble_mode FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
+    const geofence = await getQuery(`SELECT ble_mode, local_warden_url FROM geofence_configs WHERE is_active = 1 LIMIT 1`);
     const activeMode = global.activeEnforcementMode || geofence?.ble_mode || 'STANDBY_OPTIONAL';
+    const wardenLanApiUrl = global.wardenLanApiUrl || geofence?.local_warden_url || null;
     res.json({
       success: true,
       isOpen: schedule.isOpen,
       schedule,
       bluetoothEnforcementMode: activeMode,
       ble_mode: activeMode,
+      wardenLanApiUrl,
+      local_warden_url: wardenLanApiUrl,
+      temporaryRelaxUntil: global.temporaryRelaxUntil || null,
       startTime: schedule.startTime,
       endTime: schedule.endTime
     });

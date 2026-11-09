@@ -223,11 +223,56 @@ async function startServer() {
     await ensureAiServiceRunning();
     try {
       const localVaultDb = require('./config/localVaultDb');
+      const { allQuery, getQuery } = require('./db/database');
       await localVaultDb.openVaultDb();
       await localVaultDb.loadEmbeddingCache();
+
+      // Auto-Prepare Offline Cache on Startup (pull latest students & beacons into vault)
+      localVaultDb.prepareOfflineCache({ allQuery, getQuery })
+        .then((res) => {
+          console.log(`⚡ [AutoVault] Startup cache ready: ${res.cachedStudentsCount} students, ${res.cachedBeaconsCount} beacons, ${res.ramVectorsCount} RAM vectors.`);
+        })
+        .catch((err) => {
+          console.warn('⚠️ [AutoVault] Offline startup preload notice:', err.message);
+        });
     } catch (vaultErr) {
       console.warn('⚠️ [StrictVault] Local SQLite vault initialization notice:', vaultErr.message);
     }
+
+    // Auto-Publish Warden Laptop LAN IP on startup & every 2 minutes for zero-config student routing
+    try {
+      const { publishWardenLanIp } = require('./utils/lanDiscovery');
+      const { runQuery } = require('./db/database');
+      const lanUrl = await publishWardenLanIp(PORT, { runQuery });
+      console.log(`📡 [LAN Discovery] Warden Local Server Published: ${lanUrl}`);
+
+      const TWO_MINUTES_MS = 2 * 60 * 1000;
+      setInterval(() => {
+        publishWardenLanIp(PORT, { runQuery }).catch(() => {});
+      }, TWO_MINUTES_MS);
+    } catch (lanErr) {
+      console.warn('⚠️ [LAN Discovery] Notice:', lanErr.message);
+    }
+
+    // Background Auto-Sync: Automatically sync offline attendance & strikes to cloud every 30 seconds
+    const THIRTY_SECONDS_MS = 30 * 1000;
+    let isVaultSyncing = false;
+    setInterval(async () => {
+      if (isVaultSyncing) return;
+      try {
+        isVaultSyncing = true;
+        const localVaultDb = require('./config/localVaultDb');
+        const { runQuery, getQuery, withTransaction } = require('./db/database');
+        const res = await localVaultDb.syncVaultToCloud({ runQuery, getQuery, withTransaction });
+        if (res && (res.syncedAttendanceCount > 0 || res.syncedStrikesCount > 0)) {
+          console.log(`☁️ [AutoSync] Background synced to Cloud: ${res.syncedAttendanceCount} attendance records, ${res.syncedStrikesCount} strikes.`);
+        }
+      } catch (_) {
+        // Silent catch for offline LAN operation
+      } finally {
+        isVaultSyncing = false;
+      }
+    }, THIRTY_SECONDS_MS);
 
     const server = app.listen(PORT, () => {
       console.log(`=======================================================`);

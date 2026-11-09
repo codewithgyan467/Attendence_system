@@ -83,6 +83,191 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
   const [bluefyQrUrl, setBluefyQrUrl] = useState('');
 
+  // Voice Guidance State & Helper
+  const [voiceGuideEnabled, setVoiceGuideEnabled] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('hg_voice_guide') !== 'false';
+    }
+    return true;
+  });
+
+  const speakPrompt = (text) => {
+    if (!voiceGuideEnabled || typeof window === 'undefined' || !window.speechSynthesis || !text) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.lang = 'en-US';
+      window.speechSynthesis.speak(utterance);
+    } catch (_) {}
+  };
+
+  const toggleVoiceGuide = () => {
+    const nextVal = !voiceGuideEnabled;
+    setVoiceGuideEnabled(nextVal);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('hg_voice_guide', String(nextVal));
+    }
+    if (nextVal) speakPrompt('Voice guidance enabled');
+  };
+
+  const translateErrorForStudent = (rawErr) => {
+    if (!rawErr) return {
+      title: 'Check-In Verification Incomplete',
+      badge: 'Assistance Needed',
+      fix: 'We could not complete your attendance check-in.',
+      bullets: ['Check your Wi-Fi and Bluetooth connection and tap Try Again.'],
+      voice: 'Verification incomplete. Please check your connection and tap Try Again.'
+    };
+
+    const errLower = String(rawErr).toLowerCase();
+
+    // 1. Chrome Web Bluetooth Block on HTTP
+    if (errLower.includes('chrome blocks bluetooth') || (errLower.includes('http:') && errLower.includes('bluetooth'))) {
+      return {
+        title: 'Google Chrome Bluetooth Blocked',
+        badge: 'Browser Restriction',
+        fix: 'Google Chrome blocks Bluetooth on web links. The signed HostelGuard app connects directly to the floor ESP32 without any browser restrictions!',
+        bullets: [
+          'Tap "Download HostelGuard App" below to install the official mobile app.',
+          'Or open chrome://flags/#unsafely-treat-insecure-origin-as-secure in Chrome and add your hostel server address.'
+        ],
+        voice: 'Google Chrome blocks Bluetooth on web links. Please install the HostelGuard app.'
+      };
+    }
+
+    // 2. BLE / ESP32 Hardware Beacon Issues
+    if (
+      errLower.includes('beacon') ||
+      errLower.includes('esp32') ||
+      errLower.includes('bluetooth') ||
+      errLower.includes('floor box') ||
+      errLower.includes('hardware anchor') ||
+      errLower.includes('strict_ble') ||
+      errLower.includes('device_not_selected')
+    ) {
+      return {
+        title: 'Floor Box Not Connected',
+        badge: 'Step 2: Bluetooth',
+        fix: 'We could not detect the HostelGuard box for your floor.',
+        bullets: [
+          !isNativeMobile()
+            ? 'Web browsers block Bluetooth on web pages. Tap "Download HostelGuard App" below to install the native mobile app.'
+            : 'Turn ON your phone\'s Bluetooth and Location in your swipe-down settings menu.',
+          'Stand within 15 meters of your floor\'s HostelGuard box and tap Try Again.'
+        ],
+        voice: 'Floor box not connected. Turn on Bluetooth and stand within 15 meters of your floor box.'
+      };
+    }
+
+    // 3. Strict LAN / Wi-Fi Gatekeeper
+    if (
+      errLower.includes('lan') ||
+      errLower.includes('cellular') ||
+      errLower.includes('wi-fi') ||
+      errLower.includes('wifi') ||
+      errLower.includes('private network') ||
+      errLower.includes('subnet') ||
+      errLower.includes('strict_lan') ||
+      errLower.includes('unreachable')
+    ) {
+      return {
+        title: 'Connect to Hostel Wi-Fi',
+        badge: 'Step 1: Network',
+        fix: 'Strict Lock is active. Check-ins must come through the local Hostel Wi-Fi.',
+        bullets: [
+          'Turn OFF your mobile data (4G/5G).',
+          'Connect your phone to the Hostel Wi-Fi network and tap Try Again.'
+        ],
+        voice: 'Please turn off mobile data, connect to the Hostel Wi-Fi, and try again.'
+      };
+    }
+
+    // 4. Location / GPS Outside or Inaccurate
+    if (
+      errLower.includes('location') ||
+      errLower.includes('geofence') ||
+      errLower.includes('gps') ||
+      errLower.includes('distance') ||
+      errLower.includes('out-of-boundary')
+    ) {
+      return {
+        title: 'Location Not Clear',
+        badge: 'Step 1: Location',
+        fix: 'Your phone GPS position could not be confirmed inside the hostel boundary.',
+        bullets: [
+          'Turn ON Location/GPS on your device with High Accuracy.',
+          'Stand near a window or corridor to get a clear satellite GPS fix, then tap Try Again.'
+        ],
+        voice: 'Location not clear. Please turn on high accuracy GPS and stand near a window or corridor.'
+      };
+    }
+
+    // 5. Biometric Face / Liveness / Anti-Spoofing
+    if (
+      errLower.includes('face') ||
+      errLower.includes('liveness') ||
+      errLower.includes('camera') ||
+      errLower.includes('anti-spoof') ||
+      errLower.includes('match') ||
+      errLower.includes('photo')
+    ) {
+      return {
+        title: 'Face Check Unclear',
+        badge: 'Step 3: Biometrics',
+        fix: 'The camera could not verify your live face.',
+        bullets: [
+          'Make sure your face is well-lit and remove caps or sunglasses.',
+          'Hold the phone steady at eye level and look directly at the camera.'
+        ],
+        voice: 'Face check unclear. Make sure your face is well-lit and look directly at the camera.'
+      };
+    }
+
+    // 6. Account Lockout
+    if (errLower.includes('strike') || errLower.includes('lockout') || errLower.includes('locked')) {
+      return {
+        title: 'Security Review Active',
+        badge: 'Warden Clearance',
+        fix: 'Your account is pending review after consecutive verification attempts.',
+        bullets: [
+          'Please see the Hostel Warden or submit an appeal to clear your account.'
+        ],
+        voice: 'Security review active. Please see the Hostel Warden to clear your account.'
+      };
+    }
+
+    return {
+      title: 'Check-In Verification Incomplete',
+      badge: 'Assistance Needed',
+      fix: rawErr,
+      bullets: [
+        'Check your Wi-Fi and Bluetooth connection and tap Try Again.'
+      ],
+      voice: 'Verification incomplete. Please check your connection and tap Try Again.'
+    };
+  };
+
+  const getStepStatus = (stepIndex) => {
+    if (stepIndex === 1) {
+      if (checkinStep === 'verifying_gps') return 'active';
+      if (verifiedDistance !== null || studentCoords !== null || checkinStep === 'verifying_ble' || checkinStep === 'camera_active' || checkinStep === 'verifying_face' || checkinStep === 'success') return 'done';
+      return 'idle';
+    }
+    if (stepIndex === 2) {
+      if (checkinStep === 'verifying_ble') return 'active';
+      if (verifiedBeaconInfo !== null || verifiedWifiAnchor !== null || checkinStep === 'camera_active' || checkinStep === 'verifying_face' || checkinStep === 'success') return 'done';
+      return 'idle';
+    }
+    if (stepIndex === 3) {
+      if (checkinStep === 'camera_active' || checkinStep === 'verifying_face') return 'active';
+      if (checkinStep === 'success') return 'done';
+      return 'idle';
+    }
+    return 'idle';
+  };
+
   useEffect(() => {
     QRCode.toDataURL('https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055', {
       width: 140,
@@ -90,6 +275,20 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       color: { dark: '#0f172a', light: '#ffffff' }
     }).then(setBluefyQrUrl).catch(() => { });
   }, []);
+
+  // Built-in Offline Voice Guidance Prompts
+  useEffect(() => {
+    if (checkinStep === 'camera_active') {
+      speakPrompt('Floor box verified. Please look at the camera.');
+    } else if (checkinStep === 'success') {
+      speakPrompt('Attendance marked successfully.');
+    } else if (checkinStep === 'failed' && checkinError) {
+      const translated = translateErrorForStudent(checkinError);
+      if (translated?.voice) {
+        speakPrompt(translated.voice);
+      }
+    }
+  }, [checkinStep, checkinError]);
 
   // Dynamic beacon list from active admin configuration
   const activeBeaconList = Array.isArray(dashboard?.beacons) && dashboard.beacons.length > 0
@@ -288,6 +487,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           else if (upper.includes('SOFT')) setEnforcementMode('SOFT_ANCHOR');
           else setEnforcementMode('STANDBY');
         }
+        const wardenLan = schedRes.value?.wardenLanApiUrl || schedRes.value?.local_warden_url;
+        if (wardenLan) setLocalWardenUrl(wardenLan);
       }
     } catch (err) {
       setErrorMsg(err.message || 'Failed to load student data');
@@ -1382,6 +1583,40 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                                 </div>
                               </div>
                             )}
+                            {/* Live 3-Step Visual Progress Bar Above the Button */}
+                            <div className="d-flex align-items-center justify-content-center gap-1.5 mb-3.5 flex-wrap mx-auto" style={{ maxWidth: '480px' }}>
+                              <div className={`px-2.5 py-1 rounded-pill small fw-semibold d-inline-flex align-items-center gap-1 border ${getStepStatus(1) === 'done' ? 'bg-success text-white border-success shadow-xs' : (getStepStatus(1) === 'active' ? 'bg-primary text-white border-primary shadow-sm' : 'bg-light text-secondary border-secondary border-opacity-25')}`} style={{ fontSize: '11.5px' }}>
+                                {getStepStatus(1) === 'done' ? <CheckCircle2 size={12} /> : (getStepStatus(1) === 'active' ? <RefreshCw size={12} className="spin" /> : <span>1</span>)}
+                                <span>Hostel Location</span>
+                              </div>
+
+                              <span className="text-muted small">&rarr;</span>
+
+                              <div className={`px-2.5 py-1 rounded-pill small fw-semibold d-inline-flex align-items-center gap-1 border ${getStepStatus(2) === 'done' ? 'bg-success text-white border-success shadow-xs' : (getStepStatus(2) === 'active' ? 'bg-primary text-white border-primary shadow-sm' : 'bg-light text-secondary border-secondary border-opacity-25')}`} style={{ fontSize: '11.5px' }}>
+                                {getStepStatus(2) === 'done' ? <CheckCircle2 size={12} /> : (getStepStatus(2) === 'active' ? <RefreshCw size={12} className="spin" /> : <span>2</span>)}
+                                <span>Floor Box Signal</span>
+                              </div>
+
+                              <span className="text-muted small">&rarr;</span>
+
+                              <div className={`px-2.5 py-1 rounded-pill small fw-semibold d-inline-flex align-items-center gap-1 border ${getStepStatus(3) === 'done' ? 'bg-success text-white border-success shadow-xs' : (getStepStatus(3) === 'active' ? 'bg-primary text-white border-primary shadow-sm' : 'bg-light text-secondary border-secondary border-opacity-25')}`} style={{ fontSize: '11.5px' }}>
+                                {getStepStatus(3) === 'done' ? <CheckCircle2 size={12} /> : (getStepStatus(3) === 'active' ? <RefreshCw size={12} className="spin" /> : <span>3</span>)}
+                                <span>Face Check</span>
+                              </div>
+
+                              {/* Offline Voice Guide Toggle */}
+                              <button
+                                type="button"
+                                className={`btn btn-sm py-0.5 px-2 rounded-pill d-inline-flex align-items-center gap-1 ms-1 border ${voiceGuideEnabled ? 'btn-outline-primary' : 'btn-outline-secondary'}`}
+                                onClick={toggleVoiceGuide}
+                                title={voiceGuideEnabled ? 'Voice Guidance is ON' : 'Voice Guidance is OFF'}
+                                style={{ fontSize: '11px' }}
+                              >
+                                <Volume2 size={12} />
+                                <span>{voiceGuideEnabled ? 'Voice ON' : 'Voice OFF'}</span>
+                              </button>
+                            </div>
+
                             <h5 className="fw-bold mb-1">Confirm Your Hostel Location</h5>
                             <p className="text-muted small mx-auto mb-3" style={{ maxWidth: '440px' }}>
                               Please verify your device is inside the hostel attendance area to start verification.
@@ -1681,57 +1916,47 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     )}
 
                     {checkinStep === 'failed' && (() => {
+                      const translated = translateErrorForStudent(checkinError);
                       const errLower = (checkinError || '').toLowerCase();
-                      const isLocationOff = errLower.includes('location_switch_off') || errLower.includes('switch is turned off');
-                      const isRateLimit = errLower.includes('too many') || errLower.includes('slow down') || errLower.includes('rate limit');
-                      const isEnrollError = errLower.includes('facial embeddings') || errLower.includes('face profile') || errLower.includes('onboarding');
-                      const isBleError = errLower.includes('layer 2') || errLower.includes('bluetooth') || errLower.includes('beacon') || errLower.includes('esp32') || errLower.includes('hardware presence') || errLower.includes('strict');
-                      const isLockError = !isBleError && (
-                        errLower.includes('account locked') || 
-                        errLower.includes('strike lockout') || 
-                        errLower.includes('3 consecutive forge') ||
-                        errLower.includes('failed attempts') ||
-                        (errLower.includes('account') && errLower.includes('lock'))
-                      );
-                      const isFaceError = errLower.includes('physically present') || errLower.includes('anti-spoof') || errLower.includes('liveness') || errLower.includes('match') || errLower.includes('camera') || errLower.includes('facial') || errLower.includes('photo');
+                      const isEnrollError = errLower.includes('face profile') || errLower.includes('enroll') || errLower.includes('onboarding');
+                      const isLockError = errLower.includes('strike lockout') || errLower.includes('account locked');
+                      const isBle = errLower.includes('beacon') || errLower.includes('bluetooth') || errLower.includes('esp32');
 
                       return (
-                        <div className="py-4">
-                          <AlertTriangle size={52} className="text-danger mb-3" />
-                          <h5 className="fw-bold text-danger mb-3">Check-In Verification Failed</h5>
+                        <div className="py-4 text-center">
+                          <AlertTriangle size={50} className="text-danger mb-2.5" />
+                          <div className="d-flex align-items-center justify-content-center gap-2 mb-2">
+                            <span className="badge bg-danger bg-opacity-10 text-danger border border-danger-subtle px-2.5 py-1 rounded-pill small fw-semibold">
+                              {translated.badge}
+                            </span>
+                            <h5 className="fw-bold text-dark mb-0">{translated.title}</h5>
+                          </div>
 
-                          {/* CASE 0: Android Master Location Toggle OFF */}
-                          {isLocationOff ? (
-                            <div className="d-flex flex-column align-items-center gap-2">
-                              <div className="card bg-warning-subtle border-warning border-opacity-25 p-3.5 rounded-3 mb-2 text-start shadow-sm" style={{ maxWidth: '460px' }}>
-                                <div className="fw-bold text-dark small mb-1.5 d-flex align-items-center gap-1.5">
-                                  <MapPin size={18} className="text-warning" /> Android Master Location Switch is OFF
-                                </div>
-                                <div className="small text-dark mb-2 fw-medium">
-                                  Android OS requires your phone's system <strong>Location (GPS)</strong> toggle to be turned ON in quick settings to scan for nearby Bluetooth beacons and verify attendance.
-                                </div>
-                                <div className="small text-muted border-top border-warning border-opacity-15 pt-2">
-                                  💡 Swipe down from the top of your screen, tap the <strong>Location</strong> icon to turn it ON, then tap Retry below.
-                                </div>
-                              </div>
-                              <button
-                                className="btn btn-primary btn-sm px-4 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
-                                onClick={handleVerifyLocation}
-                              >
-                                <RefreshCw size={14} /> Retry Location & Presence Check
-                              </button>
+                          <div className="card bg-light border p-3.5 rounded-3 mb-3 text-start shadow-xs mx-auto" style={{ maxWidth: '460px' }}>
+                            <div className="small text-dark mb-2 fw-medium" style={{ fontSize: '13px', lineHeight: '1.45' }}>
+                              {translated.fix}
                             </div>
-                          ) : isEnrollError ? (
-                            <div className="d-flex flex-column align-items-center gap-2">
-                              <div className="card bg-warning-subtle border-warning border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
-                                <div className="fw-bold text-dark small mb-1">📸 Identity Verification Required</div>
-                                <div className="small text-muted">
-                                  Your facial profile is not yet registered in the hostel system. Please complete your face enrollment to mark attendance.
+
+                            {translated.bullets && translated.bullets.length > 0 && (
+                              <div className="p-2.5 rounded bg-white border border-secondary border-opacity-25 mt-1">
+                                <div className="fw-bold text-dark small mb-1.5 d-flex align-items-center gap-1" style={{ fontSize: '12px' }}>
+                                  💡 How to fix this in 10 seconds:
                                 </div>
+                                <ul className="mb-0 ps-3 small text-secondary" style={{ fontSize: '12px', lineHeight: '1.45' }}>
+                                  {translated.bullets.map((b, idx) => (
+                                    <li key={idx} className="mb-1">{b}</li>
+                                  ))}
+                                </ul>
                               </div>
+                            )}
+                          </div>
+
+                          {/* Action Buttons & 1-Tap Recovery */}
+                          <div className="d-flex flex-column align-items-center gap-2 mx-auto" style={{ maxWidth: '460px' }}>
+                            {isEnrollError ? (
                               <button
                                 type="button"
-                                className="btn btn-warning px-4 py-2 fw-semibold d-inline-flex align-items-center gap-2 shadow-sm text-dark"
+                                className="btn btn-warning px-4 py-2.5 fw-bold d-inline-flex align-items-center justify-content-center gap-2 shadow-sm text-dark w-100"
                                 onClick={() => {
                                   setShowEnrollModal(true);
                                   startEnrollCamera();
@@ -1739,204 +1964,80 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                               >
                                 <Camera size={18} /> Enroll Face Identity (10s)
                               </button>
-                            </div>
-                          ) : isLockError ? (
-                            /* CASE B: Security Lockout */
-                            <div className="d-flex flex-column align-items-center gap-2">
-                              <div className="card bg-danger-subtle border-danger border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
-                                <div className="fw-bold text-danger small mb-1">🔒 Security Lockout Active</div>
-                                <div className="small text-muted">
-                                  Your account is locked from roll call check-in. The hostel administrator or warden must clear your strikes in the Admin Security Desk.
-                                </div>
-                              </div>
+                            ) : isLockError ? (
                               <button
                                 type="button"
-                                className="btn btn-danger btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
+                                className="btn btn-outline-danger px-4 py-2.5 fw-semibold d-inline-flex align-items-center justify-content-center gap-2 shadow-sm w-100"
                                 onClick={() => {
                                   if (onSelectTab) onSelectTab('student_support');
                                   setTicketForm({
                                     category: 'ATTENDANCE',
-                                    subject: `Strike Reset Appeal - Roll ${student.roll_number || user?.username}`,
+                                    subject: `Strike Reset Appeal - Roll ${student?.roll_number || user?.username}`,
                                     message: 'My check-in triggered a strike lockout. Please reset my strikes in the Security Incident Desk so I can complete roll call.'
                                   });
                                 }}
                               >
-                                <LifeBuoy size={14} /> Submit Strike Appeal to Warden
+                                <LifeBuoy size={16} /> Submit Strike Appeal to Warden
                               </button>
-                            </div>
-                          ) : (isBleError && isSafariOnIOS) ? (
-                            /* CASE C1: Safari on iOS - Bluefy Browser Required */
-                            <div className="d-flex flex-column align-items-center gap-2">
-                              <div className="card border-0 shadow-sm p-3.5 rounded-3 mb-2 text-center" style={{ maxWidth: '440px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                                <div className="d-flex justify-content-center mb-2">
-                                  <div className="p-2.5 rounded-circle bg-primary bg-opacity-10 text-primary">
-                                    <Compass size={28} />
-                                  </div>
-                                </div>
-                                <h6 className="fw-bold text-dark mb-1">Bluefy Browser Required for iPhone</h6>
-                                <p className="text-muted small mb-3" style={{ fontSize: '13px', lineHeight: '1.45' }}>
-                                  Apple Safari blocks Bluetooth scanning. You must open HostelGuard in <strong>Bluefy Browser</strong> to connect to ESP32 beacons and mark attendance.
-                                </p>
-
-                                {/* Direct launch if Bluefy is installed */}
-                                <a
-                                  href={`bluefy://open?url=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
-                                  className="btn btn-primary fw-bold py-2.5 shadow-sm d-flex align-items-center justify-content-center gap-2 mb-3"
-                                >
-                                  <ExternalLink size={18} /> Open in Bluefy Browser
-                                </a>
-
-                                {/* QR Code & App Store Download if not installed */}
-                                <div className="bg-white p-3 rounded-3 border d-flex flex-column align-items-center gap-2">
-                                  {bluefyQrUrl && (
-                                    <img
-                                      src={bluefyQrUrl}
-                                      alt="Scan QR to download Bluefy on App Store"
-                                      style={{ width: '130px', height: '130px', borderRadius: '8px' }}
-                                    />
-                                  )}
-                                  <span className="text-muted fw-medium" style={{ fontSize: '11px' }}>
-                                    Scan QR with Camera or tap below:
-                                  </span>
-                                  <a
-                                    href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="btn btn-dark btn-sm w-100 fw-semibold d-flex align-items-center justify-content-center gap-1.5 py-2"
-                                  >
-                                    <Download size={15} /> Download Bluefy on App Store
-                                  </a>
-                                </div>
-                              </div>
-
+                            ) : (
                               <button
                                 type="button"
-                                className="btn btn-outline-secondary btn-sm py-2 px-4 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
+                                className="btn btn-primary px-4 py-2.5 fw-bold d-inline-flex align-items-center justify-content-center gap-2 shadow-sm rounded-3 w-100"
                                 onClick={handleVerifyLocation}
                               >
-                                <RefreshCw size={14} /> Retry Check-In
+                                <RefreshCw size={16} /> 🔄 Try Again
                               </button>
-                            </div>
-                          ) : isBleError ? (
-                            /* CASE C2: Android / Other Devices - Hardware Anchor Required */
-                            <div className="d-flex flex-column align-items-center gap-2">
-                              <div className="card bg-danger-subtle border-danger border-opacity-25 p-3 rounded-3 mb-2 text-start shadow-sm" style={{ maxWidth: '440px' }}>
-                                <div className="fw-bold text-danger small mb-1 d-flex align-items-center gap-1.5">
-                                  <Bluetooth size={17} /> ESP32 Hardware Anchor Required
-                                </div>
-                                <div className="small text-danger fw-medium" style={{ fontSize: '13px' }}>
-                                  {checkinError}
-                                </div>
-                              </div>
+                            )}
 
-                              {/* Android 1-Tap Solutions & Retry */}
-                              <div className="d-flex flex-column gap-2 w-100" style={{ maxWidth: '440px' }}>
-                                {dashboard?.wifi_cluster_endpoints && dashboard.wifi_cluster_endpoints.length > 0 && (
-                                  <a
-                                    href={`${dashboard.wifi_cluster_endpoints[0].handshakeUrl}?returnUrl=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
-                                    className="btn btn-outline-primary fw-semibold py-2.5 shadow-sm d-flex align-items-center justify-content-center gap-2"
-                                  >
-                                    <Wifi size={18} /> Verify via Floor Wi-Fi ({dashboard.wifi_cluster_endpoints[0].ssid || 'Floor Router'})
-                                  </a>
-                                )}
-
-                                {!isNativeMobile() && (
-                                  <div className="card bg-light border p-3 rounded-3 text-start shadow-xs">
-                                    <div className="fw-bold text-dark d-flex align-items-center gap-1.5 mb-1.5" style={{ fontSize: '13px' }}>
-                                      <Download size={16} className="text-primary" /> Recommended: Install Signed Android App
-                                    </div>
-                                    <div className="text-muted small mb-2.5" style={{ fontSize: '12px', lineHeight: '1.4' }}>
-                                      Google Chrome restricts Bluetooth on unencrypted local <code>http://</code> web pages. The native Android app connects directly to the floor ESP32 without browser blocks.
-                                    </div>
-                                    <a
-                                      href="/downloads/hostelguard.apk"
-                                      download="hostelguard.apk"
-                                      className="btn btn-dark fw-bold py-2 shadow-sm d-flex align-items-center justify-content-center gap-2 mb-2"
-                                    >
-                                      <Download size={16} /> Download HostelGuard App (Signed APK)
-                                    </a>
-                                    <details className="text-muted small">
-                                      <summary className="fw-semibold text-primary cursor-pointer" style={{ fontSize: '12px' }}>
-                                        Testing inside Google Chrome? (30s fix)
-                                      </summary>
-                                      <div className="p-2 mt-1.5 rounded bg-white border border-secondary border-opacity-25 text-dark" style={{ fontSize: '11.5px', lineHeight: '1.45' }}>
-                                        1. Open <b>chrome://flags/#unsafely-treat-insecure-origin-as-secure</b> in Chrome.<br />
-                                        2. Set to <b>Enabled</b> and enter: <code>{typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://172.20.10.2:5000'}</code><br />
-                                        3. Tap <b>Relaunch</b>. Web Bluetooth will now work in Chrome!
-                                      </div>
-                                    </details>
-                                  </div>
-                                )}
-
-                                <button
-                                  className="btn btn-primary py-2.5 fw-semibold d-inline-flex align-items-center justify-content-center gap-1.5 shadow-sm"
-                                  onClick={handleVerifyLocation}
+                            {/* iOS Safari Guidance if BLE failed on Safari */}
+                            {isBle && isSafariOnIOS && (
+                              <div className="card border p-3 rounded-3 mt-1 text-center bg-white shadow-xs w-100">
+                                <span className="small text-muted mb-2 d-block">Apple Safari blocks Bluetooth. Open in Bluefy Browser:</span>
+                                <a
+                                  href={`bluefy://open?url=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+                                  className="btn btn-primary btn-sm fw-semibold d-flex align-items-center justify-content-center gap-1.5 py-2 mb-2"
                                 >
-                                  <RefreshCw size={15} /> Retry Check-In
-                                </button>
+                                  <ExternalLink size={14} /> Open in Bluefy Browser
+                                </a>
+                                {bluefyQrUrl && (
+                                  <img
+                                    src={bluefyQrUrl}
+                                    alt="Scan QR for Bluefy"
+                                    style={{ width: '100px', height: '100px', margin: '0 auto', borderRadius: '6px' }}
+                                  />
+                                )}
                               </div>
-                            </div>
-                          ) : isFaceError ? (
-                            /* CASE D: Face Verification Notice */
-                            <div className="d-flex flex-column align-items-center gap-2">
-                              <div className="card bg-warning-subtle border-warning border-opacity-25 p-3 rounded-3 mb-2 text-start" style={{ maxWidth: '440px' }}>
-                                <div className="fw-bold text-dark small mb-1 d-flex align-items-center gap-1">
-                                  <AlertTriangle size={15} className="text-warning" /> Face Verification Notice
+                            )}
+
+                            {/* Android App Recommendation for Browser Users */}
+                            {!isNativeMobile() && (
+                              <div className="card bg-white border p-3 rounded-3 text-start shadow-xs w-100 mt-1">
+                                <div className="fw-bold text-dark d-flex align-items-center gap-1.5 mb-1" style={{ fontSize: '12.5px' }}>
+                                  <Download size={15} className="text-primary" /> Recommended: Install Signed Android App
                                 </div>
-                                <div className="small text-dark">
-                                  {checkinError || "We couldn't verify that you're physically present. Please look directly at the camera in good lighting and try again."}
+                                <div className="text-muted small mb-2" style={{ fontSize: '11.5px', lineHeight: '1.4' }}>
+                                  The native Android app connects directly to the floor ESP32 without any browser restrictions.
                                 </div>
+                                <a
+                                  href="/downloads/hostelguard.apk"
+                                  download="hostelguard.apk"
+                                  className="btn btn-dark btn-sm fw-bold py-2 shadow-sm d-flex align-items-center justify-content-center gap-2 w-100 mb-2"
+                                >
+                                  <Download size={14} /> Download HostelGuard App (Signed APK)
+                                </a>
+                                <details className="text-muted small">
+                                  <summary className="fw-semibold text-primary cursor-pointer" style={{ fontSize: '11.5px' }}>
+                                    Testing inside Google Chrome? (30s fix)
+                                  </summary>
+                                  <div className="p-2 mt-1 rounded bg-light border border-secondary border-opacity-25 text-dark" style={{ fontSize: '11px', lineHeight: '1.4' }}>
+                                    1. Open <b>chrome://flags/#unsafely-treat-insecure-origin-as-secure</b> in Chrome.<br />
+                                    2. Set to <b>Enabled</b> and enter: <code>{typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://172.20.10.2:5000'}</code><br />
+                                    3. Tap <b>Relaunch</b>. Done!
+                                  </div>
+                                </details>
                               </div>
-                              <button
-                                className="btn btn-primary btn-sm px-4 fw-semibold d-inline-flex align-items-center gap-1 shadow-sm"
-                                onClick={() => {
-                                  setCheckinStep('camera_active');
-                                  startCamera();
-                                }}
-                              >
-                                <RefreshCw size={14} /> Try Face Verification Again
-                              </button>
-                            </div>
-                          ) : isRateLimit ? (
-                            /* CASE E: Rate Limiting & Cooldown */
-                            <div className="d-flex flex-column align-items-center gap-2">
-                              <div className="card bg-warning-subtle border-warning border-opacity-25 p-3.5 rounded-3 mb-2 text-start shadow-sm" style={{ maxWidth: '440px' }}>
-                                <div className="fw-bold text-dark small mb-1.5 d-flex align-items-center gap-1.5">
-                                  <Clock size={16} className="text-warning" /> Rate Limit Cooldown Active
-                                </div>
-                                <div className="small text-dark mb-1">
-                                  Too many rapid check-in requests. Please wait 10 seconds and tap Retry below.
-                                </div>
-                              </div>
-                              <button
-                                className="btn btn-primary btn-sm px-4 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
-                                onClick={handleVerifyLocation}
-                              >
-                                <RefreshCw size={14} /> Retry Check-In
-                              </button>
-                            </div>
-                          ) : (
-                            /* CASE F: Layer 1 - Outside Geofence Perimeter / General Error */
-                            <div className="d-flex flex-column align-items-center gap-2">
-                              <div className="card bg-danger-subtle border-danger border-opacity-25 p-3.5 rounded-3 mb-2 text-start shadow-sm" style={{ maxWidth: '440px' }}>
-                                <div className="fw-bold text-danger small mb-1.5 d-flex align-items-center gap-1.5">
-                                  <MapPin size={16} /> Location & Boundary Notice
-                                </div>
-                                <div className="small text-danger mb-2">
-                                  {checkinError || 'You are outside the permitted hostel boundary. Please physically move inside the campus perimeter.'}
-                                </div>
-                              </div>
-                              <button
-                                className="btn btn-primary btn-sm px-4 py-2 fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
-                                onClick={handleVerifyLocation}
-                              >
-                                <RefreshCw size={14} /> Check Location Again
-                              </button>
-                              <div className="text-muted small mt-1" style={{ fontSize: '11px', maxWidth: '380px' }}>
-                                💡 <strong>Tip:</strong> Turning on your phone's Wi-Fi helps your GPS lock onto campus location instantly.
-                              </div>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                       );
                     })()}

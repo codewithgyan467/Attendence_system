@@ -650,8 +650,17 @@ const initDatabase = async () => {
   });
 
   await ensureColumns('geofence_configs', {
-    ble_mode: "TEXT DEFAULT 'STANDBY_OPTIONAL'"
+    ble_mode: "TEXT DEFAULT 'STANDBY_OPTIONAL'",
+    local_warden_url: "TEXT"
   });
+
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS system_settings (
+      setting_key TEXT PRIMARY KEY,
+      setting_value TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
 
   await ensureColumns('site_ble_beacons', {
     block_name: 'TEXT',

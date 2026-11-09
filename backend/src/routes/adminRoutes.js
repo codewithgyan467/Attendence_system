@@ -1259,6 +1259,20 @@ const handleSetBluetoothMode = async (req, res) => {
     await runQuery(`UPDATE geofence_configs SET ble_mode = ?, updated_at = CURRENT_TIMESTAMP WHERE is_active = 1`, [normalizedMode]);
     global.activeEnforcementMode = normalizedMode;
 
+    // Auto-prepare offline vault in background when Strict Mode is selected
+    if (normalizedMode === 'STRICT_REQUIRED') {
+      try {
+        const localVaultDb = require('../config/localVaultDb');
+        localVaultDb.prepareOfflineCache({ allQuery, getQuery })
+          .then((r) => {
+            console.log(`⚡ [AutoVault] Strict mode activated: preloaded ${r.cachedStudentsCount} students, ${r.cachedBeaconsCount} beacons.`);
+          })
+          .catch((e) => {
+            console.warn('⚠️ [AutoVault] Auto-prepare notice:', e.message);
+          });
+      } catch (_) {}
+    }
+
     try {
       const localVaultDb = require('../config/localVaultDb');
       await localVaultDb.runVaultQuery(`CREATE TABLE IF NOT EXISTS local_system_config (key TEXT PRIMARY KEY, value TEXT)`);
@@ -1290,12 +1304,64 @@ router.post('/ble/mode', requireRole('ADMIN'), handleSetBluetoothMode);
 router.put('/settings/bluetooth-mode', requireRole('ADMIN'), handleSetBluetoothMode);
 router.post('/settings/bluetooth-mode', requireRole('ADMIN'), handleSetBluetoothMode);
 
+// 1-Click Temporary 15-Minute Relax Mode (for power outages / floor box maintenance)
+let relaxTimeout = null;
+router.post(['/ble/temporary-relax', '/settings/temporary-relax'], requireRole('ADMIN'), async (req, res) => {
+  try {
+    const minutes = parseInt(req.body.minutes || 15, 10);
+    const durationMs = minutes * 60 * 1000;
+    const previousMode = global.activeEnforcementMode || 'STRICT_REQUIRED';
+
+    // Switch to STANDBY mode for temporary backup check-in
+    await runQuery(`UPDATE geofence_configs SET ble_mode = 'STANDBY_OPTIONAL', updated_at = CURRENT_TIMESTAMP WHERE is_active = 1`);
+    global.activeEnforcementMode = 'STANDBY_OPTIONAL';
+    const expiresAt = new Date(Date.now() + durationMs).toISOString();
+    global.temporaryRelaxUntil = expiresAt;
+
+    if (relaxTimeout) clearTimeout(relaxTimeout);
+    relaxTimeout = setTimeout(async () => {
+      try {
+        await runQuery(`UPDATE geofence_configs SET ble_mode = ?, updated_at = CURRENT_TIMESTAMP WHERE is_active = 1`, [previousMode]);
+        global.activeEnforcementMode = previousMode;
+        global.temporaryRelaxUntil = null;
+        console.log(`⏱️ [AutoRevert] Temporary 15-min relax expired. Automatically reverted mode to ${previousMode}`);
+      } catch (e) {
+        console.error('Error auto-reverting relax mode:', e);
+      }
+    }, durationMs);
+
+    await recordAuditEvent(
+      req.user?.id || 'SYSTEM',
+      req.user?.username || 'admin',
+      'TEMPORARY_RELAX_MODE',
+      'GEOFENCE',
+      'BLE_CONFIG',
+      `Temporary ${minutes}-min relax mode activated. Reverts to ${previousMode} at ${expiresAt}`,
+      req
+    );
+
+    res.json({
+      success: true,
+      mode: 'STANDBY_OPTIONAL',
+      expiresInMinutes: minutes,
+      revertsTo: previousMode,
+      expiresAt,
+      message: `Temporary ${minutes}-minute backup check-in activated. Will automatically revert to Strict Mode.`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 4c. Strict Lock Localhost Vault & Cloud Sync Management (Warden Low-Spec Architecture)
 router.get('/strict-vault/status', requireRole('ADMIN'), async (req, res) => {
   try {
     const localVaultDb = require('../config/localVaultDb');
     const status = await localVaultDb.getVaultStatus();
-    res.json(status);
+    res.json({
+      ...status,
+      temporaryRelaxUntil: global.temporaryRelaxUntil || null
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -2156,7 +2222,11 @@ router.post('/security/reset-strike', async (req, res) => {
 router.post('/security/reset-all-strikes', async (req, res) => {
   try {
     const { reason = 'Batch administrative strike clearance' } = req.body;
-    await runQuery(`UPDATE students SET failed_attempts = 0, is_flagged_forge = 0 WHERE is_flagged_forge = 1 OR failed_attempts > 0`);
+    await runQuery(`UPDATE students SET failed_attempts = 0, is_flagged_forge = 0`);
+    try {
+      const localVaultDb = require('../config/localVaultDb');
+      await localVaultDb.runVaultQuery(`UPDATE local_security_strikes_vault SET synced_to_cloud = 1`).catch(() => {});
+    } catch (_) {}
     await recordAuditEvent(req.user.id, req.user.username, 'BATCH_STRIKE_RESET', 'STUDENTS', 'ALL', reason, req);
     res.json({ success: true, message: 'All student forge strikes have been reset and accounts unlocked.' });
   } catch (err) {

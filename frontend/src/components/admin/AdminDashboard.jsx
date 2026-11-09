@@ -43,15 +43,12 @@ import {
   FileSpreadsheet,
 
   Radio,
-
   ShieldCheck,
-
   Cpu,
-
   Zap,
-
-  RefreshCw
-
+  RefreshCw,
+  Send,
+  Unlock
 } from 'lucide-react';
 
 import { exportToExcel, exportToCsv } from '../../utils/exportUtils';
@@ -99,6 +96,7 @@ export default function AdminDashboard({ onNavigate }) {
   const [vaultLoading, setVaultLoading] = useState(false);
   const [vaultSyncing, setVaultSyncing] = useState(false);
   const [vaultMsg, setVaultMsg] = useState(null);
+  const [resettingStrikes, setResettingStrikes] = useState(false);
 
 
 
@@ -197,33 +195,59 @@ export default function AdminDashboard({ onNavigate }) {
   const handleModeChange = async (newMode) => {
 
     setBleUpdating(true);
-
     setVaultMsg(null);
-
     try {
-
       const res = await api.admin.updateBleMode(newMode);
-
       if (res?.success) {
-
         setBleMode(newMode);
-
-        setVaultMsg(`Enforcement Mode successfully updated to ${newMode}`);
-
+        if (newMode === 'STRICT_REQUIRED' || newMode === 'STRICT' || newMode === 'STRICT_LOCK') {
+          setVaultMsg('🔒 Mode 3 (Strict Hostel Lock) activated! Offline student biometrics & floor box anchors prepared automatically.');
+          api.admin.prepareStrictVaultOffline().catch(() => {});
+        } else if (newMode === 'SOFT_ANCHOR') {
+          setVaultMsg('🟡 Mode 2 (Smart Mode) activated! Fast proximity check with camera backup.');
+        } else {
+          setVaultMsg('🟢 Mode 1 (Normal Mode) activated! Geofence GPS & Face verification active.');
+        }
         fetchBleAndVault();
-
       }
-
     } catch (err) {
-
       setVaultMsg(`Failed to update mode: ${err.message}`);
-
     } finally {
-
       setBleUpdating(false);
-
     }
+  };
 
+  const handleTemporaryRelax = async () => {
+    if (!window.confirm('Temporarily allow Mode 1 (GPS + Face Only) for 15 minutes? This is useful if a floor box loses power. It will automatically revert to Strict Lock after 15 minutes.')) return;
+    setBleUpdating(true);
+    try {
+      const res = await api.admin.triggerTemporaryRelax(15);
+      if (res?.success) {
+        setBleMode('STANDBY_OPTIONAL');
+        setVaultMsg('⏱️ Temporary 15-Minute Relax Mode Active! Students can check in via GPS & Face. System will automatically return to Strict Mode in 15 minutes.');
+        fetchBleAndVault();
+      }
+    } catch (err) {
+      setVaultMsg(`Failed to activate temporary relax mode: ${err.message}`);
+    } finally {
+      setBleUpdating(false);
+    }
+  };
+
+  const handleResetAllStrikes = async () => {
+    if (!window.confirm('Reset all student strikes back to 0 and immediately unlock all accounts?')) return;
+    setResettingStrikes(true);
+    try {
+      const res = await api.admin.resetAllStrikes({ reason: 'Warden 1-Click Dashboard Reset' });
+      if (res?.success) {
+        setVaultMsg('🔓 All student strikes have been cleared back to 0! All locked accounts are now unlocked.');
+        fetchStats();
+      }
+    } catch (err) {
+      setVaultMsg(`Failed to reset strikes: ${err.message}`);
+    } finally {
+      setResettingStrikes(false);
+    }
   };
 
 
@@ -573,10 +597,34 @@ export default function AdminDashboard({ onNavigate }) {
 
 
     return { headers, data, isPresent };
-
   };
 
+  const handleShareAbsentOnWhatsApp = () => {
+    const absents = data?.todayAbsent || [];
+    if (absents.length === 0) {
+      alert('Great news! All students are present today.');
+      return;
+    }
+    const dateStr = formatDateIST(new Date());
+    let msg = `📋 *HostelGuard Attendance Report - ${dateStr}*\n`;
+    msg += `❌ *Total Absent Students:* ${absents.length}\n\n`;
+    absents.forEach((st, idx) => {
+      const name = st.full_name || st.name || 'Student';
+      const roll = st.roll_number || st.roll_no || 'N/A';
+      const room = st.room_number || st.room_no || 'N/A';
+      const block = st.hostel_block || '';
+      msg += `${idx + 1}. *${name}* (${roll}) - Room: ${room}${block ? ' (' + block + ')' : ''}\n`;
+    });
+    msg += `\n_Generated automatically via HostelGuard System_`;
 
+    try {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(msg);
+      }
+    } catch (_) {}
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  };
 
   const handleExportRosterCsv = () => {
 
@@ -780,316 +828,152 @@ export default function AdminDashboard({ onNavigate }) {
 
 
 
-      {/* Select Attendance Bluetooth Enforcement Mode Panel */}
-
+      {/* Plain-English 3-Mode Attendance Selector (One-Click Setup) */}
       <div className="card border-0 rounded-4 shadow-sm mb-4 overflow-hidden border-start border-4 border-primary bg-white">
-
         <div className="card-header bg-light py-3 px-4 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
-
           <div className="d-flex align-items-center gap-2">
-
             <Radio size={20} className="text-primary" />
-
-            <h6 className="fw-bold mb-0 text-dark">Select Attendance Bluetooth Enforcement Mode</h6>
-
+            <h6 className="fw-bold mb-0 text-dark">Hostel Attendance Enforcement Mode</h6>
           </div>
-
-          <span className={`badge ${bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'bg-danger text-white' : (bleMode === 'SOFT_ANCHOR' ? 'bg-warning text-dark' : 'bg-primary text-white')} px-3 py-1.5`} style={{ fontSize: '11px' }}>
-
-            Active: {bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'Strict Lock (Offline Wi-Fi + BLE)' : (bleMode === 'SOFT_ANCHOR' ? 'Soft Anchor (Proximity)' : 'Standby Mode (GPS & Face)')}
-
+          <span className={`badge ${bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'bg-danger text-white' : (bleMode === 'SOFT_ANCHOR' ? 'bg-warning text-dark' : 'bg-success text-white')} px-3 py-1.5`} style={{ fontSize: '11px' }}>
+            Active: {bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'Mode 3: Strict Hostel Lock' : (bleMode === 'SOFT_ANCHOR' ? 'Mode 2: Smart Mode' : 'Mode 1: Normal Mode')}
           </span>
-
         </div>
 
         <div className="card-body p-4">
-
           <div className="row g-3 mb-3">
-
-            {/* Mode 1: STANDBY */}
-
+            {/* Mode 1: Normal Mode */}
             <div className="col-12 col-md-4">
-
               <div
-
-                className={`card h-100 p-3 border-2 cursor-pointer transition-all ${bleMode === 'STANDBY_OPTIONAL' ? 'border-primary bg-primary bg-opacity-10' : 'border-light bg-light'}`}
-
+                className={`card h-100 p-3.5 border-2 cursor-pointer transition-all ${bleMode === 'STANDBY_OPTIONAL' ? 'border-success bg-success bg-opacity-10 shadow-sm' : 'border-light bg-light'}`}
                 style={{ cursor: 'pointer' }}
-
                 onClick={() => !bleUpdating && handleModeChange('STANDBY_OPTIONAL')}
-
               >
-
                 <div className="d-flex align-items-center justify-content-between mb-2">
-
-                  <span className="badge bg-primary text-white fw-bold">1. STANDBY</span>
-
-                  {bleMode === 'STANDBY_OPTIONAL' && <ShieldCheck size={18} className="text-primary" />}
-
+                  <span className="badge bg-success text-white fw-bold">🟢 Mode 1: Normal Mode</span>
+                  {bleMode === 'STANDBY_OPTIONAL' && <ShieldCheck size={18} className="text-success" />}
                 </div>
-
-                <h6 className="fw-bold mb-1">GPS &amp; Face Mode</h6>
-
-                <p className="text-muted small mb-0" style={{ fontSize: '12px' }}>
-
-                  Cloud / Internet allowed. Standard geofence verification with active face check. BLE anchor optional.
-
+                <h6 className="fw-bold mb-1 text-dark">GPS + Face Only</h6>
+                <p className="text-muted small mb-0" style={{ fontSize: '12px', lineHeight: '1.4' }}>
+                  Best when floor boxes are off. Students only need Hostel GPS &amp; Face.
                 </p>
-
               </div>
-
             </div>
 
-
-
-            {/* Mode 2: SOFT ANCHOR */}
-
+            {/* Mode 2: Smart Mode */}
             <div className="col-12 col-md-4">
-
               <div
-
-                className={`card h-100 p-3 border-2 cursor-pointer transition-all ${bleMode === 'SOFT_ANCHOR' ? 'border-warning bg-warning bg-opacity-10' : 'border-light bg-light'}`}
-
+                className={`card h-100 p-3.5 border-2 cursor-pointer transition-all ${bleMode === 'SOFT_ANCHOR' ? 'border-warning bg-warning bg-opacity-10 shadow-sm' : 'border-light bg-light'}`}
                 style={{ cursor: 'pointer' }}
-
                 onClick={() => !bleUpdating && handleModeChange('SOFT_ANCHOR')}
-
               >
-
                 <div className="d-flex align-items-center justify-content-between mb-2">
-
-                  <span className="badge bg-warning text-dark fw-bold">2. SOFT ANCHOR</span>
-
+                  <span className="badge bg-warning text-dark fw-bold">🟡 Mode 2: Smart Mode</span>
                   {bleMode === 'SOFT_ANCHOR' && <ShieldCheck size={18} className="text-warning" />}
-
                 </div>
-
-                <h6 className="fw-bold mb-1">Smart Proximity Verification</h6>
-
-                <p className="text-muted small mb-0" style={{ fontSize: '12px' }}>
-
-                  ESP32 grants instant attendance. If signal is weak through thick walls, falls back to screen-flash face check with 0 strikes.
-
+                <h6 className="fw-bold mb-1 text-dark">Fast Floor Box + Face Backup</h6>
+                <p className="text-muted small mb-0" style={{ fontSize: '12px', lineHeight: '1.4' }}>
+                  Recommended daily mode. Instant check-in near floor box, or camera check if box is busy.
                 </p>
-
               </div>
-
             </div>
 
-
-
-            {/* Mode 3: STRICT LOCK */}
-
+            {/* Mode 3: Strict Hostel Lock */}
             <div className="col-12 col-md-4">
-
               <div
-
-                className={`card h-100 p-3 border-2 cursor-pointer transition-all ${bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'border-danger bg-danger bg-opacity-10' : 'border-light bg-light'}`}
-
+                className={`card h-100 p-3.5 border-2 cursor-pointer transition-all ${bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'border-danger bg-danger bg-opacity-10 shadow-sm' : 'border-light bg-light'}`}
                 style={{ cursor: 'pointer' }}
-
                 onClick={() => !bleUpdating && handleModeChange('STRICT_REQUIRED')}
-
               >
-
                 <div className="d-flex align-items-center justify-content-between mb-2">
-
-                  <span className="badge bg-danger text-white fw-bold">3. STRICT LOCK</span>
-
+                  <span className="badge bg-danger text-white fw-bold">🔒 Mode 3: Strict Hostel Lock</span>
                   {(bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && <ShieldCheck size={18} className="text-danger" />}
-
                 </div>
-
-                <h6 className="fw-bold mb-1">Physical Presence Lock</h6>
-
-                <p className="text-muted small mb-0" style={{ fontSize: '12px' }}>
-
-                  100% Offline Hostel Wi-Fi LAN-Only + Mandatory ESP32 Hardware Anchor + Ultra-Light Local Biometrics + Cloud Sync.
-
+                <h6 className="fw-bold mb-1 text-dark">Wi-Fi + Floor Box + Face</h6>
+                <p className="text-muted small mb-0" style={{ fontSize: '12px', lineHeight: '1.4' }}>
+                  100% Proxy-Proof. Students MUST be on Hostel Wi-Fi and standing near the floor box.
                 </p>
-
               </div>
-
             </div>
-
           </div>
 
-
-
           {vaultMsg && (
-
             <div className="alert alert-info py-2 px-3 small mb-3">
-
               {vaultMsg}
-
             </div>
-
           )}
 
-
-
-          {/* Strict Lock Localhost Vault & Cloud Sync Panel */}
-
-          {(bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && (
-
-            <div className="p-3 bg-light rounded-3 border mt-3">
-
-              <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-
-                <div className="d-flex align-items-center gap-2">
-
-                  <Cpu size={16} className="text-danger" />
-
-                  <span className="fw-bold small text-dark">Strict Lock Localhost Vault &amp; Cloud Sync (Low-Spec Warden Laptop)</span>
-
-                </div>
-
-                <span className="badge bg-danger text-white" style={{ fontSize: '10px' }}>Zero-Lag FIFO Engine</span>
-
+          {/* Simple "System Health & Auto-Save" Banner (Replaces Complex Vault Controls) */}
+          <div className="card bg-light border p-3 rounded-4 mt-2">
+            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2.5">
+              <div className="d-flex align-items-center gap-2">
+                {(vaultStatus?.unsyncedAttendanceCount || 0) === 0 ? (
+                  <div className="d-flex align-items-center gap-2 text-success fw-bold small">
+                    <CheckCircle2 size={18} className="text-success" />
+                    <span>✅ All Attendance Saved to Cloud Automatically</span>
+                  </div>
+                ) : (
+                  <div className="d-flex align-items-center gap-2 text-primary fw-bold small">
+                    <RefreshCw size={16} className="text-primary spin" />
+                    <span>🔄 Saving {vaultStatus?.unsyncedAttendanceCount} Offline Records to Cloud Automatically...</span>
+                  </div>
+                )}
               </div>
 
-
-
-              {/* Local LAN URLs */}
-
-              <div className="p-2.5 bg-white rounded border mb-3">
-
-                <div className="small fw-semibold text-dark mb-1 d-flex align-items-center gap-1.5">
-
-                  <Radio size={13} className="text-primary" /> Warden Laptop Wi-Fi LAN Check-In URLs:
-
-                </div>
-
-                <div className="d-flex flex-wrap gap-2">
-
-                  {vaultStatus?.localLanUrls?.map((url, idx) => (
-
-                    <code key={idx} className="badge bg-light text-dark border px-2 py-1 font-monospace" style={{ fontSize: '11px' }}>
-
-                      {url}
-
-                    </code>
-
-                  )) || <code className="badge bg-light text-dark border px-2 py-1 font-monospace">http://localhost:5000</code>}
-
-                </div>
-
-                <div className="text-muted small mt-1" style={{ fontSize: '11px' }}>
-
-                  Give this Wi-Fi address to students. Check-in runs completely offline without consuming cloud quota.
-
-                </div>
-
-              </div>
-
-
-
-              {/* Live Metric Counters */}
-
-              <div className="row g-2 mb-3">
-
-                <div className="col-6 col-md-3">
-
-                  <div className="p-2 bg-white rounded border text-center">
-
-                    <div className="text-muted" style={{ fontSize: '11px' }}>Cached Students</div>
-
-                    <div className="fw-bold fs-6 text-dark">{vaultStatus?.cachedStudentsCount ?? 0}</div>
-
-                  </div>
-
-                </div>
-
-                <div className="col-6 col-md-3">
-
-                  <div className="p-2 bg-white rounded border text-center">
-
-                    <div className="text-muted" style={{ fontSize: '11px' }}>RAM Vector Cache</div>
-
-                    <div className="fw-bold fs-6 text-success">{vaultStatus?.ramCachedStudents ?? 0}</div>
-
-                  </div>
-
-                </div>
-
-                <div className="col-6 col-md-3">
-
-                  <div className="p-2 bg-white rounded border text-center">
-
-                    <div className="text-muted" style={{ fontSize: '11px' }}>Pending Unsynced</div>
-
-                    <div className="fw-bold fs-6 text-danger">{vaultStatus?.unsyncedAttendanceCount ?? 0}</div>
-
-                  </div>
-
-                </div>
-
-                <div className="col-6 col-md-3">
-
-                  <div className="p-2 bg-white rounded border text-center">
-
-                    <div className="text-muted" style={{ fontSize: '11px' }}>Hardware Beacons</div>
-
-                    <div className="fw-bold fs-6 text-primary">{vaultStatus?.cachedBeaconsCount ?? 2}</div>
-
-                  </div>
-
-                </div>
-
-              </div>
-
-
-
-              {/* Action Buttons */}
-
-              <div className="d-flex flex-wrap gap-2">
-
+              <div className="d-flex align-items-center gap-2">
+                {/* 1-Click Strike Reset / Account Unlock */}
                 <button
-
                   type="button"
-
-                  className="btn btn-outline-primary btn-sm fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
-
-                  disabled={vaultLoading}
-
-                  onClick={handlePrepareVault}
-
+                  className="btn btn-outline-danger btn-sm fw-bold d-inline-flex align-items-center gap-1.5 shadow-sm"
+                  onClick={handleResetAllStrikes}
+                  disabled={resettingStrikes}
+                  title="Clear all student account strikes back to 0 and immediately unlock all accounts"
                 >
-
-                  <RefreshCw size={13} className={vaultLoading ? 'spin' : ''} />
-
-                  {vaultLoading ? 'Preloading Vault...' : 'Prepare Offline Cache (Preload Students & RAM Vectors)'}
-
+                  <Unlock size={14} className="text-danger" />
+                  {resettingStrikes ? 'Unlocking...' : '🔓 Unlock All Accounts'}
                 </button>
 
+                {/* 1-Click Temporary 15-Min Relax Button */}
+                {(bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && (
+                  <button
+                    type="button"
+                    className="btn btn-outline-warning btn-sm fw-bold d-inline-flex align-items-center gap-1.5 shadow-sm text-dark"
+                    onClick={handleTemporaryRelax}
+                    disabled={bleUpdating}
+                    title="Temporarily allows Mode 1 (GPS + Face Only) for 15 minutes if a floor box loses power, then automatically reverts to Strict Lock"
+                  >
+                    <Clock size={14} className="text-warning" />
+                    ⏱️ Allow Temporary Backup Check-In (15 Mins)
+                  </button>
+                )}
 
-
-                <button
-
-                  type="button"
-
-                  className="btn btn-danger btn-sm fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm text-white"
-
-                  disabled={vaultSyncing || (vaultStatus?.unsyncedAttendanceCount === 0)}
-
-                  onClick={handleSyncVault}
-
-                >
-
-                  <Zap size={13} className={vaultSyncing ? 'spin' : ''} />
-
-                  {vaultSyncing ? 'Syncing to Cloud...' : `Push & Sync Local Vault to Cloud DB (${vaultStatus?.unsyncedAttendanceCount || 0} Pending)`}
-
-                </button>
-
+                {/* Optional Save Now button */}
+                {(vaultStatus?.unsyncedAttendanceCount || 0) > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm fw-bold d-inline-flex align-items-center gap-1.5 shadow-sm"
+                    disabled={vaultSyncing}
+                    onClick={handleSyncVault}
+                  >
+                    <Zap size={14} />
+                    {vaultSyncing ? 'Saving Now...' : 'Save Now to Cloud'}
+                  </button>
+                )}
               </div>
-
             </div>
 
-          )}
-
+            {/* Auto-published Warden Wi-Fi LAN Address */}
+            {vaultStatus?.localLanUrls && vaultStatus.localLanUrls.length > 0 && (
+              <div className="mt-2.5 pt-2.5 border-top d-flex align-items-center justify-content-between flex-wrap gap-2 text-muted small" style={{ fontSize: '11.5px' }}>
+                <div className="d-flex align-items-center gap-1.5">
+                  <Radio size={13} className="text-primary" />
+                  <span><b>Warden Laptop Wi-Fi Address (Auto-Published):</b> <code className="text-dark bg-white border px-1.5 py-0.5 rounded">{vaultStatus.localLanUrls[0]}</code></span>
+                </div>
+                <span className="text-secondary">Students on hostel Wi-Fi auto-route to this address with zero setup</span>
+              </div>
+            )}
+          </div>
         </div>
-
       </div>
 
 
@@ -1518,18 +1402,22 @@ export default function AdminDashboard({ onNavigate }) {
 
 
 
-                    {/* Export Buttons (CSV + Excel) */}
+                    {/* Export Buttons (CSV + Excel + WhatsApp) */}
+                    <button
+                      type="button"
+                      className="btn btn-outline-success btn-sm fw-bold d-flex align-items-center gap-1.5 shadow-sm"
+                      onClick={handleShareAbsentOnWhatsApp}
+                      title="Share absent students list via WhatsApp"
+                    >
+                      <Send size={13} />
+                      <span className="d-inline">📲 Share Absent on WhatsApp</span>
+                    </button>
 
                     <button
-
                       type="button"
-
                       className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1.5"
-
                       onClick={handleExportRosterCsv}
-
                       title="Export as CSV"
-
                     >
 
                       <Download size={14} />

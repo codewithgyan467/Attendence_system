@@ -277,20 +277,19 @@ export default function SecurityIncidentDesk() {
           >
             <FileSpreadsheet size={14} /> Export Excel (.xlsx)
           </button>
-          {flaggedStudents.length > 0 && (
-            <button
-              className="btn btn-danger btn-sm d-flex align-items-center gap-1 fw-semibold shadow-sm"
-              onClick={handleResetAllStrikes}
-              disabled={submittingResetAll}
-            >
-              {submittingResetAll ? (
-                <span className="spinner-border spinner-border-sm" role="status" />
-              ) : (
-                <Unlock size={14} />
-              )}
-              Unlock All Flagged Students
-            </button>
-          )}
+          <button
+            className="btn btn-danger btn-sm d-flex align-items-center gap-1.5 fw-semibold shadow-sm text-white"
+            onClick={handleResetAllStrikes}
+            disabled={submittingResetAll}
+            title="Reset all student strikes back to 0 and immediately unlock all student accounts"
+          >
+            {submittingResetAll ? (
+              <span className="spinner-border spinner-border-sm" role="status" />
+            ) : (
+              <Unlock size={14} />
+            )}
+            🔓 Reset Strikes & Unlock All Accounts
+          </button>
           <button
             className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
             onClick={fetchAlerts}

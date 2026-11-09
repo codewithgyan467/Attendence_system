@@ -552,11 +552,14 @@ export async function scanHostelBleBeacon(options = {}) {
             const dev = result.device;
             const name = (dev.name || result.localName || '').trim();
             const uuids = (dev.uuids || []).map(u => String(u).toLowerCase());
+            const devName = (dev.name || result.localName || '').trim().toUpperCase();
             if (
-              name.startsWith('HG-') ||
-              name.startsWith('Hostel') ||
-              name.includes('BEACON') ||
-              name.includes('A01') ||
+              devName.startsWith('HG') ||
+              devName.includes('BEACON') ||
+              devName.includes('HOSTEL') ||
+              devName.includes('A01') ||
+              devName.includes('A02') ||
+              devName.includes('BLKA') ||
               uuids.includes(HOSTEL_SERVICE_UUID.toLowerCase())
             ) {
               foundDevice = dev;
@@ -571,6 +574,15 @@ export async function scanHostelBleBeacon(options = {}) {
         await new Promise(r => setTimeout(r, 150));
       }
       try { await BleClient.stopLEScan(); } catch (_) {}
+
+      // Fallback: requestDevice with filter if passive LE scan didn't capture advertisement
+      if (!foundDevice) {
+        try {
+          foundDevice = await BleClient.requestDevice({
+            services: [HOSTEL_SERVICE_UUID]
+          });
+        } catch (_) {}
+      }
 
       if (foundDevice) {
         if (onProgress) onProgress({ status: 'CONNECTING', message: `Connecting to ${foundDevice.name || 'ESP32'}...` });
@@ -596,23 +608,38 @@ export async function scanHostelBleBeacon(options = {}) {
         }, 150);
 
         let parsed = null;
-        try { parsed = JSON.parse(rawPayload); } catch (_) {
-          const parts = rawPayload.split(':');
-          if (parts.length >= 3) {
-            // Firmware sends: BEACON_ID:slot:token
-            if (/^\d+$/.test(parts[1])) {
+        try {
+          parsed = JSON.parse(rawPayload);
+        } catch (_) {
+          if (rawPayload.includes('|')) {
+            const parts = rawPayload.split('|');
+            if (parts.length >= 3) {
+              const anchorId = parts[0].trim();
+              const stepHex = parts[1].trim();
+              const stepNum = /^[0-9a-fA-F]+$/.test(stepHex) ? parseInt(stepHex, 16) : parseInt(stepHex, 10);
               parsed = {
-                id: parts[0],
-                slot: parseInt(parts[1], 10),
-                code: parts[2]
+                id: anchorId.startsWith('HG-') ? anchorId : `HG-${anchorId}`,
+                rawId: anchorId,
+                slot: stepNum,
+                code: parts[2].trim()
               };
-            } else {
-              // Legacy format fallback: id:code:slot
-              parsed = {
-                id: parts[0],
-                code: parts[1],
-                slot: parseInt(parts[2], 10)
-              };
+            }
+          } else if (rawPayload.includes(':')) {
+            const parts = rawPayload.split(':');
+            if (parts.length >= 3) {
+              if (/^\d+$/.test(parts[1])) {
+                parsed = {
+                  id: parts[0],
+                  slot: parseInt(parts[1], 10),
+                  code: parts[2]
+                };
+              } else {
+                parsed = {
+                  id: parts[0],
+                  code: parts[1],
+                  slot: parseInt(parts[2], 10)
+                };
+              }
             }
           }
         }
@@ -621,8 +648,9 @@ export async function scanHostelBleBeacon(options = {}) {
           return {
             success: true,
             beaconPublicId: parsed.id,
+            rawAnchorId: parsed.rawId || parsed.id,
             rollingCode: parsed.code,
-            slot: parsed.slot || Math.floor(Date.now() / 30000),
+            slot: (parsed.slot !== undefined && parsed.slot !== null) ? parsed.slot : Math.floor(Date.now() / 30000),
             deviceName: foundDevice.name || parsed.id,
             rawPayload,
             timestamp: Date.now()
