@@ -73,7 +73,7 @@ class AiServiceClient {
    * Performs MiniFASNet deep PAD + Active Liveness + Cosine similarity comparison.
    * Fail-Closed Security: Simulation fallback is strictly disabled in production.
    */
-  async verifyLiveFace(liveImageBase64, storedEmbeddings, threshold = 0.65, allowSimulation = null, options = {}) {
+  async verifyLiveFace(liveImageBase64, storedEmbeddings, threshold = 0.38, allowSimulation = null, options = {}) {
     const isProduction = process.env.NODE_ENV === 'production';
     const isTest = process.env.NODE_ENV === 'test';
     // Production & Development: Strictly fail-closed. No simulated fake biometrics for real students.
@@ -90,14 +90,16 @@ class AiServiceClient {
         live_image_base64: liveImageBase64,
         stored_embeddings: storedEmbeddings,
         similarity_threshold: threshold,
-        temporal_frames: options.temporal_frames || options.temporalFrames || options.step_up_frames || null,
+        frames: options.frames || options.burst_frames || null,
+        temporal_frames: options.temporal_frames || options.temporalFrames || options.step_up_frames || options.frames || null,
         active_challenge: options.active_challenge || options.activeChallenge || 'HOLD_STILL',
         allow_simulation_fallback: effectiveSimulation,
         requires_step_up: Boolean(options.requires_step_up),
         step_up_frames: options.step_up_frames || null,
         step_up_colors: options.step_up_colors || null,
         face_crop_112: options.face_crop_112 || options.faceCrop112 || null,
-        pad_crop_80: options.pad_crop_80 || options.padCrop80 || null
+        pad_crop_80: options.pad_crop_80 || options.padCrop80 || null,
+        client_mesh_telemetry: options.client_mesh_telemetry || options.clientMeshTelemetry || null
       };
 
       const resp = await this.client.post('/api/v1/faces/verify-live', payload);

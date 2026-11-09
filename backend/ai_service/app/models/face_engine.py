@@ -94,36 +94,101 @@ class FaceEngine:
         bgr_arr = cv2.cvtColor(rgb_arr, cv2.COLOR_RGB2BGR)
         return bgr_arr
 
+    def apply_clahe_lab(self, bgr_img: np.ndarray) -> np.ndarray:
+        """
+        Applies Contrast Limited Adaptive Histogram Equalization (CLAHE) on the L (luminance)
+        channel in LAB color space. Normalizes shadows, backlight, and dim indoor hostel lighting
+        without altering facial chrominance.
+        """
+        if bgr_img is None:
+            return bgr_img
+        try:
+            lab = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+            cl = clahe.apply(l)
+            limg = cv2.merge((cl, a, b))
+            return cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
+        except Exception as e:
+            logger.warning(f"CLAHE normalization warning: {e}")
+            return bgr_img
+
     def detect_and_align_face(self, bgr_img: np.ndarray):
         """
         Detects primary face, extracts bounding box and aligned crop.
+        Enhanced with CLAHE illumination normalization and 25% border padding fallback.
         """
+        if bgr_img is None:
+            return None, None, None
         h, w, _ = bgr_img.shape
+
+        # Illumination and backlight normalization
+        enhanced_img = self.apply_clahe_lab(bgr_img)
+
         if self.detector is None or self.recognizer is None:
             # Fallback using standard Haar cascade
             cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-            gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
-            faces = cascade.detectMultiScale(gray, 1.3, 5)
+            gray = cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2GRAY)
+            faces = cascade.detectMultiScale(gray, 1.2, 4)
             if len(faces) == 0:
                 return None, None, None
             (x, y, fw, fh) = faces[0]
-            face_crop = bgr_img[y:y+fh, x:x+fw]
+            face_crop = enhanced_img[y:y+fh, x:x+fw]
             return face_crop, np.array([x, y, fw, fh]), None
 
-        # Update YuNet input resolution
+        # Pass 1: Standard YuNet detection on CLAHE-enhanced image
         self.detector.setInputSize((w, h))
-        faces = self.detector.detect(bgr_img)
+        self.detector.setScoreThreshold(0.60)
+        faces = self.detector.detect(enhanced_img)
 
-        if faces[1] is None or len(faces[1]) == 0:
+        best_face = None
+        if faces[1] is not None and len(faces[1]) > 0:
+            candidate = max(faces[1], key=lambda f: f[-1])
+            if float(candidate[-1]) >= 0.60:
+                best_face = candidate
+
+        # Pass 2: Multi-Scale & Padded Fallback Detection
+        # When face fills >= 75% of frame (close-up mobile selfie), YuNet often misses boundary points.
+        # Adding 25% border padding allows YuNet to cleanly detect edges and facial features.
+        if best_face is None:
+            pad_x = max(16, int(w * 0.25))
+            pad_y = max(16, int(h * 0.25))
+            padded_img = cv2.copyMakeBorder(enhanced_img, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REFLECT)
+            pw, ph = w + 2 * pad_x, h + 2 * pad_y
+            self.detector.setInputSize((pw, ph))
+            self.detector.setScoreThreshold(0.45)
+            padded_faces = self.detector.detect(padded_img)
+
+            if padded_faces[1] is not None and len(padded_faces[1]) > 0:
+                padded_best = max(padded_faces[1], key=lambda f: f[-1])
+                if float(padded_best[-1]) >= 0.45:
+                    aligned_face = self.recognizer.alignCrop(padded_img, padded_best)
+
+                    # Shift coordinates back to original unpadded coordinate frame
+                    unpadded = padded_best.copy()
+                    unpadded[0] = max(0, padded_best[0] - pad_x)
+                    unpadded[1] = max(0, padded_best[1] - pad_y)
+                    unpadded[2] = min(w - unpadded[0], padded_best[2])
+                    unpadded[3] = min(h - unpadded[1], padded_best[3])
+                    for idx in [4, 6, 8, 10, 12]:
+                        unpadded[idx] = max(0, min(w, padded_best[idx] - pad_x))
+                    for idy in [5, 7, 9, 11, 13]:
+                        unpadded[idy] = max(0, min(h, padded_best[idy] - pad_y))
+                    bbox = unpadded[:4].astype(int)
+                    return aligned_face, bbox, unpadded
+
+        if best_face is None:
+            # Fallback using standard Haar cascade
+            cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            gray = cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2GRAY)
+            faces = cascade.detectMultiScale(gray, 1.15, 3)
+            if len(faces) > 0:
+                (x, y, fw, fh) = faces[0]
+                face_crop = enhanced_img[y:y+fh, x:x+fw]
+                return face_crop, np.array([x, y, fw, fh]), None
             return None, None, None
 
-        # Select the face with highest confidence score
-        best_face = max(faces[1], key=lambda f: f[-1])
-        confidence = float(best_face[-1])
-        if confidence < 0.60:
-            return None, None, None
-
-        aligned_face = self.recognizer.alignCrop(bgr_img, best_face)
+        aligned_face = self.recognizer.alignCrop(enhanced_img, best_face)
         bbox = best_face[:4].astype(int)
         return aligned_face, bbox, best_face
 
@@ -186,11 +251,13 @@ class FaceEngine:
         """
         Direct feature extraction from a client-provided 112x112 pre-cropped face.
         Bypasses YuNet detection completely, saving ~80% CPU time on low-spec Warden laptops.
+        Enhanced with CLAHE illumination normalization.
         """
         if crop_112_bgr is None:
             return None, 0.0
 
-        aligned_112 = cv2.resize(crop_112_bgr, (112, 112))
+        enhanced_crop = self.apply_clahe_lab(crop_112_bgr)
+        aligned_112 = cv2.resize(enhanced_crop, (112, 112))
         if self.arcface_net is not None:
             feat = self.extract_arcface_512d(aligned_112)
             if feat is not None:
@@ -243,11 +310,29 @@ class FaceEngine:
             hist = hist / (np.linalg.norm(hist) + 1e-8)
             return hist.tolist(), aligned_face, 0.85
 
-    def compute_cosine_similarity(self, vec1: list[float], vec2: list[float]) -> float:
+    def compute_cosine_similarity(self, vec1, vec2) -> float:
         """
-        Computes cosine similarity between two 128D vectors.
+        Computes cosine similarity between two vectors (SFace 128D or ArcFace 512D).
         Output range: [-1.0, 1.0] where 1.0 is identical.
+        Supports multi-pose embedding banks (dict or list of pose vectors),
+        returning the maximum similarity score across all enrolled poses.
         """
+        if vec1 is None or vec2 is None:
+            return 0.0
+
+        if isinstance(vec2, dict):
+            candidates = []
+            if "centroid" in vec2 and vec2["centroid"]:
+                candidates.append(vec2["centroid"])
+            if "poses" in vec2 and isinstance(vec2["poses"], list):
+                candidates.extend(vec2["poses"])
+            if not candidates:
+                return 0.0
+            return max([self.compute_cosine_similarity(vec1, c) for c in candidates])
+
+        if len(vec2) > 0 and isinstance(vec2[0], (list, tuple, np.ndarray)):
+            return max([self.compute_cosine_similarity(vec1, sub_v) for sub_v in vec2])
+
         u = np.array(vec1, dtype=np.float32)
         v = np.array(vec2, dtype=np.float32)
 

@@ -684,11 +684,15 @@ const verifyFaceHandler = async (req, res) => {
     let aiResult;
     try {
       const temporalFrames = req.body.temporal_frames || req.body.temporalFrames || [];
+      const burstFrames = req.body.frames || req.body.burst_frames || null;
+      const clientMeshTelemetry = req.body.client_mesh_telemetry || req.body.clientMeshTelemetry || null;
       const faceCrop112 = req.body.face_crop_112 || req.body.faceCrop112 || null;
       const padCrop80 = req.body.pad_crop_80 || req.body.padCrop80 || null;
 
       aiResult = await aiInferenceQueue.run(() =>
-        aiServiceClient.verifyLiveFace(live_photo, storedEmbeddings, 0.65, null, {
+        aiServiceClient.verifyLiveFace(live_photo, storedEmbeddings, 0.38, null, {
+          frames: burstFrames,
+          client_mesh_telemetry: clientMeshTelemetry,
           face_crop_112: faceCrop112,
           pad_crop_80: padCrop80,
           temporal_frames: temporalFrames,

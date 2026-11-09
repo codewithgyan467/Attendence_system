@@ -22,9 +22,11 @@ import {
   Search,
   Home,
   Zap,
-  Volume2
+  Volume2,
+  Compass
 } from 'lucide-react';
 import { playBiometricChime, detectFaceAngle } from '../utils/faceAngleGuide';
+import { analyzeFaceFrame, captureCleanFrame } from '../utils/faceMeshHelper';
 
 export default function StudentOnboarding({ onComplete }) {
   // Step flow: lookup -> otp -> credentials -> camera -> success
@@ -268,14 +270,25 @@ export default function StudentOnboarding({ onComplete }) {
     setCameraActive(false);
   };
 
-  const captureFrame = (targetIdx = activeAngleIndex) => {
+  const captureFrame = async (targetIdx = activeAngleIndex) => {
     if (!videoRef.current) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth || 640;
-    canvas.height = videoRef.current.videoHeight || 480;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-    const base64 = canvas.toDataURL('image/jpeg', 0.9);
+
+    // 1. Capture clean 640x640 offscreen canvas with full head & shoulder margins
+    const base64 = captureCleanFrame(videoRef.current, 640);
+    if (!base64) return;
+
+    // 2. Instant client-side validation
+    const targetNorm = (anglesToCapture[targetIdx] || 'FRONT').includes('LEFT')
+      ? 'LEFT'
+      : (anglesToCapture[targetIdx] || 'FRONT').includes('RIGHT')
+      ? 'RIGHT'
+      : 'FRONT';
+    const analysis = await analyzeFaceFrame(videoRef.current, targetNorm);
+    if (!analysis.faceDetected) {
+      setCameraError('No clear face detected in snapped frame. Please face a light source and retry.');
+      return;
+    }
+    setCameraError('');
 
     // Shutter flash
     setFlashActive(true);
@@ -298,7 +311,7 @@ export default function StudentOnboarding({ onComplete }) {
     }
   };
 
-  // Real-time Hands-Free Head Pose Auto-Tracking Loop for Student Onboarding
+  // Real-time Hands-Free Head Pose Auto-Tracking Loop for Student Onboarding using MediaPipe
   useEffect(() => {
     let animId;
     let lastCheck = 0;
@@ -311,9 +324,11 @@ export default function StudentOnboarding({ onComplete }) {
       if (photos.length >= 3) {
         setPoseStatus({
           detected: true,
+          ready: true,
           angle: 'DONE',
           progress: 100,
-          label: '✓ All 3 Angles Captured! Click Submit to Finish'
+          label: '✓ All 3 Angles Captured! Click Submit to Finish',
+          instruction: '✓ All 3 Angles Captured! Click Submit to Finish'
         });
         return;
       }
@@ -323,20 +338,25 @@ export default function StudentOnboarding({ onComplete }) {
         if (videoRef.current && !isAutoSnappingRef.current) {
           const currentAngle = anglesToCapture[activeAngleIndex] || 'FRONT';
           const targetNorm = currentAngle.includes('LEFT') ? 'LEFT' : currentAngle.includes('RIGHT') ? 'RIGHT' : 'FRONT';
-          const pose = await detectFaceAngle(videoRef.current, targetNorm);
+          const analysis = await analyzeFaceFrame(videoRef.current, targetNorm);
 
-          if (pose.detected && pose.angle === targetNorm) {
-            autoHoldProgressRef.current = Math.min(100, autoHoldProgressRef.current + 25);
+          if (analysis.ready) {
+            autoHoldProgressRef.current = Math.min(100, autoHoldProgressRef.current + 10);
             setPoseStatus({
               detected: true,
-              angle: pose.angle,
-              progress: autoHoldProgressRef.current,
-              label: `Hold steady... (${autoHoldProgressRef.current}%)`
+              ready: true,
+              angle: targetNorm,
+              yaw: analysis.yaw,
+              pitch: analysis.pitch,
+              luminance: analysis.luminance,
+              progress: Math.round(autoHoldProgressRef.current),
+              label: `Hold steady... (${Math.round(autoHoldProgressRef.current)}%)`,
+              instruction: analysis.instruction
             });
 
             if (autoHoldProgressRef.current >= 100) {
               isAutoSnappingRef.current = true;
-              captureFrame(activeAngleIndex);
+              await captureFrame(activeAngleIndex);
               autoHoldProgressRef.current = 0;
 
               setTimeout(() => {
@@ -344,12 +364,17 @@ export default function StudentOnboarding({ onComplete }) {
               }, 750);
             }
           } else {
-            autoHoldProgressRef.current = Math.max(0, autoHoldProgressRef.current - 15);
+            autoHoldProgressRef.current = 0;
             setPoseStatus({
-              detected: pose.detected,
-              angle: pose.angle,
-              progress: autoHoldProgressRef.current,
-              label: pose.detected ? pose.label : 'Position face inside oval'
+              detected: analysis.faceDetected,
+              ready: false,
+              angle: targetNorm,
+              yaw: analysis.yaw,
+              pitch: analysis.pitch,
+              luminance: analysis.luminance,
+              progress: 0,
+              label: analysis.instruction || 'Align face inside oval',
+              instruction: analysis.instruction
             });
           }
         }
@@ -1036,7 +1061,7 @@ export default function StudentOnboarding({ onComplete }) {
               )}
             </div>
 
-            {/* Camera Viewport */}
+            {/* Camera Viewport with Live Pose & Quality HUD */}
             <div
               style={{
                 width: '100%',
@@ -1063,29 +1088,125 @@ export default function StudentOnboarding({ onComplete }) {
                 }}
               />
 
-              {/* Dynamic Face Guide Oval with Pose Glow */}
+              {/* SVG 3D Pose Circular Progress Ring & Guide Oval */}
+              <svg
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  pointerEvents: 'none',
+                  zIndex: 10
+                }}
+                viewBox="0 0 540 380"
+              >
+                {/* Background dashed oval track */}
+                <ellipse
+                  cx="270"
+                  cy="185"
+                  rx="115"
+                  ry="140"
+                  fill="none"
+                  stroke={poseStatus.ready ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.25)'}
+                  strokeWidth="3"
+                  strokeDasharray="8 8"
+                />
+                {/* Dynamic animated progress ring */}
+                <ellipse
+                  cx="270"
+                  cy="185"
+                  rx="115"
+                  ry="140"
+                  fill="none"
+                  stroke={poseStatus.ready ? '#10b981' : '#3b82f6'}
+                  strokeWidth="5"
+                  strokeLinecap="round"
+                  strokeDasharray="805"
+                  strokeDashoffset={805 - (805 * Math.min(100, Math.max(0, poseStatus.progress || 0))) / 100}
+                  style={{
+                    transition: 'stroke-dashoffset 0.08s linear, stroke 0.2s ease',
+                    filter: poseStatus.ready ? 'drop-shadow(0 0 10px rgba(16, 185, 129, 0.85))' : 'none'
+                  }}
+                />
+              </svg>
+
+              {/* Top HUD: Directional Cue, Real-Time Angle Meter & Lighting Indicator */}
               <div
                 style={{
                   position: 'absolute',
-                  top: '14%',
-                  left: '25%',
-                  width: '50%',
-                  height: '72%',
-                  border:
-                    poseStatus.progress > 0
-                      ? '3px solid #10b981'
-                      : poseStatus.detected
-                      ? '2px solid #10b981'
-                      : '2px dashed rgba(16, 185, 129, 0.65)',
-                  borderRadius: '50%',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  padding: '12px 16px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  zIndex: 15,
                   pointerEvents: 'none',
-                  boxShadow:
-                    poseStatus.progress > 0
-                      ? '0 0 24px rgba(16, 185, 129, 0.85), 0 0 0 9999px rgba(0, 0, 0, 0.45)'
-                      : '0 0 0 9999px rgba(0, 0, 0, 0.35)',
-                  transition: 'all 0.15s ease'
+                  background: 'linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)'
                 }}
-              />
+              >
+                {/* Live Yaw Angle Meter */}
+                <span
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '999px',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    background: poseStatus.ready ? '#10b981' : 'rgba(15, 23, 42, 0.85)',
+                    color: '#ffffff',
+                    border: '1px solid rgba(255, 255, 255, 0.2)'
+                  }}
+                >
+                  Yaw: {poseStatus.yaw !== undefined ? `${poseStatus.yaw > 0 ? '+' : ''}${poseStatus.yaw}°` : '0°'}
+                  {poseStatus.ready ? ' ✓' : ''}
+                </span>
+
+                {/* Directional Cue Overlay */}
+                <span
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: '999px',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    background: '#6366f1',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  {(anglesToCapture[activeAngleIndex] || '').includes('LEFT') ? (
+                    <>
+                      <ArrowLeft size={12} /> Turn Left (~15°)
+                    </>
+                  ) : (anglesToCapture[activeAngleIndex] || '').includes('RIGHT') ? (
+                    <>
+                      Turn Right (~15°) <ArrowRight size={12} />
+                    </>
+                  ) : (
+                    <>
+                      <Compass size={12} /> Face Forward (0°)
+                    </>
+                  )}
+                </span>
+
+                {/* Lighting Status Indicator */}
+                <span
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '999px',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    background: (poseStatus.luminance || 100) < 42 ? '#f59e0b' : 'rgba(15, 23, 42, 0.85)',
+                    color: (poseStatus.luminance || 100) < 42 ? '#0f172a' : '#ffffff',
+                    border: '1px solid rgba(255, 255, 255, 0.2)'
+                  }}
+                >
+                  {(poseStatus.luminance || 100) < 42 ? '💡 Dim' : '💡 Light OK'}
+                </span>
+              </div>
 
               {/* Shutter Flash Animation */}
               {flashActive && (
@@ -1094,8 +1215,8 @@ export default function StudentOnboarding({ onComplete }) {
                     position: 'absolute',
                     inset: 0,
                     backgroundColor: '#ffffff',
-                    opacity: 0.85,
-                    zIndex: 20,
+                    opacity: 0.9,
+                    zIndex: 25,
                     pointerEvents: 'none'
                   }}
                 />
@@ -1108,35 +1229,36 @@ export default function StudentOnboarding({ onComplete }) {
                   bottom: '16px',
                   left: '50%',
                   transform: 'translateX(-50%)',
-                  background: poseStatus.progress > 0 ? 'rgba(16, 185, 129, 0.95)' : 'rgba(15, 23, 42, 0.85)',
+                  background: poseStatus.ready ? 'rgba(16, 185, 129, 0.95)' : 'rgba(15, 23, 42, 0.88)',
                   backdropFilter: 'blur(8px)',
                   padding: '6px 16px',
                   borderRadius: '999px',
                   color: '#ffffff',
                   fontSize: '12px',
                   fontWeight: '700',
-                  border: poseStatus.progress > 0 ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.15)',
+                  border: poseStatus.ready ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.2)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
                   whiteSpace: 'nowrap',
-                  zIndex: 15,
-                  boxShadow: '0 4px 15px rgba(0,0,0,0.3)'
+                  zIndex: 20,
+                  boxShadow: '0 4px 15px rgba(0,0,0,0.3)',
+                  maxWidth: '92%'
                 }}
               >
                 {autoCaptureEnabled && (
-                  <Zap size={13} color={poseStatus.progress > 0 ? '#facc15' : '#10b981'} />
+                  <Zap size={13} color={poseStatus.ready ? '#facc15' : '#38bdf8'} />
                 )}
-                <span>
-                  {poseStatus.label || (autoCaptureEnabled ? 'Align your face in oval' : 'Ready to capture')}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {poseStatus.instruction || poseStatus.label || (autoCaptureEnabled ? 'Align your face in oval' : 'Ready to capture')}
                 </span>
-                {autoCaptureEnabled && poseStatus.progress > 0 && (
+                {autoCaptureEnabled && (poseStatus.progress || 0) > 0 && (
                   <span
                     style={{
                       background: '#ffffff',
-                      color: '#065f46',
-                      borderRadius: '6px',
+                      color: '#059669',
                       padding: '1px 6px',
+                      borderRadius: '6px',
                       fontSize: '11px',
                       fontWeight: '800'
                     }}

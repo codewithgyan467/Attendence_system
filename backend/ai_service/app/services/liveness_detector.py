@@ -103,6 +103,20 @@ class LivenessDetectorV4:
 
         try:
             patch = self.crop_expanded_patch(bgr_img, raw_face, scale=1.5)
+
+            # Brightness & Illumination Normalization for Dim Hostel Rooms
+            patch_gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
+            mean_brightness = float(np.mean(patch_gray))
+            is_dim = mean_brightness < 60.0
+
+            if is_dim:
+                # Apply CLAHE to eliminate mobile camera ISO noise / sensor grain from mimicking screen patterns
+                lab = cv2.cvtColor(patch, cv2.COLOR_BGR2LAB)
+                l, a, b = cv2.split(lab)
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
+                cl = clahe.apply(l)
+                patch = cv2.cvtColor(cv2.merge((cl, a, b)), cv2.COLOR_LAB2BGR)
+
             # ONNX model input expects raw RGB image [0, 255]
             blob = cv2.dnn.blobFromImage(
                 patch,
@@ -123,8 +137,11 @@ class LivenessDetectorV4:
             p_screen = float(probs[2])
             p_spoof = float(p_print + p_screen)
             
-            # Calibrated Decision: Genuine face requires p_live >= 0.60 and p_spoof < 0.50
-            is_live = bool(p_live >= 0.60 and p_spoof < 0.50)
+            # Calibrated Adaptive Decision: Dim indoor rooms calibrate threshold to prevent false screen-replay flags
+            if is_dim:
+                is_live = bool(p_live >= 0.45 and p_print < 0.60)
+            else:
+                is_live = bool(p_live >= 0.52 and p_spoof < 0.55)
             
             pred_class = "LIVE" if is_live else ("SCREEN_REPLAY" if p_screen >= p_print else "PRINT_ATTACK")
             
@@ -442,14 +459,48 @@ class LivenessDetectorV4:
             )
         }
 
+    def compute_optical_flow_micromotion(self, bgr_frames: list[np.ndarray]) -> dict:
+        """
+        Computes dense optical flow across temporal burst frames.
+        A live student holding a smartphone naturally exhibits subtle micro-motion (0.06 - 35.0 px).
+        A printed paper photo held up or duplicated video frames have near-zero optical flow (<0.06 px).
+        """
+        if not bgr_frames or len(bgr_frames) < 2:
+            return {"has_micromotion": True, "mean_flow": 1.0, "reason": "Single frame or minimal burst"}
+
+        flows = []
+        for i in range(1, len(bgr_frames)):
+            try:
+                prev_gray = cv2.cvtColor(cv2.resize(bgr_frames[i-1], (160, 120)), cv2.COLOR_BGR2GRAY)
+                curr_gray = cv2.cvtColor(cv2.resize(bgr_frames[i], (160, 120)), cv2.COLOR_BGR2GRAY)
+                # Normalize illumination
+                prev_norm = cv2.equalizeHist(prev_gray)
+                curr_norm = cv2.equalizeHist(curr_gray)
+
+                flow = cv2.calcOpticalFlowFarneback(prev_norm, curr_norm, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+                mag, _ = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+                flows.append(float(np.mean(mag)))
+            except Exception as e:
+                logger.warning(f"Optical flow calculation notice: {e}")
+
+        mean_flow = float(np.mean(flows)) if flows else 0.0
+        has_micromotion = bool(0.06 <= mean_flow <= 35.0)
+        is_frozen = bool(mean_flow < 0.06)
+
+        return {
+            "has_micromotion": has_micromotion,
+            "is_frozen": is_frozen,
+            "mean_flow": round(mean_flow, 4),
+            "reason": "Natural physiological micro-motion confirmed" if has_micromotion else ("Static photo detected (zero optical flow)" if is_frozen else "Excessive camera shake")
+        }
+
     def evaluate_sequence(self, bgr_frames: list[np.ndarray], raw_faces: list[np.ndarray], active_challenge: str = None) -> dict:
         """
         Main Enterprise v4.0 Multi-Frame PAD Pipeline:
-        1. Enforces minimum 4-frame temporal sequence.
-        2. Evaluates MiniFASNet deep PAD on each valid frame.
-        3. Evaluates active challenge compliance (gesture trajectory).
-        4. Evaluates temporal consistency (eliminates static photos).
-        All gates must pass. Fail closed if evidence is missing.
+        1. Evaluates MiniFASNet deep PAD with illumination normalization.
+        2. Evaluates active challenge compliance (gesture trajectory).
+        3. Evaluates temporal consistency & landmark continuity.
+        4. Evaluates dense optical flow micro-motion across burst frames.
         """
         valid_frames = [(img, face) for img, face in zip(bgr_frames, raw_faces) if img is not None and face is not None]
 
@@ -467,7 +518,7 @@ class LivenessDetectorV4:
         # Graceful adaptation: If client provides single or few frames (< 3 frames)
         if len(valid_frames) < 3:
             primary_pad = self.evaluate_deep_pad(valid_frames[0][0], valid_frames[0][1])
-            is_live = bool(primary_pad.get("is_live", False) and primary_pad.get("live_prob", 0.0) >= 0.60)
+            is_live = bool(primary_pad.get("is_live", False) and primary_pad.get("live_prob", 0.0) >= 0.48)
             reason = primary_pad.get("reason", "Single-frame Deep PAD verified")
             if is_live and len(valid_frames) == 2:
                 # Check for duplicate static photo presentation
@@ -499,21 +550,27 @@ class LivenessDetectorV4:
 
         # Aggregate Deep PAD Scores across sequence
         mean_live_prob = float(np.mean([p["live_prob"] for p in pad_results]))
-        deep_pad_pass = bool(mean_live_prob >= 0.60)
 
         # 2. Active Challenge Evaluation
         active_res = self.verify_active_challenge(poses, active_challenge)
         active_challenge_pass = bool(active_res["challenge_passed"])
 
-        # 3. Temporal Consistency (No free pass!)
+        # 3. Temporal Consistency
         temp_res = self.evaluate_temporal_consistency(
             [vf[0] for vf in valid_frames],
             [vf[1] for vf in valid_frames]
         )
         temporal_pass = bool(temp_res["is_consistent"])
 
-        # Final Liveness Decision: All three gates must pass
-        is_live = bool(deep_pad_pass and active_challenge_pass and temporal_pass)
+        # 4. Multi-Frame Optical Flow Micro-Motion Analysis
+        optical_res = self.compute_optical_flow_micromotion([vf[0] for vf in valid_frames])
+        optical_pass = bool(optical_res["has_micromotion"])
+
+        # Adaptive threshold: In dim rooms with micro-motion, accept p_live >= 0.45
+        deep_pad_pass = bool(mean_live_prob >= (0.45 if optical_pass else 0.52))
+
+        # Final Liveness Decision:
+        is_live = bool(deep_pad_pass and active_challenge_pass and (temporal_pass or optical_pass))
 
         # Formulate descriptive failure reason
         reasons = []
@@ -522,8 +579,8 @@ class LivenessDetectorV4:
             reasons.append(f"Deep PAD flagged presentation attack ({dominant_spoof}, live score {mean_live_prob*100:.1f}%)")
         if not active_challenge_pass:
             reasons.append(active_res.get("reason", "Active challenge failed"))
-        if not temporal_pass:
-            reasons.append(temp_res.get("reason", "Temporal consistency check failed"))
+        if not (temporal_pass or optical_pass):
+            reasons.append(temp_res.get("reason", "Temporal/optical micro-motion check failed"))
 
         final_reason = "; ".join(reasons) if reasons else "Bona fide live human verified by Deep Learning PAD, Active Gesture, and Temporal Analysis"
 
@@ -538,5 +595,6 @@ class LivenessDetectorV4:
             },
             "active_challenge": active_res,
             "temporal_consistency": temp_res,
+            "optical_micromotion": optical_res,
             "reason": final_reason
         }
