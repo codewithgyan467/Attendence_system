@@ -201,6 +201,39 @@ export default function LoginPage({ onNavigateOnboarding }) {
                 </button>
               </div>
 
+              <div className="d-flex flex-wrap gap-1 mb-2">
+                <button
+                  type="button"
+                  className="btn btn-outline-dark btn-sm py-0.5 px-2"
+                  style={{ fontSize: '10.5px' }}
+                  onClick={() => {
+                    const full = 'http://172.20.10.2:5000/api/v1';
+                    setLocalWardenUrl(full);
+                    setCurrentWardenUrl(full);
+                    setErrorMsg('');
+                    setSuccessBanner('Connected to Warden Server at 172.20.10.2:5000! You can now sign in.');
+                    setShowServerSettings(false);
+                  }}
+                >
+                  ⚡ iPhone Hotspot (172.20.10.2)
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline-dark btn-sm py-0.5 px-2"
+                  style={{ fontSize: '10.5px' }}
+                  onClick={() => {
+                    const full = 'http://192.168.137.1:5000/api/v1';
+                    setLocalWardenUrl(full);
+                    setCurrentWardenUrl(full);
+                    setErrorMsg('');
+                    setSuccessBanner('Connected to Warden Server at 192.168.137.1:5000! You can now sign in.');
+                    setShowServerSettings(false);
+                  }}
+                >
+                  💻 Laptop Hotspot (192.168.137.1)
+                </button>
+              </div>
+
               <form onSubmit={handleSaveManualIp} className="d-flex gap-1">
                 <input
                   type="text"
