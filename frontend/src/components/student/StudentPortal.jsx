@@ -103,7 +103,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       utterance.pitch = 1.0;
       utterance.lang = 'en-US';
       window.speechSynthesis.speak(utterance);
-    } catch (_) {}
+    } catch (_) { }
   };
 
   const toggleVoiceGuide = () => {
@@ -2574,10 +2574,10 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           key={ang}
                           type="button"
                           className={`btn btn-sm px-3 rounded-pill fw-medium ${isCaptured
-                              ? 'btn-success text-white'
-                              : isActive
-                                ? 'btn-primary'
-                                : 'btn-outline-secondary'
+                            ? 'btn-success text-white'
+                            : isActive
+                              ? 'btn-primary'
+                              : 'btn-outline-secondary'
                             }`}
                           onClick={() => setEnrollActiveAngle(ang)}
                         >
@@ -2666,9 +2666,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   >
                     {/* Live Yaw Angle Meter */}
                     <span
-                      className={`badge rounded-pill fw-semibold shadow-sm ${
-                        poseStatus.ready ? 'bg-success text-white' : 'bg-dark bg-opacity-75 text-light border border-light border-opacity-25'
-                      }`}
+                      className={`badge rounded-pill fw-semibold shadow-sm ${poseStatus.ready ? 'bg-success text-white' : 'bg-dark bg-opacity-75 text-light border border-light border-opacity-25'
+                        }`}
                       style={{ fontSize: '11px' }}
                     >
                       Yaw: {poseStatus.yaw !== undefined ? `${poseStatus.yaw > 0 ? '+' : ''}${poseStatus.yaw}°` : '0°'}
@@ -2697,11 +2696,10 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
                     {/* Illumination & Quality Metric */}
                     <span
-                      className={`badge rounded-pill fw-semibold shadow-sm ${
-                        (poseStatus.luminance || 100) < 42
+                      className={`badge rounded-pill fw-semibold shadow-sm ${(poseStatus.luminance || 100) < 42
                           ? 'bg-warning text-dark'
                           : 'bg-dark bg-opacity-75 text-light border border-light border-opacity-25'
-                      }`}
+                        }`}
                       style={{ fontSize: '11px' }}
                     >
                       {(poseStatus.luminance || 100) < 42 ? '💡 Dim' : '💡 Light OK'}

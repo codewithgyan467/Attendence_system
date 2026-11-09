@@ -123,7 +123,9 @@ export default function LoginPage({ onNavigateOnboarding }) {
       const res = await loginWithGoogle(credential);
       setSuccessBanner(res.message || 'Google identity verified successfully! Welcome back.');
     } catch (err) {
-      setErrorMsg(err.message || 'Google authentication failed. Please ensure your email is registered in the hostel system.');
+      setErrorMsg(
+        'Google authentication requires internet connection. On offline Hostel Wi-Fi, please sign in above using your Roll Number (e.g. 2023CS01) and Password.'
+      );
     } finally {
       setLoading(false);
     }
@@ -340,9 +342,12 @@ export default function LoginPage({ onNavigateOnboarding }) {
           <div className="mb-2">
             <GoogleSignInButton
               onSuccess={handleGoogleSuccess}
-              onError={(err) => setErrorMsg(err)}
+              onError={(err) => setErrorMsg('Google Sign-In requires internet. On offline Wi-Fi, sign in above with Roll No & Password.')}
               disabled={loading}
             />
+            <div className="text-center text-muted small mt-1" style={{ fontSize: '10px' }}>
+              💡 On offline Hostel Wi-Fi, sign in above using Roll No &amp; Password
+            </div>
           </div>
 
           {/* Mobile App Download & QR Code Modal Link (Android & iOS) */}

@@ -20,15 +20,29 @@ export const setActiveBleMode = (mode) => {
 
 export const getLocalWardenUrl = () => {
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('hg_local_warden_url') || null;
+    const url = localStorage.getItem('hg_local_warden_url');
+    // On native mobile (Capacitor), 'localhost' refers to the phone itself, never the Warden's laptop
+    if (url && Capacitor.isNativePlatform() && (url.includes('localhost') || url.includes('127.0.0.1'))) {
+      localStorage.removeItem('hg_local_warden_url');
+      return null;
+    }
+    return url || null;
   }
   return null;
 };
 
 export const setLocalWardenUrl = (url) => {
   if (typeof window !== 'undefined') {
-    if (!url) localStorage.removeItem('hg_local_warden_url');
-    else localStorage.setItem('hg_local_warden_url', url.replace(/\/+$/, ''));
+    if (!url) {
+      localStorage.removeItem('hg_local_warden_url');
+    } else {
+      const clean = url.replace(/\/+$/, '');
+      if (Capacitor.isNativePlatform() && (clean.includes('localhost') || clean.includes('127.0.0.1'))) {
+        localStorage.removeItem('hg_local_warden_url');
+        return;
+      }
+      localStorage.setItem('hg_local_warden_url', clean);
+    }
   }
 };
 
@@ -40,11 +54,16 @@ export const clearLocalWardenUrl = () => {
 };
 
 export const probeLocalWardenIp = async (manualIp = null) => {
-  const browserOrigin = (typeof window !== 'undefined' && window.location.origin && 
+  const isNative = Capacitor.isNativePlatform();
+  // NEVER use browserOrigin on Native mobile (it's https://localhost which Capacitor serves locally as index.html)
+  const browserOrigin = (!isNative && typeof window !== 'undefined' && window.location.origin && 
     !window.location.hostname.endsWith('onrender.com') && 
     !window.location.hostname.endsWith('vercel.app')) ? window.location.origin : null;
 
   const savedWarden = getLocalWardenUrl();
+  const validSavedWarden = (isNative && savedWarden && (savedWarden.includes('localhost') || savedWarden.includes('127.0.0.1')))
+    ? null
+    : savedWarden;
 
   const candidates = manualIp
     ? [manualIp.startsWith('http') ? manualIp : `http://${manualIp}`]
@@ -59,19 +78,30 @@ export const probeLocalWardenIp = async (manualIp = null) => {
         'http://192.168.1.1:5000',
         'http://192.168.0.100:5000',
         'http://192.168.0.1:5000',
-        'http://localhost:5000',
-        ...(savedWarden ? [savedWarden.replace(/\/api\/v1\/?$/, '')] : []),
+        ...(isNative ? [] : ['http://localhost:5000']),
+        ...(validSavedWarden ? [validSavedWarden.replace(/\/api\/v1\/?$/, '')] : []),
         ...(browserOrigin ? [browserOrigin] : [])
       ]));
 
   const probeCandidate = async (cand) => {
+    if (isNative && (cand.includes('localhost') || cand.includes('127.0.0.1'))) {
+      throw new Error('Localhost is not the Warden PC on native mobile');
+    }
     const cleanCand = cand.replace(/\/+$/, '');
     const probeUrl = cleanCand.endsWith('/api/v1') ? `${cleanCand}/health` : `${cleanCand}/api/v1/health`;
     const res = await fetch(probeUrl, { signal: AbortSignal.timeout(1800) });
     if (res && res.ok) {
-      const fullApi = cleanCand.endsWith('/api/v1') ? cleanCand : `${cleanCand}/api/v1`;
-      setLocalWardenUrl(fullApi);
-      return fullApi;
+      // Must be real backend JSON, NOT Capacitor's fallback index.html!
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) {
+        throw new Error('Received HTML instead of API response');
+      }
+      const data = await res.json().catch(() => null);
+      if (data && (data.status === 'ok' || data.status === 'HEALTHY' || data.service || data.uptime !== undefined || data.models)) {
+        const fullApi = cleanCand.endsWith('/api/v1') ? cleanCand : `${cleanCand}/api/v1`;
+        setLocalWardenUrl(fullApi);
+        return fullApi;
+      }
     }
     throw new Error('Candidate unreachable');
   };
