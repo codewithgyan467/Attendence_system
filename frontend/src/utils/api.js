@@ -50,11 +50,24 @@ export const probeLocalWardenIp = async (manualIp = null) => {
         'http://localhost:5000'
       ];
 
+  // Also query cloud time-window to retrieve current wardenLanApiUrl if available
+  try {
+    const cloudRes = await fetch('https://hostelguard-backend-oimp.onrender.com/api/v1/attendance/time-window', {
+      signal: AbortSignal.timeout(2000)
+    });
+    if (cloudRes && cloudRes.ok) {
+      const cloudData = await cloudRes.json().catch(() => ({}));
+      if (cloudData?.wardenLanApiUrl && !candidates.includes(cloudData.wardenLanApiUrl)) {
+        candidates.unshift(cloudData.wardenLanApiUrl);
+      }
+    }
+  } catch (_) {}
+
   for (let cand of candidates) {
     const cleanCand = cand.replace(/\/+$/, '');
     const probeUrl = cleanCand.endsWith('/api/v1') ? `${cleanCand}/health` : `${cleanCand}/api/v1/health`;
     try {
-      const res = await fetch(probeUrl, { signal: AbortSignal.timeout(1500) });
+      const res = await fetch(probeUrl, { signal: AbortSignal.timeout(1200) });
       if (res && res.ok) {
         const fullApi = cleanCand.endsWith('/api/v1') ? cleanCand : `${cleanCand}/api/v1`;
         setLocalWardenUrl(fullApi);
@@ -165,14 +178,17 @@ async function request(endpoint, options = {}, isRetry = false) {
 
   const cloudBase = 'https://hostelguard-backend-oimp.onrender.com/api/v1';
 
-  // For authentication endpoints, prioritize Cloud if localWarden is not localhost,
-  // preventing stale local Wi-Fi IPs from locking students out of the app.
+  // For authentication endpoints, ALWAYS authenticate through Cloud on mobile devices and apps,
+  // preventing stale local Wi-Fi IPs or disconnected local servers from locking students out.
   let activeUrl = primaryUrl;
   const isAuthEndpoint = endpoint.startsWith('/auth');
-  if (isAuthEndpoint && localWarden && !localWarden.includes('localhost') && !localWarden.includes('127.0.0.1')) {
-    // If running in browser hosted on local server, use primaryUrl; otherwise use Cloud for auth
-    const isLocalOrigin = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(window.location.hostname));
-    if (!isLocalOrigin) {
+  if (isAuthEndpoint) {
+    const isNative = Capacitor.isNativePlatform();
+    // Only use local server for auth if directly opened on Warden PC's browser (localhost:5000)
+    const isDirectHost = !isNative && typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && 
+      window.location.port === '5000';
+    if (!isDirectHost) {
       activeUrl = `${cloudBase}${endpoint}`;
     }
   }

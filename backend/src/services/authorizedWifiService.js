@@ -150,3 +150,4 @@ class AuthorizedWifiService {
 }
 
 module.exports = new AuthorizedWifiService();
+

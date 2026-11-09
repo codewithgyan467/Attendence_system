@@ -6,6 +6,7 @@ import numpy as np
 cv2.setNumThreads(min(4, os.cpu_count() or 2))
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -120,25 +121,28 @@ def health_check():
     }
 
 @app.post("/api/v1/faces/extract-embeddings", response_model=ExtractEmbeddingsResponse)
-def extract_embeddings(req: ExtractEmbeddingsRequest):
+async def extract_embeddings(req: ExtractEmbeddingsRequest):
     """
     Phase 2: Student Onboarding - Multi-angle facial vector generation.
     Takes 1 to N photos, validates presence of human face, runs MiniFASNet deep PAD,
     and returns 128D mathematical embedding vectors.
+    CPU-bound inference is offloaded to run_in_threadpool so the async event loop never blocks.
     """
     results: List[EmbeddingResult] = []
 
     for item in req.photos:
         try:
-            bgr_img = face_engine.decode_image(item.image_base64)
-            vec, aligned_face, raw_face, conf = face_engine.extract_full_face_data(bgr_img)
+            bgr_img = await run_in_threadpool(face_engine.decode_image, item.image_base64)
+            vec, aligned_face, raw_face, conf = await run_in_threadpool(face_engine.extract_full_face_data, bgr_img)
 
             if vec is None or aligned_face is None:
                 if req.allow_simulation_fallback:
-                    gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
-                    resized = cv2.resize(gray, (64, 64))
-                    hist = cv2.calcHist([resized], [0], None, [128], [0, 256]).flatten()
-                    hist = (hist / (np.linalg.norm(hist) + 1e-8)).tolist()
+                    def compute_fallback():
+                        gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+                        resized = cv2.resize(gray, (64, 64))
+                        hist = cv2.calcHist([resized], [0], None, [128], [0, 256]).flatten()
+                        return (hist / (np.linalg.norm(hist) + 1e-8)).tolist()
+                    hist = await run_in_threadpool(compute_fallback)
                     results.append(EmbeddingResult(
                         angle=item.angle or "FRONT",
                         embedding=hist,
@@ -148,8 +152,8 @@ def extract_embeddings(req: ExtractEmbeddingsRequest):
                     ))
                 continue
 
-            # Evaluate per-angle deep PAD & 3D gesture verification
-            pad = liveness_detector.evaluate_enrollment_angle(bgr_img, raw_face, item.angle or "FRONT")
+            # Evaluate per-angle deep PAD & 3D gesture verification in worker thread pool
+            pad = await run_in_threadpool(liveness_detector.evaluate_enrollment_angle, bgr_img, raw_face, item.angle or "FRONT")
 
             results.append(EmbeddingResult(
                 angle=item.angle or "FRONT",
@@ -171,14 +175,18 @@ def extract_embeddings(req: ExtractEmbeddingsRequest):
     # Multi-Pose Embedding Bank & Weighted Centroid Vector Synthesis
     if len(results) >= 2:
         try:
-            stacked = np.array([r.embedding for r in results], dtype=np.float32)
-            centroid = np.mean(stacked, axis=0)
-            norm = np.linalg.norm(centroid)
-            if norm > 0:
-                centroid = (centroid / norm).tolist()
+            def synthesize_centroid():
+                stacked = np.array([r.embedding for r in results], dtype=np.float32)
+                centroid = np.mean(stacked, axis=0)
+                norm = np.linalg.norm(centroid)
+                if norm > 0:
+                    return (centroid / norm).tolist()
+                return None
+            centroid_vec = await run_in_threadpool(synthesize_centroid)
+            if centroid_vec:
                 results.append(EmbeddingResult(
                     angle="CENTROID",
-                    embedding=centroid,
+                    embedding=centroid_vec,
                     confidence=0.99,
                     liveness_score=1.0,
                     is_live=True
@@ -193,20 +201,21 @@ def extract_embeddings(req: ExtractEmbeddingsRequest):
     )
 
 @app.post("/api/v1/faces/verify-live", response_model=VerifyLiveResponse)
-def verify_live(req: VerifyLiveRequest):
+async def verify_live(req: VerifyLiveRequest):
     """
     HostelGuard Enterprise v4.0 Attendance Verification & Presentation Attack Detection:
-    Supports ultra-fast pre-cropped client pipeline (Task 3) for low-spec Warden laptops,
+    Supports ultra-fast pre-cropped client pipeline for low-spec Warden laptops,
     bypassing YuNet full-frame scans and evaluating MiniFASNet & SFace in <25ms.
+    All CPU-bound model inference is offloaded to run_in_threadpool so the async event loop never blocks.
     """
     # 0. Fast-Path Pre-Cropped Biometric Inference (Low-Spec Warden Laptop Mode)
     if req.face_crop_112 and req.pad_crop_80:
         try:
-            crop_112_bgr = face_engine.decode_image(req.face_crop_112)
-            pad_80_bgr = face_engine.decode_image(req.pad_crop_80)
+            crop_112_bgr = await run_in_threadpool(face_engine.decode_image, req.face_crop_112)
+            pad_80_bgr = await run_in_threadpool(face_engine.decode_image, req.pad_crop_80)
 
-            # 1. Direct MiniFASNetV2 deep PAD (<15ms)
-            pad_eval = liveness_detector.evaluate_pre_cropped_pad(pad_80_bgr)
+            # 1. Direct MiniFASNetV2 deep PAD (<15ms) offloaded to thread pool
+            pad_eval = await run_in_threadpool(liveness_detector.evaluate_pre_cropped_pad, pad_80_bgr)
             if not pad_eval.get("is_live", True) and not req.allow_simulation_fallback:
                 return VerifyLiveResponse(
                     is_match=False,
@@ -222,18 +231,25 @@ def verify_live(req: VerifyLiveRequest):
                     }
                 )
 
-            # 2. Direct SFace / ArcFace embedding extraction (<10ms)
-            live_vec, conf = face_engine.extract_from_pre_cropped(crop_112_bgr)
+            # 2. Direct SFace / ArcFace embedding extraction (<10ms) offloaded to thread pool
+            live_vec, conf = await run_in_threadpool(face_engine.extract_from_pre_cropped, crop_112_bgr)
 
             # 3. Fast Cosine Matching against enrolled templates (Calibrated to 0.38 for indoor lighting)
             threshold = 0.38 if (not req.similarity_threshold or req.similarity_threshold >= 0.60) else req.similarity_threshold
-            best_similarity = -1.0
-            for stored_vec in req.stored_embeddings:
-                sim = face_engine.compute_cosine_similarity(live_vec, stored_vec)
-                if sim > best_similarity:
-                    best_similarity = sim
 
-            is_match = bool(best_similarity >= threshold)
+            def match_pre_cropped():
+                best_sim = -1.0
+                matched = False
+                for stored_vec in req.stored_embeddings:
+                    sim = face_engine.compute_cosine_similarity(live_vec, stored_vec)
+                    if sim > best_sim:
+                        best_sim = sim
+                    if best_sim >= threshold:
+                        matched = True
+                        break
+                return best_sim, bool(best_sim >= threshold)
+
+            best_similarity, is_match = await run_in_threadpool(match_pre_cropped)
             status_str = "AUTHENTICATED" if is_match else "FACE_MISMATCH"
             details_msg = (
                 "Facial recognition verified successfully (Fast-Path Pre-Crop)."
@@ -261,18 +277,20 @@ def verify_live(req: VerifyLiveRequest):
             logger.warning(f"Fast-path pre-cropped evaluation notice: {fast_err}. Falling back to standard pipeline.")
 
     try:
-        primary_bgr = face_engine.decode_image(req.live_image_base64)
+        primary_bgr = await run_in_threadpool(face_engine.decode_image, req.live_image_base64)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image format: {e}")
 
-    # 1. Detect and extract face from primary frame
-    live_vec, aligned_face, raw_face, conf = face_engine.extract_full_face_data(primary_bgr)
+    # 1. Detect and extract face from primary frame offloaded to thread pool
+    live_vec, aligned_face, raw_face, conf = await run_in_threadpool(face_engine.extract_full_face_data, primary_bgr)
     if live_vec is None or aligned_face is None or raw_face is None:
         if req.allow_simulation_fallback:
-            gray = cv2.cvtColor(primary_bgr, cv2.COLOR_BGR2GRAY)
-            resized = cv2.resize(gray, (64, 64))
-            hist = cv2.calcHist([resized], [0], None, [128], [0, 256]).flatten()
-            live_vec = (hist / (np.linalg.norm(hist) + 1e-8)).tolist()
+            def compute_primary_fallback():
+                gray = cv2.cvtColor(primary_bgr, cv2.COLOR_BGR2GRAY)
+                resized = cv2.resize(gray, (64, 64))
+                hist = cv2.calcHist([resized], [0], None, [128], [0, 256]).flatten()
+                return (hist / (np.linalg.norm(hist) + 1e-8)).tolist()
+            live_vec = await run_in_threadpool(compute_primary_fallback)
             aligned_face = primary_bgr
             raw_face = np.array([0, 0, 100, 100, 30, 40, 70, 40, 50, 60, 35, 80, 65, 80, 0.95])
             conf = 0.92
@@ -296,8 +314,8 @@ def verify_live(req: VerifyLiveRequest):
     if burst_inputs and len(burst_inputs) > 0:
         for f_b64 in burst_inputs[:3]: # evaluate up to 3 burst frames for fast inference
             try:
-                frame_bgr = face_engine.decode_image(f_b64)
-                f_vec, _, f_face, _ = face_engine.extract_full_face_data(frame_bgr)
+                frame_bgr = await run_in_threadpool(face_engine.decode_image, f_b64)
+                f_vec, _, f_face, _ = await run_in_threadpool(face_engine.extract_full_face_data, frame_bgr)
                 if f_face is not None:
                     eval_bgr_frames.append(frame_bgr)
                     eval_raw_faces.append(f_face)
@@ -306,10 +324,10 @@ def verify_live(req: VerifyLiveRequest):
             except Exception as t_err:
                 logger.warning(f"Error decoding temporal burst frame: {t_err}")
 
-    # 3. Enterprise v4.0 Multi-Frame PAD & Active Challenge Evaluation
+    # 3. Enterprise v4.0 Multi-Frame PAD & Active Challenge Evaluation offloaded to thread pool
     if not req.allow_simulation_fallback:
         active_target = req.active_challenge or "HOLD_STILL"
-        seq_eval = liveness_detector.evaluate_sequence(eval_bgr_frames, eval_raw_faces, active_target)
+        seq_eval = await run_in_threadpool(liveness_detector.evaluate_sequence, eval_bgr_frames, eval_raw_faces, active_target)
         
         if not seq_eval["is_live"]:
             return VerifyLiveResponse(
@@ -335,20 +353,22 @@ def verify_live(req: VerifyLiveRequest):
     # Calibrate SFace/ArcFace cosine similarity threshold to 0.38 for reliable hostel room illumination
     threshold = 0.38 if (not req.similarity_threshold or req.similarity_threshold >= 0.60) else req.similarity_threshold
 
-    best_similarity = -1.0
-    is_match = False
-    for cand_v in candidate_vectors:
-        for stored_vec in req.stored_embeddings:
-            sim = face_engine.compute_cosine_similarity(cand_v, stored_vec)
-            if sim > best_similarity:
-                best_similarity = sim
-            if best_similarity >= threshold:
-                is_match = True
+    def match_burst_candidates():
+        best_sim = -1.0
+        matched = False
+        for cand_v in candidate_vectors:
+            for stored_vec in req.stored_embeddings:
+                sim = face_engine.compute_cosine_similarity(cand_v, stored_vec)
+                if sim > best_sim:
+                    best_sim = sim
+                if best_sim >= threshold:
+                    matched = True
+                    break
+            if matched:
                 break
-        if is_match:
-            break
+        return best_sim, bool(best_sim >= threshold)
 
-    is_match = bool(best_similarity >= threshold)
+    best_similarity, is_match = await run_in_threadpool(match_burst_candidates)
     status_str = "AUTHENTICATED" if is_match else "FACE_MISMATCH"
     details_msg = (
         "Facial recognition verified successfully."

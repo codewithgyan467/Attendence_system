@@ -7,10 +7,11 @@ logger = logging.getLogger("model_downloader")
 
 MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 
-# Official 100% Free & Open Source OpenCV Model Zoo models (Apache 2.0)
+# Official 100% Free & Open Source OpenCV Model Zoo & MiniFASNet models
 MODEL_URLS = {
     "face_detection_yunet.onnx": "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
-    "face_recognition_sface.onnx": "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx"
+    "face_recognition_sface.onnx": "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+    "minifasnet_v2.onnx": "https://huggingface.co/danelcsb/face/resolve/main/minifasnet_v2.onnx"
 }
 
 def ensure_models_downloaded():
