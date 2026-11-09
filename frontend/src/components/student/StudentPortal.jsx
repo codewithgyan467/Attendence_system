@@ -1674,8 +1674,14 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                       const isLocationOff = errLower.includes('location_switch_off') || errLower.includes('switch is turned off');
                       const isRateLimit = errLower.includes('too many') || errLower.includes('slow down') || errLower.includes('rate limit');
                       const isEnrollError = errLower.includes('facial embeddings') || errLower.includes('face profile') || errLower.includes('onboarding');
-                      const isLockError = errLower.includes('locked');
                       const isBleError = errLower.includes('layer 2') || errLower.includes('bluetooth') || errLower.includes('beacon') || errLower.includes('esp32') || errLower.includes('hardware presence') || errLower.includes('strict');
+                      const isLockError = !isBleError && (
+                        errLower.includes('account locked') || 
+                        errLower.includes('strike lockout') || 
+                        errLower.includes('3 consecutive forge') ||
+                        errLower.includes('failed attempts') ||
+                        (errLower.includes('account') && errLower.includes('lock'))
+                      );
                       const isFaceError = errLower.includes('physically present') || errLower.includes('anti-spoof') || errLower.includes('liveness') || errLower.includes('match') || errLower.includes('camera') || errLower.includes('facial') || errLower.includes('photo');
 
                       return (
