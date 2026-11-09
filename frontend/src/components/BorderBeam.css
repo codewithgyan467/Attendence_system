@@ -1,0 +1,65 @@
+/* Pure-CSS Hardware-Accelerated BorderBeam
+ * Powered by CSS Masks & GPU-composited rotation
+ * Zero JS runtime overhead, 60 FPS on mobile devices
+ */
+
+.hg-border-beam-container {
+  position: relative;
+  border-radius: inherit;
+}
+
+.hg-border-beam {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: var(--beam-width, 1.5px);
+  overflow: hidden;
+  z-index: 5;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  box-sizing: border-box;
+}
+
+.hg-border-beam::before {
+  content: '';
+  position: absolute;
+  top: -100%;
+  left: -100%;
+  width: 300%;
+  height: 300%;
+  background: conic-gradient(
+    from 0deg at 50% 50%,
+    transparent 0deg,
+    transparent 280deg,
+    var(--beam-color-from, #3b82f6) 325deg,
+    var(--beam-color-to, #10b981) 360deg
+  );
+  animation: hg-border-beam-spin var(--beam-duration, 5s) linear infinite;
+  animation-delay: var(--beam-delay, 0s);
+  will-change: transform;
+}
+
+@keyframes hg-border-beam-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Accessibility: Pause animation for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .hg-border-beam::before {
+    animation: none !important;
+    background: linear-gradient(
+      135deg,
+      var(--beam-color-from, #3b82f6),
+      var(--beam-color-to, #10b981)
+    ) !important;
+    opacity: 0.6;
+  }
+}

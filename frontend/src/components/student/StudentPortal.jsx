@@ -6,6 +6,7 @@ import { getNativeOrBrowserLocation, isNativeMobile, scanHostelBleBeacon, verify
 import { Line } from 'react-chartjs-2';
 import ShinyText from '../ShinyText';
 import SpotlightCard from '../SpotlightCard';
+import BorderBeam from '../BorderBeam';
 import {
   UserCheck,
   History,
@@ -333,6 +334,9 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [enrollError, setEnrollError] = useState(null);
   const enrollVideoRef = useRef(null);
   const enrollStreamRef = useRef(null);
+
+  // GPU & Camera Guardrail: Auto-pause background canvas / WebGL effects when video camera stream is active
+  const isCameraActive = checkinStep === 'camera_active' || checkinStep === 'verifying_face' || showEnrollModal;
 
   // Hands-Free Auto-Capture & Head Pose Tracking
   const [autoCaptureEnabled, setAutoCaptureEnabled] = useState(true);
@@ -1385,7 +1389,18 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
               </div>
             )}
 
-            <div className="card shadow-sm border-0 rounded-4 overflow-hidden">
+            <div className="card shadow-sm border-0 rounded-4 overflow-hidden position-relative">
+              {/* Pure-CSS Hardware-Accelerated BorderBeam indicating active verification step */}
+              {todayStatus.isMarkedToday || checkinStep === 'success' ? (
+                <BorderBeam colorFrom="#10b981" colorTo="#059669" duration={6} borderWidth={2} />
+              ) : (checkinStep === 'camera_active' || checkinStep === 'verifying_face') ? (
+                <BorderBeam colorFrom="#06b6d4" colorTo="#10b981" duration={2.5} borderWidth={2.5} />
+              ) : (checkinStep === 'verifying_ble' || checkinStep === 'verifying_policy') ? (
+                <BorderBeam colorFrom="#8b5cf6" colorTo="#f59e0b" duration={3} borderWidth={2.5} />
+              ) : (checkinStep === 'idle' || checkinStep === 'verifying_gps') ? (
+                <BorderBeam colorFrom="#3b82f6" colorTo="#6366f1" duration={4} borderWidth={2} />
+              ) : null}
+
               <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
                 <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
                   <UserCheck size={20} className="text-primary" />
@@ -1413,6 +1428,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                       spotlightColor="rgba(16, 185, 129, 0.16)"
                       className="card bg-white border rounded-4 p-3 mx-auto text-start shadow-sm"
                       style={{ maxWidth: '380px', padding: '1rem' }}
+                      disabled={isCameraActive}
                     >
                       <div className="d-flex justify-content-between py-1.5 border-bottom">
                         <span className="text-muted small">Date</span>
@@ -1441,24 +1457,36 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   </div>
                 ) : (
                   <>
-                    {/* Clear 4-Step Attendance Workflow (Section 7) */}
+                    {/* Clear 4-Step Attendance Workflow with Glowing Active Step Indicators */}
                     <div className="d-flex align-items-center justify-content-center gap-2 mb-4 px-2 flex-wrap">
-                      <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold ${checkinStep === 'idle' || checkinStep === 'verifying_gps' ? 'bg-primary text-white shadow-sm' : 'bg-light text-muted'}`}>
+                      <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold position-relative overflow-hidden ${checkinStep === 'idle' || checkinStep === 'verifying_gps' ? 'bg-primary text-white shadow-sm' : (verifiedDistance !== null ? 'bg-success text-white shadow-xs' : 'bg-light text-muted')}`}>
+                        {(checkinStep === 'idle' || checkinStep === 'verifying_gps') && (
+                          <BorderBeam colorFrom="#93c5fd" colorTo="#ffffff" duration={2.5} borderWidth={1.5} />
+                        )}
                         <span>1</span>
                         <span>Location</span>
                       </div>
                       <span className="text-muted small d-none d-sm-inline">➔</span>
-                      <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold ${checkinStep === 'camera_active' ? 'bg-primary text-white shadow-sm' : 'bg-light text-muted'}`}>
+                      <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold position-relative overflow-hidden ${checkinStep === 'verifying_ble' || checkinStep === 'verifying_policy' ? 'bg-primary text-white shadow-sm' : (verifiedBeaconInfo || verifiedWifiAnchor ? 'bg-success text-white shadow-xs' : 'bg-light text-muted')}`}>
+                        {(checkinStep === 'verifying_ble' || checkinStep === 'verifying_policy') && (
+                          <BorderBeam colorFrom="#c084fc" colorTo="#fef08a" duration={2.5} borderWidth={1.5} />
+                        )}
                         <span>2</span>
-                        <span>Identity</span>
+                        <span>BLE / Beacon</span>
                       </div>
                       <span className="text-muted small d-none d-sm-inline">➔</span>
-                      <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold ${checkinStep === 'verifying_face' ? 'bg-primary text-white shadow-sm' : 'bg-light text-muted'}`}>
+                      <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold position-relative overflow-hidden ${checkinStep === 'camera_active' || checkinStep === 'verifying_face' ? 'bg-primary text-white shadow-sm' : 'bg-light text-muted'}`}>
+                        {(checkinStep === 'camera_active' || checkinStep === 'verifying_face') && (
+                          <BorderBeam colorFrom="#67e8f9" colorTo="#a7f3d0" duration={2} borderWidth={1.5} />
+                        )}
                         <span>3</span>
-                        <span>Verification</span>
+                        <span>Face ID</span>
                       </div>
                       <span className="text-muted small d-none d-sm-inline">➔</span>
-                      <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold ${checkinStep === 'success' ? 'bg-success text-white shadow-sm' : 'bg-light text-muted'}`}>
+                      <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold position-relative overflow-hidden ${checkinStep === 'success' || todayStatus.isMarkedToday ? 'bg-success text-white shadow-sm' : 'bg-light text-muted'}`}>
+                        {(checkinStep === 'success' || todayStatus.isMarkedToday) && (
+                          <BorderBeam colorFrom="#34d399" colorTo="#ffffff" duration={3} borderWidth={1.5} />
+                        )}
                         <span>4</span>
                         <span>Complete</span>
                       </div>
@@ -1721,8 +1749,9 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           </div>
                         </div>
 
-                        {/* Clean Minimalist Face ID Viewport */}
-                        <div className="hg-faceid-viewport mx-auto mb-3">
+                        {/* Clean Minimalist Face ID Viewport with Glowing BorderBeam */}
+                        <div className="hg-faceid-viewport mx-auto mb-3 position-relative">
+                          <BorderBeam colorFrom="#06b6d4" colorTo="#10b981" duration={3} borderWidth={2} />
                           <video
                             ref={attachVideoRef}
                             autoPlay
@@ -2593,11 +2622,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   )}
                 </div>
 
-                {/* Viewport with Live Pose & Quality HUD */}
+                {/* Viewport with Live Pose & Quality HUD and Glowing BorderBeam */}
                 <div
                   className="position-relative d-inline-block rounded-4 overflow-hidden shadow mb-3"
                   style={{ width: '100%', maxWidth: '400px', height: '280px', backgroundColor: '#000' }}
                 >
+                  <BorderBeam colorFrom="#3b82f6" colorTo="#10b981" duration={3} borderWidth={2} />
                   <video
                     ref={attachEnrollVideoRef}
                     autoPlay

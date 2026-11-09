@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../utils/api';
+import BorderBeam from './BorderBeam';
 import {
   Camera,
   CheckCircle,
@@ -1075,6 +1076,7 @@ export default function StudentOnboarding({ onComplete }) {
                 boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)'
               }}
             >
+              <BorderBeam colorFrom="#06b6d4" colorTo="#10b981" duration={3} borderWidth={2} />
               <video
                 ref={videoRef}
                 autoPlay

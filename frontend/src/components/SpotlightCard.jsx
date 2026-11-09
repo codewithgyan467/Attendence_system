@@ -62,6 +62,7 @@ const SpotlightCard = ({
   flare = true,
   grain = 0,
   theme = 'dark',
+  disabled = false,
   ...rest
 }) => {
   const rootRef = useRef(null);
@@ -83,7 +84,8 @@ const SpotlightCard = ({
     smoothing: clamp(smoothing, 0, 1),
     ambient,
     flare,
-    grain: clamp(grain, 0, 1)
+    grain: clamp(grain, 0, 1),
+    disabled: Boolean(disabled)
   };
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -144,6 +146,13 @@ const SpotlightCard = ({
       raf = 0;
       if (!alive) return;
       const s = settingsRef.current;
+      if (s.disabled) {
+        if (state.presence > 0) {
+          state.presence = 0;
+          paint(s);
+        }
+        return;
+      }
       const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
       last = now;
       const rect = root.getBoundingClientRect();
@@ -189,24 +198,26 @@ const SpotlightCard = ({
     };
 
     const wake = () => {
-      if (raf || !alive) return;
+      if (raf || !alive || settingsRef.current.disabled) return;
       last = performance.now();
       raf = requestAnimationFrame(tick);
     };
     wakeRef.current = wake;
 
     const onMove = event => {
+      if (settingsRef.current.disabled) return;
       pointer.x = event.clientX;
       pointer.y = event.clientY;
       pointer.active = true;
       if (state.presence > 0 || settingsRef.current.proximity > 0 || root.contains(event.target)) wake();
     };
     const onOut = event => {
-      if (event.relatedTarget) return;
+      if (event.relatedTarget || settingsRef.current.disabled) return;
       pointer.active = false;
       wake();
     };
     const onDown = event => {
+      if (settingsRef.current.disabled) return;
       pointer.x = event.clientX;
       pointer.y = event.clientY;
       pointer.active = true;
@@ -214,28 +225,32 @@ const SpotlightCard = ({
       wake();
     };
     const onUp = event => {
+      if (settingsRef.current.disabled) return;
       if (event.pointerType !== 'mouse') pointer.active = false;
       if (!state.pressed && event.pointerType === 'mouse') return;
       state.pressed = false;
       wake();
     };
     const onFocusIn = event => {
+      if (settingsRef.current.disabled) return;
       if (!(event.target instanceof Element) || !event.target.matches(':focus-visible')) return;
       focus = event.target;
       wake();
     };
     const onFocusOut = event => {
+      if (settingsRef.current.disabled) return;
       if (root.contains(event.relatedTarget)) return;
       focus = null;
       wake();
     };
     const onScroll = () => {
+      if (settingsRef.current.disabled) return;
       if (pointer.active || state.presence > 0) wake();
     };
 
     const observer = new IntersectionObserver(entries => {
       state.visible = entries.some(entry => entry.isIntersecting);
-      if (state.visible) wake();
+      if (state.visible && !settingsRef.current.disabled) wake();
     });
     observer.observe(root);
     window.addEventListener('pointermove', onMove);

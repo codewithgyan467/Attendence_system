@@ -346,12 +346,14 @@ const ClickSpark = forwardRef(
       };
 
       const onPointerDown = event => {
+        if (settingsRef.current.disabled) return;
         if (event.pointerType !== 'mouse' || event.button !== 0) return;
         lastPress = { time: performance.now(), x: event.clientX, y: event.clientY };
         spawn(event.clientX, event.clientY);
       };
 
       const onClick = event => {
+        if (settingsRef.current.disabled) return;
         if ('pointerType' in event && event.pointerType === 'mouse') return;
         if (event.detail === 0) {
           const target = event.target instanceof Element ? event.target : root;

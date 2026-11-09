@@ -8,6 +8,8 @@ import { probeLocalWardenIp, clearLocalWardenUrl, getLocalWardenUrl, setLocalWar
 import ShinyText from '../ShinyText';
 import ClickSpark from '../ClickSpark';
 import SpotlightCard from '../SpotlightCard';
+import BorderBeam from '../BorderBeam';
+import Particles from '../Particles';
 
 export default function LoginPage({ onNavigateOnboarding }) {
   const { login, loginWithGoogle } = useAuth();
@@ -122,15 +124,28 @@ export default function LoginPage({ onNavigateOnboarding }) {
 
 
   return (
-    <ClickSpark sparkColor={['#6366f1', '#3b82f6', '#10b981']} sparkSize={10} sparkRadius={22}>
-      <div className="container d-flex justify-content-center my-auto py-2 position-relative" style={{ zIndex: 1 }}>
-        <SpotlightCard
-          theme="light"
-          spotlightColor="rgba(99, 102, 241, 0.16)"
-          className="card shadow-lg border-0 rounded-4"
-          style={{ maxWidth: '420px', width: '100%', padding: 0, overflow: 'hidden' }}
-        >
-          {/* Card Header */}
+    <div className="position-relative min-vh-100 d-flex flex-column justify-content-center overflow-hidden">
+      {/* Background ambient particle aura (auto-pauses on reduced-motion or offscreen) */}
+      <Particles
+        particleCount={20}
+        particleColors={['#6366f1', '#3b82f6', '#06b6d4']}
+        speed={0.05}
+        particleBaseSize={60}
+        moveParticlesOnHover={false}
+        alphaParticles={true}
+        disableRotation={true}
+        style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}
+      />
+      <ClickSpark sparkColor={['#6366f1', '#3b82f6', '#10b981']} sparkSize={10} sparkRadius={22}>
+        <div className="container d-flex justify-content-center my-auto py-2 position-relative" style={{ zIndex: 1 }}>
+          <SpotlightCard
+            theme="light"
+            spotlightColor="rgba(99, 102, 241, 0.16)"
+            className="card shadow-lg border-0 rounded-4 position-relative"
+            style={{ maxWidth: '420px', width: '100%', padding: 0, overflow: 'hidden' }}
+          >
+            <BorderBeam colorFrom="#3b82f6" colorTo="#6366f1" duration={6} borderWidth={1.5} />
+            {/* Card Header */}
           <div className="px-3 py-2.5 text-center text-white" style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}>
             <img
               src="/icon-192.png"
@@ -393,5 +408,6 @@ export default function LoginPage({ onNavigateOnboarding }) {
         onClose={() => setShowDownloadModal(false)}
       />
     </ClickSpark>
+    </div>
   );
 }

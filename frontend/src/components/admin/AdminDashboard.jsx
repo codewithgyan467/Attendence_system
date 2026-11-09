@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { api } from '../../utils/api';
 import KpiCard from '../common/KpiCard';
 import SpotlightCard from '../SpotlightCard';
@@ -478,6 +479,7 @@ export default function AdminDashboard({ onNavigate }) {
 
 
   const s = data?.summary || {};
+  const activeBeaconsCount = beacons.filter(b => b.is_active === 1 || b.is_active === true).length;
 
 
 
@@ -799,94 +801,64 @@ export default function AdminDashboard({ onNavigate }) {
 
 
 
-      {/* KPI Cards Row */}
-
+      {/* KPI Cards Row (CountUp Spring Animated Metrics) */}
       <div className="row g-3 mb-4">
-
-        <div className="col-12 col-sm-6 col-xl-3">
-
+        <div className="col-12 col-sm-6 col-lg-4 col-xl">
           <KpiCard
-
             title="Total Registered Students"
-
             value={s.totalRegistered || 0}
-
             subtitle={`${s.totalAllotted || 0} pre-allotted in roster`}
-
             icon={Users}
-
             color="primary"
-
           />
-
         </div>
 
-        <div className="col-12 col-sm-6 col-xl-3">
-
+        <div className="col-12 col-sm-6 col-lg-4 col-xl">
           <KpiCard
-
             title="Present Today"
-
             value={s.presentToday || 0}
-
             subtitle={`${s.presentToday || 0} / ${s.totalRegistered || 0} residents present today`}
-
             icon={CheckCircle2}
-
             color="success"
-
             badgeText={s.lateToday > 0 ? `+${s.lateToday} Late` : undefined}
-
             onClick={() => handleOpenRoster('PRESENT')}
-
             actionText="View Present Students"
-
           />
-
         </div>
 
-        <div className="col-12 col-sm-6 col-xl-3">
-
+        <div className="col-12 col-sm-6 col-lg-4 col-xl">
           <KpiCard
-
             title="Absent / Unmarked"
-
             value={s.absentToday || 0}
-
             subtitle="Residents pending check-in"
-
             icon={Clock}
-
             color="warning"
-
             onClick={() => handleOpenRoster('ABSENT')}
-
             actionText="View Absent Students"
-
           />
-
         </div>
 
-        <div className="col-12 col-sm-6 col-xl-3">
-
+        <div className="col-12 col-sm-6 col-lg-4 col-xl">
           <KpiCard
-
-            title="Forge Location Alerts"
-
-            value={s.flaggedForgeCount || 0}
-
-            subtitle="Hit 3-strike location limit"
-
-            icon={ShieldAlert}
-
-            color={s.flaggedForgeCount > 0 ? 'danger' : 'primary'}
-
-            badgeText={s.pendingCorrections > 0 ? `${s.pendingCorrections} Corrections Pending` : undefined}
-
+            title="Active Floor Boxes"
+            value={activeBeaconsCount}
+            subtitle={`${beacons.length} floor anchors deployed`}
+            icon={Radio}
+            color="success"
+            badgeText={activeBeaconsCount > 0 ? `${activeBeaconsCount} Online` : '0 Online'}
           />
-
         </div>
 
+        <div className="col-12 col-sm-6 col-lg-4 col-xl">
+          <KpiCard
+            title="Forge Location Alerts"
+            value={s.flaggedForgeCount || 0}
+            subtitle="Hit 3-strike location limit"
+            icon={ShieldAlert}
+            color={s.flaggedForgeCount > 0 ? 'danger' : 'primary'}
+            badgeText={s.pendingCorrections > 0 ? `${s.pendingCorrections} Corrections Pending` : undefined}
+          />
+        </div>
       </div>
 
 
@@ -1082,52 +1054,62 @@ export default function AdminDashboard({ onNavigate }) {
             </div>
           )}
 
-          {/* Floor Box Cards */}
+          {/* Floor Box Cards (60 FPS Motion Layout Transitions) */}
           <div className="row g-3 mb-3">
-            {beacons && beacons.length > 0 ? (
-              beacons.map((b) => (
-                <div key={b.id || b.beacon_public_id} className="col-12 col-md-6 col-lg-4">
-                  <div className="card h-100 p-3 border shadow-xs rounded-3 bg-light position-relative">
-                    <div className="d-flex align-items-center justify-content-between mb-2">
-                      <span className={`badge ${b.is_active ? 'bg-success text-white' : 'bg-secondary text-white'} fw-semibold`} style={{ fontSize: '10.5px' }}>
-                        {b.is_active ? '🟢 ACTIVE' : '⚪ DISABLED'}
-                      </span>
-                      <code className="text-dark bg-white border px-1.5 py-0.5 rounded small" style={{ fontSize: '11px' }}>
-                        {b.beacon_public_id}
-                      </code>
+            <AnimatePresence>
+              {beacons && beacons.length > 0 ? (
+                beacons.map((b) => (
+                  <motion.div
+                    key={b.id || b.beacon_public_id}
+                    className="col-12 col-md-6 col-lg-4"
+                    initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                    transition={{ duration: 0.22, ease: 'easeOut' }}
+                    layout
+                  >
+                    <div className="card h-100 p-3 border shadow-xs rounded-3 bg-light position-relative">
+                      <div className="d-flex align-items-center justify-content-between mb-2">
+                        <span className={`badge ${b.is_active ? 'bg-success text-white' : 'bg-secondary text-white'} fw-semibold`} style={{ fontSize: '10.5px' }}>
+                          {b.is_active ? '🟢 ACTIVE' : '⚪ DISABLED'}
+                        </span>
+                        <code className="text-dark bg-white border px-1.5 py-0.5 rounded small" style={{ fontSize: '11px' }}>
+                          {b.beacon_public_id}
+                        </code>
+                      </div>
+                      <h6 className="fw-bold mb-1 text-dark" style={{ fontSize: '13.5px' }}>
+                        {b.block_name || 'Floor Anchor'}
+                      </h6>
+                      <div className="text-muted small mb-2.5" style={{ fontSize: '11px' }}>
+                        {b.last_seen_at ? `Last Seen: ${new Date(b.last_seen_at).toLocaleTimeString()}` : 'Ready / In-Range'}
+                      </div>
+                      <div className="d-flex align-items-center gap-2 mt-auto pt-2 border-top">
+                        <button
+                          type="button"
+                          className={`btn btn-sm py-1 px-2.5 fw-semibold ${b.is_active ? 'btn-outline-secondary' : 'btn-outline-success'}`}
+                          style={{ fontSize: '11px' }}
+                          onClick={() => handleToggleBeacon(b)}
+                        >
+                          {b.is_active ? 'Disable' : 'Enable'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline-danger btn-sm py-1 px-2.5 fw-semibold"
+                          style={{ fontSize: '11px' }}
+                          onClick={() => handleDeleteBeacon(b.id)}
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
-                    <h6 className="fw-bold mb-1 text-dark" style={{ fontSize: '13.5px' }}>
-                      {b.block_name || 'Floor Anchor'}
-                    </h6>
-                    <div className="text-muted small mb-2.5" style={{ fontSize: '11px' }}>
-                      {b.last_seen_at ? `Last Seen: ${new Date(b.last_seen_at).toLocaleTimeString()}` : 'Ready / In-Range'}
-                    </div>
-                    <div className="d-flex align-items-center gap-2 mt-auto pt-2 border-top">
-                      <button
-                        type="button"
-                        className={`btn btn-sm py-1 px-2.5 fw-semibold ${b.is_active ? 'btn-outline-secondary' : 'btn-outline-success'}`}
-                        style={{ fontSize: '11px' }}
-                        onClick={() => handleToggleBeacon(b)}
-                      >
-                        {b.is_active ? 'Disable' : 'Enable'}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline-danger btn-sm py-1 px-2.5 fw-semibold"
-                        style={{ fontSize: '11px' }}
-                        onClick={() => handleDeleteBeacon(b.id)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
+                  </motion.div>
+                ))
+              ) : (
+                <div className="col-12 text-muted small py-2">
+                  No floor boxes registered yet. Click &quot;Geofence Perimeter&quot; in the left sidebar to add a new ESP32 anchor.
                 </div>
-              ))
-            ) : (
-              <div className="col-12 text-muted small py-2">
-                No floor boxes registered yet. Click &quot;Geofence Perimeter&quot; in the left sidebar to add a new ESP32 anchor.
-              </div>
-            )}
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Authorized Wi-Fi Router Subnets */}
@@ -1297,53 +1279,38 @@ export default function AdminDashboard({ onNavigate }) {
                 </thead>
 
                 <tbody>
-
-                  {data?.recentActivity && data.recentActivity.length > 0 ? (
-
-                    data.recentActivity.slice(0, 5).map((act, idx) => (
-
-                      <tr key={idx}>
-
-                        <td className="font-mono fw-semibold text-primary">{act.roll_number}</td>
-
-                        <td className="fw-medium">{act.full_name}</td>
-
-                        <td className="font-mono text-muted" style={{ fontSize: '12px' }}>{formatTime12h(act.time_marked)}</td>
-
-                        <td>
-
-                          <span className={act.status === 'PRESENT' ? 'badge-soft-success' : 'badge-soft-warning'}>
-
-                            {act.status}
-
-                          </span>
-
+                  <AnimatePresence initial={false}>
+                    {data?.recentActivity && data.recentActivity.length > 0 ? (
+                      data.recentActivity.slice(0, 5).map((act, idx) => (
+                        <motion.tr
+                          key={act.attendance_id || act.roll_number || idx}
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -6 }}
+                          transition={{ duration: 0.22, ease: 'easeOut', delay: idx * 0.03 }}
+                          layout
+                        >
+                          <td className="font-mono fw-semibold text-primary">{act.roll_number}</td>
+                          <td className="fw-medium">{act.full_name}</td>
+                          <td className="font-mono text-muted" style={{ fontSize: '12px' }}>{formatTime12h(act.time_marked)}</td>
+                          <td>
+                            <span className={act.status === 'PRESENT' ? 'badge-soft-success' : 'badge-soft-warning'}>
+                              {act.status}
+                            </span>
+                          </td>
+                          <td className="font-mono text-muted" style={{ fontSize: '12px' }}>
+                            {act.verified_distance !== null ? `${act.verified_distance}m` : 'N/A'}
+                          </td>
+                        </motion.tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="5" className="text-center py-3 text-muted" style={{ fontSize: '13px' }}>
+                          No check-ins recorded yet today.
                         </td>
-
-                        <td className="font-mono text-muted" style={{ fontSize: '12px' }}>
-
-                          {act.verified_distance !== null ? `${act.verified_distance}m` : 'N/A'}
-
-                        </td>
-
                       </tr>
-
-                    ))
-
-                  ) : (
-
-                    <tr>
-
-                      <td colSpan="5" className="text-center py-3 text-muted" style={{ fontSize: '13px' }}>
-
-                        No check-ins recorded yet today.
-
-                      </td>
-
-                    </tr>
-
-                  )}
-
+                    )}
+                  </AnimatePresence>
                 </tbody>
 
               </table>
