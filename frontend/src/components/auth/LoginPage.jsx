@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, CheckCircle2, Download, QrCode, Smartphone } from 'lucide-react';
+import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, CheckCircle2, Download, QrCode, Smartphone, RefreshCw, Settings, Wifi } from 'lucide-react';
 import ForgotPasswordModal from './ForgotPasswordModal';
 import GoogleSignInButton from './GoogleSignInButton';
 import AppDownloadModal from './AppDownloadModal';
+import { probeLocalWardenIp, clearLocalWardenUrl, getLocalWardenUrl, setLocalWardenUrl } from '../../utils/api';
 
 export default function LoginPage({ onNavigateOnboarding }) {
   const { login, loginWithGoogle } = useAuth();
@@ -15,6 +16,10 @@ export default function LoginPage({ onNavigateOnboarding }) {
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [magicLinkToken, setMagicLinkToken] = useState(null);
+  const [discoveringWarden, setDiscoveringWarden] = useState(false);
+  const [showServerSettings, setShowServerSettings] = useState(false);
+  const [manualIp, setManualIp] = useState('');
+  const [currentWardenUrl, setCurrentWardenUrl] = useState(() => getLocalWardenUrl());
 
   // Check URL query parameters (e.g. ?mode=reset or ?token=... or ?roll=2023CS01)
   useEffect(() => {
@@ -50,6 +55,41 @@ export default function LoginPage({ onNavigateOnboarding }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAutoDiscoverWarden = async () => {
+    setDiscoveringWarden(true);
+    setErrorMsg('');
+    const res = await probeLocalWardenIp();
+    setDiscoveringWarden(false);
+    if (res.success) {
+      setCurrentWardenUrl(res.url);
+      setSuccessBanner(`Connected to Warden Server at ${res.url}! You can now sign in.`);
+    } else {
+      setErrorMsg('Could not auto-detect Warden laptop. Tap "Server Wi-Fi Settings" below to enter the IP from the Warden terminal (e.g. 172.20.10.2:5000) or switch to Cloud.');
+    }
+  };
+
+  const handleUseCloudServer = () => {
+    clearLocalWardenUrl();
+    setCurrentWardenUrl(null);
+    setErrorMsg('');
+    setSuccessBanner('Switched to Cloud Server! You can now sign in.');
+  };
+
+  const handleSaveManualIp = (e) => {
+    e.preventDefault();
+    if (!manualIp.trim()) return;
+    let clean = manualIp.trim();
+    if (!clean.startsWith('http')) clean = `http://${clean}`;
+    clean = clean.replace(/\/+$/, '');
+    const full = clean.endsWith('/api/v1') ? clean : `${clean}/api/v1`;
+    setLocalWardenUrl(full);
+    setCurrentWardenUrl(full);
+    setErrorMsg('');
+    setSuccessBanner(`Server IP saved: ${full}. You can now sign in.`);
+    setManualIp('');
+    setShowServerSettings(false);
   };
 
   const handleGoogleSuccess = async (credential) => {
@@ -93,9 +133,37 @@ export default function LoginPage({ onNavigateOnboarding }) {
           )}
 
           {errorMsg && (
-            <div className="alert alert-danger d-flex align-items-center gap-2 py-1.5 px-3 small mb-2.5" role="alert">
-              <AlertTriangle size={15} className="flex-shrink-0" />
-              <div style={{ fontSize: '12px' }}>{errorMsg}</div>
+            <div className="alert alert-danger py-2 px-3 small mb-2.5" role="alert">
+              <div className="d-flex align-items-center gap-2 mb-1">
+                <AlertTriangle size={16} className="text-danger flex-shrink-0" />
+                <div style={{ fontSize: '12px', lineHeight: '1.4' }}>{errorMsg}</div>
+              </div>
+
+              {errorMsg.toLowerCase().includes('unreachable') && (
+                <div className="mt-2 pt-2 border-top border-danger border-opacity-25">
+                  <div className="d-flex flex-column gap-1.5">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm py-1.5 px-2 fw-bold d-flex align-items-center justify-content-center gap-1.5 shadow-sm text-white"
+                      style={{ fontSize: '11.5px', background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)' }}
+                      onClick={handleAutoDiscoverWarden}
+                      disabled={discoveringWarden}
+                    >
+                      <RefreshCw size={13} className={discoveringWarden ? 'spin' : ''} />
+                      {discoveringWarden ? 'Scanning Wi-Fi...' : '🔄 Auto-Connect to Warden on Current Wi-Fi'}
+                    </button>
+                    
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary btn-sm py-1 px-2 fw-semibold d-flex align-items-center justify-content-center gap-1.5"
+                      style={{ fontSize: '11px' }}
+                      onClick={handleUseCloudServer}
+                    >
+                      🌐 Switch to Cloud Server
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -211,6 +279,67 @@ export default function LoginPage({ onNavigateOnboarding }) {
             >
               <UserCheck size={13} /> New Student Enrollment
             </button>
+          </div>
+
+          {/* Server Settings (Wi-Fi LAN IP / Cloud) */}
+          <div className="text-center mt-2 pt-1 border-top">
+            <button
+              type="button"
+              className="btn btn-link btn-sm text-decoration-none text-muted p-0 d-inline-flex align-items-center gap-1"
+              style={{ fontSize: '10.5px' }}
+              onClick={() => setShowServerSettings(!showServerSettings)}
+            >
+              <Wifi size={11} />
+              <span>Hostel Server: {currentWardenUrl ? `Wi-Fi (${currentWardenUrl.replace('http://', '').replace('/api/v1', '')})` : 'Cloud (Default)'}</span>
+              <Settings size={10} className="ms-0.5" />
+            </button>
+
+            {showServerSettings && (
+              <div className="p-2.5 mt-2 bg-light border rounded-3 text-start shadow-xs">
+                <div className="fw-bold small text-dark mb-1" style={{ fontSize: '11.5px' }}>
+                  Warden Server Connection
+                </div>
+                <div className="text-muted small mb-2" style={{ fontSize: '11px', lineHeight: '1.35' }}>
+                  Active: <code className="text-dark bg-white border px-1 py-0.5 rounded">{currentWardenUrl || 'Cloud Server'}</code>
+                </div>
+
+                <div className="d-flex gap-1.5 mb-2">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm flex-fill py-1 px-2 fw-semibold"
+                    style={{ fontSize: '11px' }}
+                    onClick={handleAutoDiscoverWarden}
+                    disabled={discoveringWarden}
+                  >
+                    <RefreshCw size={12} className={discoveringWarden ? 'spin' : ''} />
+                    {discoveringWarden ? 'Detecting...' : '🔄 Auto-Detect on Wi-Fi'}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm py-1 px-2"
+                    style={{ fontSize: '11px' }}
+                    onClick={handleUseCloudServer}
+                  >
+                    Cloud
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveManualIp} className="d-flex gap-1">
+                  <input
+                    type="text"
+                    className="form-control form-control-sm"
+                    style={{ fontSize: '11px' }}
+                    placeholder="e.g. 172.20.10.2:5000"
+                    value={manualIp}
+                    onChange={(e) => setManualIp(e.target.value)}
+                  />
+                  <button type="submit" className="btn btn-dark btn-sm px-2 fw-semibold" style={{ fontSize: '11px' }}>
+                    Save
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
         </div>
       </div>

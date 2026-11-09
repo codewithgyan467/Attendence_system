@@ -32,6 +32,39 @@ export const setLocalWardenUrl = (url) => {
   }
 };
 
+export const clearLocalWardenUrl = () => {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('hg_local_warden_url');
+    localStorage.removeItem('hg_backend_url');
+  }
+};
+
+export const probeLocalWardenIp = async (manualIp = null) => {
+  const candidates = manualIp
+    ? [manualIp.startsWith('http') ? manualIp : `http://${manualIp}`]
+    : [
+        'http://172.20.10.2:5000',
+        'http://192.168.137.1:5000',
+        'http://192.168.1.100:5000',
+        'http://192.168.0.100:5000',
+        'http://localhost:5000'
+      ];
+
+  for (let cand of candidates) {
+    const cleanCand = cand.replace(/\/+$/, '');
+    const probeUrl = cleanCand.endsWith('/api/v1') ? `${cleanCand}/health` : `${cleanCand}/api/v1/health`;
+    try {
+      const res = await fetch(probeUrl, { signal: AbortSignal.timeout(1500) });
+      if (res && res.ok) {
+        const fullApi = cleanCand.endsWith('/api/v1') ? cleanCand : `${cleanCand}/api/v1`;
+        setLocalWardenUrl(fullApi);
+        return { success: true, url: fullApi };
+      }
+    } catch (_) {}
+  }
+  return { success: false };
+};
+
 // Dynamically determine the API base URL:
 // - If enforcement mode is STRICT / STRICT_LOCK, point to Warden's local hostel server IP
 // - If enforcement mode is STANDBY or SOFT_ANCHOR, point to Cloud URL
@@ -130,35 +163,70 @@ async function request(endpoint, options = {}, isRetry = false) {
     }
   };
 
+  const cloudBase = 'https://hostelguard-backend-oimp.onrender.com/api/v1';
+
   try {
-    const defaultTimeout = isStrictMode && localWarden && endpoint.startsWith('/attendance') ? 3500 : (options.timeout || (endpoint === '/auth/me' ? 15000 : 40000));
+    const isLocalRequest = Boolean(localWarden && primaryUrl.includes(localWarden));
+    const defaultTimeout = isLocalRequest ? 2500 : (options.timeout || (endpoint === '/auth/me' ? 8000 : 35000));
     response = await performFetch(primaryUrl, defaultTimeout);
   } catch (networkErr) {
-    // If strict mode check-in failed to reach Warden's local server:
-    if (isStrictMode && localWarden && primaryUrl.includes(localWarden)) {
-      throw new Error(
-        `Warden's local hostel server (${localWarden}) is unreachable. Please ensure the Warden's laptop is powered on and your phone is connected to Hostel Wi-Fi.`
-      );
-    }
+    // If primary was an unreachable local warden IP, probe current LAN hotspot IPs and Cloud fallback
+    if (localWarden && primaryUrl.includes(localWarden)) {
+      // 1. Fast local probe for common host/hotspot IPs (e.g. iPhone hotspot 172.20.10.2, Windows hotspot 192.168.137.1)
+      const candidateIps = [
+        'http://172.20.10.2:5000/api/v1',
+        'http://192.168.137.1:5000/api/v1',
+        'http://192.168.1.100:5000/api/v1',
+        'http://192.168.0.100:5000/api/v1'
+      ].filter(u => u !== localWarden && `${u}${endpoint}` !== primaryUrl);
 
-    // In STANDBY / SOFT_ANCHOR mode, seamlessly fall back to Cloud API if primary failed
-    const cloudBase = 'https://hostelguard-backend-oimp.onrender.com/api/v1';
-    if (!primaryUrl.startsWith(cloudBase)) {
+      let probedSuccess = false;
+      for (const cand of candidateIps) {
+        try {
+          const candUrl = `${cand}${endpoint}`;
+          const candRes = await performFetch(candUrl, 1500);
+          if (candRes && (candRes.ok || candRes.status === 401 || candRes.status === 403 || candRes.status === 400)) {
+            response = candRes;
+            probedSuccess = true;
+            setLocalWardenUrl(cand);
+            break;
+          }
+        } catch (_) {}
+      }
+
+      if (probedSuccess && response) {
+        // Recovered via auto-discovered local LAN IP!
+      } else {
+        // 2. Fall back to Cloud API
+        try {
+          const fallbackUrl = `${cloudBase}${endpoint}`;
+          response = await performFetch(fallbackUrl, options.timeout || 15000);
+          // If cloud succeeds, check if we can refresh the latest warden LAN IP from cloud
+          performFetch(`${cloudBase}/attendance/time-window`, 5000).then(async (twRes) => {
+            if (twRes && twRes.ok) {
+              const twData = await twRes.json().catch(() => ({}));
+              if (twData?.wardenLanApiUrl) setLocalWardenUrl(twData.wardenLanApiUrl);
+            }
+          }).catch(() => {});
+        } catch (cloudErr) {
+          if (isStrictMode && endpoint.startsWith('/attendance')) {
+            throw new Error(
+              `Warden's local hostel server (${localWarden}) is unreachable on Wi-Fi. Please ensure the Warden's laptop is powered on and connected to the same Wi-Fi ("iPhone").`
+            );
+          }
+          throw cloudErr;
+        }
+      }
+    } else if (!primaryUrl.startsWith(cloudBase)) {
       try {
         const fallbackUrl = `${cloudBase}${endpoint}`;
         response = await performFetch(fallbackUrl, options.timeout || 35000);
       } catch (_) {
-        if (networkErr.name === 'AbortError') {
-          throw new Error('Connection timed out. Server may be synchronizing, retrying shortly...');
-        }
         throw new Error(
           `Unable to reach server (${networkErr.message || 'Connection failed'}). Please check your connection.`
         );
       }
     } else {
-      if (networkErr.name === 'AbortError') {
-        throw new Error('Connection timed out. Cloud server may be waking up, retrying shortly...');
-      }
       throw new Error(
         `Unable to reach server (${networkErr.message || 'Connection failed'}). Please check your connection.`
       );

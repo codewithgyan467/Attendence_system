@@ -300,10 +300,9 @@ async function prepareOfflineCache(cloudDb) {
   try {
     const students = await cloudDb.allQuery(`
       SELECT s.id as student_id, s.full_name as name, s.roll_no, s.roll_number, s.hostel_block as hostel_id, s.room_number as room_no,
-             b.embedding as face_embedding, b.descriptor_front as face_descriptor_front,
-             b.descriptor_left as face_descriptor_left, b.descriptor_right as face_descriptor_right
+             fe.embedding_vector as face_embedding
       FROM students s
-      LEFT JOIN student_biometrics b ON s.id = b.student_id
+      LEFT JOIN student_face_embeddings fe ON (s.id = fe.student_id OR s.roll_number = fe.student_id)
       WHERE s.is_active = 1
     `);
 
