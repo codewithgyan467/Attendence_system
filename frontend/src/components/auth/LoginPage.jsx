@@ -350,35 +350,6 @@ export default function LoginPage({ onNavigateOnboarding }) {
               </div>
             </div>
 
-            {/* Quick Demo Autofill Pills for Offline Testing */}
-            <div className="d-flex align-items-center justify-content-between mb-2 px-1">
-              <span className="text-muted" style={{ fontSize: '10.5px' }}>⚡ 1-Tap Fill:</span>
-              <div className="d-flex gap-1">
-                <button
-                  type="button"
-                  className="btn btn-outline-primary btn-sm py-0 px-1.5"
-                  style={{ fontSize: '10.5px' }}
-                  onClick={() => {
-                    setUsername('2023CS01');
-                    setPassword('Student@12345');
-                  }}
-                >
-                  👤 2023CS01
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary btn-sm py-0 px-1.5"
-                  style={{ fontSize: '10.5px' }}
-                  onClick={() => {
-                    setUsername('warden');
-                    setPassword('Warden@12345');
-                  }}
-                >
-                  🛡️ Warden
-                </button>
-              </div>
-            </div>
-
             <button
               type="submit"
               className="btn btn-primary w-100 py-1.5 d-flex align-items-center justify-content-center gap-2 fw-semibold mb-2 shadow-sm"
