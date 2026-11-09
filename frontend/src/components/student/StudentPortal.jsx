@@ -306,8 +306,10 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
     const bleMode = dashboard?.geofence?.ble_mode || 'STRICT_REQUIRED';
 
+    const isStrict = enforcementMode === 'STRICT' || bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' || bleMode === 'STRICT';
+
     // 1. Immediately launch Bluetooth scanner on user click tick to preserve WebKit transient user gesture
-    const bleScanPromise = (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK') && !lanWifiTicket
+    const bleScanPromise = isStrict && !lanWifiTicket
       ? scanHostelBleBeacon({
         onProgress: (p) => setBleScanningStatus(p.message),
         timeSyncPacket: dashboard?.ble_time_sync_packet || dashboard?.schedule?.ble_time_sync_packet,
@@ -398,7 +400,16 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           // Hard Pre-Camera Block: ESP32 is powered OFF or unreachable
           setVerifiedBeaconInfo(null);
           setVerifiedWifiAnchor(null);
-          setCheckinError('STRICT LOCK BLOCKED: No ESP32 Hardware Beacon signal detected. Please turn on Bluetooth and stand within 15m of your floor\'s powered ESP32 anchor.');
+
+          let errorMsg = bleRes?.message;
+          if (!errorMsg || bleRes?.reason === 'BLUETOOTH_API_UNSUPPORTED') {
+            if (typeof window !== 'undefined' && window.location.protocol === 'http:' && !isNativeMobile()) {
+              errorMsg = 'Google Chrome blocks Bluetooth on http:// web pages. Please tap "Download HostelGuard App" below to install the native app on your phone, which connects directly to the ESP32!';
+            } else {
+              errorMsg = 'STRICT LOCK BLOCKED: No ESP32 Hardware Beacon signal detected. Please turn on Bluetooth and stand within 15m of your floor\'s powered ESP32 anchor.';
+            }
+          }
+          setCheckinError(errorMsg);
           setCheckinStep('failed');
           return; // DO NOT call /verify-location and NEVER open camera
         }
@@ -1829,46 +1840,39 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                                   </a>
                                 )}
 
-                                {typeof window !== 'undefined' && window.location.protocol === 'http:' && (
-                                  <button
-                                    type="button"
-                                    className="btn btn-warning text-dark fw-bold py-2.5 shadow-sm d-flex align-items-center justify-content-center gap-2"
-                                    onClick={() => {
-                                      window.location.protocol = 'https:';
-                                    }}
-                                  >
-                                    <Lock size={18} /> Switch to Secure HTTPS (https://)
-                                  </button>
-                                )}
-
-                                {typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent || '') && (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className="btn btn-success fw-bold py-2.5 shadow-sm d-flex align-items-center justify-content-center gap-2"
-                                      onClick={() => {
-                                        const intentUrl = `intent://${window.location.host}${window.location.pathname}${window.location.search}#Intent;scheme=https;package=com.android.chrome;end`;
-                                        window.location.href = intentUrl;
-                                      }}
-                                    >
-                                      <Globe size={18} /> Open Directly in Google Chrome
-                                    </button>
-
+                                {!isNativeMobile() && (
+                                  <div className="card bg-light border p-3 rounded-3 text-start shadow-xs">
+                                    <div className="fw-bold text-dark d-flex align-items-center gap-1.5 mb-1.5" style={{ fontSize: '13px' }}>
+                                      <Download size={16} className="text-primary" /> Recommended: Install Signed Android App
+                                    </div>
+                                    <div className="text-muted small mb-2.5" style={{ fontSize: '12px', lineHeight: '1.4' }}>
+                                      Google Chrome restricts Bluetooth on unencrypted local <code>http://</code> web pages. The native Android app connects directly to the floor ESP32 without browser blocks.
+                                    </div>
                                     <a
                                       href="/downloads/hostelguard.apk"
                                       download="hostelguard.apk"
-                                      className="btn btn-dark fw-semibold py-2 shadow-sm d-flex align-items-center justify-content-center gap-2"
+                                      className="btn btn-dark fw-bold py-2 shadow-sm d-flex align-items-center justify-content-center gap-2 mb-2"
                                     >
-                                      <Download size={18} /> Download HostelGuard App (Signed APK)
+                                      <Download size={16} /> Download HostelGuard App (Signed APK)
                                     </a>
-                                  </>
+                                    <details className="text-muted small">
+                                      <summary className="fw-semibold text-primary cursor-pointer" style={{ fontSize: '12px' }}>
+                                        Testing inside Google Chrome? (30s fix)
+                                      </summary>
+                                      <div className="p-2 mt-1.5 rounded bg-white border border-secondary border-opacity-25 text-dark" style={{ fontSize: '11.5px', lineHeight: '1.45' }}>
+                                        1. Open <b>chrome://flags/#unsafely-treat-insecure-origin-as-secure</b> in Chrome.<br />
+                                        2. Set to <b>Enabled</b> and enter: <code>{typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://172.20.10.2:5000'}</code><br />
+                                        3. Tap <b>Relaunch</b>. Web Bluetooth will now work in Chrome!
+                                      </div>
+                                    </details>
+                                  </div>
                                 )}
 
                                 <button
-                                  className="btn btn-primary btn-sm py-2 fw-semibold d-inline-flex align-items-center justify-content-center gap-1.5 shadow-sm"
+                                  className="btn btn-primary py-2.5 fw-semibold d-inline-flex align-items-center justify-content-center gap-1.5 shadow-sm"
                                   onClick={handleVerifyLocation}
                                 >
-                                  <RefreshCw size={14} /> Retry Check-In
+                                  <RefreshCw size={15} /> Retry Check-In
                                 </button>
                               </div>
                             </div>

@@ -526,13 +526,24 @@ export async function scanHostelBleBeacon(options = {}) {
         }
       } catch (_) {}
 
+      // Ensure Location Services (GPS) is toggled ON on Android (Required by OS for BLE scanning)
+      try {
+        if (typeof BleClient.isLocationEnabled === 'function') {
+          const isLocEnabled = await BleClient.isLocationEnabled();
+          if (!isLocEnabled) {
+            if (onProgress) onProgress({ status: 'REQUESTING_LOC', message: 'Please enable phone Location (GPS) in settings for BLE scan...' });
+            if (typeof BleClient.openLocationSettings === 'function') {
+              await BleClient.openLocationSettings();
+            }
+          }
+        }
+      } catch (_) {}
+
       if (onProgress) onProgress({ status: 'SCANNING', message: 'Scanning for floor ESP32 anchor...' });
 
       let foundDevice = null;
       await BleClient.requestLEScan(
         {
-          namePrefix: 'HG-',
-          optionalServices: [HOSTEL_SERVICE_UUID],
           scanMode: 1, // SCAN_MODE_LOW_LATENCY
           allowDuplicates: true
         },
@@ -545,6 +556,7 @@ export async function scanHostelBleBeacon(options = {}) {
               name.startsWith('HG-') ||
               name.startsWith('Hostel') ||
               name.includes('BEACON') ||
+              name.includes('A01') ||
               uuids.includes(HOSTEL_SERVICE_UUID.toLowerCase())
             ) {
               foundDevice = dev;
@@ -555,7 +567,7 @@ export async function scanHostelBleBeacon(options = {}) {
       );
 
       const startScan = Date.now();
-      while (!foundDevice && (Date.now() - startScan < 4500)) {
+      while (!foundDevice && (Date.now() - startScan < 6000)) {
         await new Promise(r => setTimeout(r, 150));
       }
       try { await BleClient.stopLEScan(); } catch (_) {}
