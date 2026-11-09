@@ -551,7 +551,7 @@ export async function scanHostelBleBeacon(options = {}) {
           if (result && result.device) {
             const dev = result.device;
             const name = (dev.name || result.localName || '').trim();
-            const uuids = (dev.uuids || []).map(u => String(u).toLowerCase());
+            const uuids = (result.uuids || dev.uuids || []).map(u => String(u).toLowerCase());
             const devName = (dev.name || result.localName || '').trim().toUpperCase();
             if (
               devName.startsWith('HG') ||

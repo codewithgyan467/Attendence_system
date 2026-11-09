@@ -140,6 +140,24 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       };
     }
 
+    // 1b. Android Nearby Devices / Bluetooth Runtime Permission
+    if (
+      errLower.includes('nearby devices') ||
+      (errLower.includes('permission') && (errLower.includes('bluetooth') || errLower.includes('ble')))
+    ) {
+      return {
+        title: 'Nearby Devices Permission Required',
+        badge: 'Android Permission',
+        fix: 'HostelGuard needs "Nearby devices" permission to communicate with your floor ESP32 beacon.',
+        bullets: [
+          'Open your phone Settings -> Apps -> HostelGuard -> Permissions.',
+          'Set "Nearby devices" (and "Location") to Allowed.',
+          'Return to HostelGuard and tap Try Again.'
+        ],
+        voice: 'Please allow Nearby devices permission in phone settings and tap Try Again.'
+      };
+    }
+
     // 2. BLE / ESP32 Hardware Beacon Issues
     if (
       errLower.includes('beacon') ||

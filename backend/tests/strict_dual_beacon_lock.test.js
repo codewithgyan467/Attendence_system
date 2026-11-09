@@ -43,8 +43,8 @@ describe('HostelGuard Strict Mode: Dual ESP32 Hardware Presence Lock Enforcement
   });
 
   afterAll(async () => {
-    // Restore original configuration (preserving STRICT_REQUIRED if active)
-    await runQuery(`UPDATE geofence_configs SET ble_mode = 'STRICT_REQUIRED' WHERE is_active = 1`);
+    // Restore original AEC configuration
+    await runQuery(`UPDATE geofence_configs SET ble_mode = 'STRICT_REQUIRED', latitude = 26.140462, longitude = 91.656606, radius_meters = 150.0 WHERE is_active = 1`);
     await runQuery(`DELETE FROM students WHERE roll_number = 'BEACON_TEST_01'`);
   });
 

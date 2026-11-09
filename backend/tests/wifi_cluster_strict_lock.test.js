@@ -36,7 +36,7 @@ describe('HostelGuard Enterprise v3.4: Multi-Router Strict Lock Cluster & Multit
   });
 
   afterAll(async () => {
-    await runQuery(`UPDATE geofence_configs SET ble_mode = 'STRICT_REQUIRED' WHERE is_active = 1`);
+    await runQuery(`UPDATE geofence_configs SET ble_mode = 'STRICT_REQUIRED', latitude = 26.140462, longitude = 91.656606, radius_meters = 150.0 WHERE is_active = 1`);
     await runQuery(`DELETE FROM students WHERE roll_number = 'CLUSTER_TEST_01'`);
   });
 
