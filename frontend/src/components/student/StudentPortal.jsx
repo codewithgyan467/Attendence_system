@@ -4,6 +4,8 @@ import { api, setActiveBleMode, setLocalWardenUrl } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import { getNativeOrBrowserLocation, isNativeMobile, scanHostelBleBeacon, verifyGenuineIOSDevice } from '../../utils/nativeHardware';
 import { Line } from 'react-chartjs-2';
+import ShinyText from '../ShinyText';
+import SpotlightCard from '../SpotlightCard';
 import {
   UserCheck,
   History,
@@ -1401,10 +1403,17 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     <div className="d-inline-flex p-3 rounded-circle bg-success bg-opacity-10 text-success mb-3 shadow-sm">
                       <CheckCircle2 size={54} />
                     </div>
-                    <h4 className="fw-bold text-success mb-1">Attendance Marked</h4>
+                    <div>
+                      <ShinyText text="Attendance Marked Present" color="#059669" shineColor="#34d399" speed={2.5} className="fw-bold mb-1 d-block" style={{ fontSize: '20px' }} />
+                    </div>
                     <p className="text-muted small mb-4">You are marked <strong className="text-success">PRESENT</strong> for today's roll call.</p>
 
-                    <div className="card bg-light border-0 rounded-4 p-3 mx-auto text-start shadow-sm" style={{ maxWidth: '380px' }}>
+                    <SpotlightCard
+                      theme="light"
+                      spotlightColor="rgba(16, 185, 129, 0.16)"
+                      className="card bg-white border rounded-4 p-3 mx-auto text-start shadow-sm"
+                      style={{ maxWidth: '380px', padding: '1rem' }}
+                    >
                       <div className="d-flex justify-content-between py-1.5 border-bottom">
                         <span className="text-muted small">Date</span>
                         <span className="fw-semibold text-dark small">{formatDateIST(new Date())}</span>
@@ -1425,7 +1434,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           <Check size={14} /> Verified
                         </span>
                       </div>
-                    </div>
+                    </SpotlightCard>
                     <div className="text-muted small mt-3" style={{ fontSize: '11.5px' }}>
                       Attendance recorded successfully. Have a safe and restful evening.
                     </div>

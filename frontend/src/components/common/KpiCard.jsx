@@ -1,4 +1,5 @@
 import React from 'react';
+import CountUp from '../CountUp';
 
 export default function KpiCard({
   title,
@@ -25,6 +26,25 @@ export default function KpiCard({
 
   const c = getColorStyles();
   const isClickable = typeof onClick === 'function';
+
+  // Smooth React Bits CountUp for numerical metrics
+  const renderValue = () => {
+    if (typeof value === 'number') {
+      return <CountUp to={value} duration={1.2} easing="easeOut" />;
+    }
+    if (typeof value === 'string') {
+      const match = value.match(/^([\d,.]+)(.*)$/);
+      if (match) {
+        const num = parseFloat(match[1].replace(/,/g, ''));
+        const suffix = match[2] || '';
+        if (!isNaN(num)) {
+          const decimals = match[1].includes('.') ? match[1].split('.')[1].length : 0;
+          return <CountUp to={num} decimals={decimals} suffix={suffix} duration={1.2} easing="easeOut" separator="," />;
+        }
+      }
+    }
+    return value;
+  };
 
   return (
     <div
@@ -55,7 +75,7 @@ export default function KpiCard({
         )}
       </div>
 
-      <div className="hg-kpi-value">{value}</div>
+      <div className="hg-kpi-value">{renderValue()}</div>
 
       <div className="d-flex align-items-center justify-content-between mt-2">
         {subtitle && <span className="text-muted" style={{ fontSize: '12px' }}>{subtitle}</span>}

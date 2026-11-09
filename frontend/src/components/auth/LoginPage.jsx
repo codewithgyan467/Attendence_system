@@ -5,6 +5,9 @@ import ForgotPasswordModal from './ForgotPasswordModal';
 import GoogleSignInButton from './GoogleSignInButton';
 import AppDownloadModal from './AppDownloadModal';
 import { probeLocalWardenIp, clearLocalWardenUrl, getLocalWardenUrl, setLocalWardenUrl } from '../../utils/api';
+import ShinyText from '../ShinyText';
+import ClickSpark from '../ClickSpark';
+import SpotlightCard from '../SpotlightCard';
 
 export default function LoginPage({ onNavigateOnboarding }) {
   const { login, loginWithGoogle } = useAuth();
@@ -119,21 +122,29 @@ export default function LoginPage({ onNavigateOnboarding }) {
 
 
   return (
-    <div className="container d-flex justify-content-center my-auto py-2">
-      <div className="card shadow-lg border-0 rounded-4" style={{ maxWidth: '420px', width: '100%', overflow: 'hidden' }}>
-        {/* Card Header */}
-        <div className="px-3 py-2.5 text-center text-white" style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}>
-          <img
-            src="/icon-192.png"
-            alt="HostelGuard Security Mascot"
-            className="rounded-circle shadow mb-1.5 border border-2 border-primary border-opacity-50"
-            style={{ width: '46px', height: '46px', objectFit: 'cover' }}
-          />
-          <h5 className="fw-bold mb-0 text-white" style={{ fontSize: '16px' }}>HostelGuard Portal</h5>
-          <p className="text-muted small mb-0" style={{ fontSize: '11px' }}>
-            Biometric &amp; Geofenced Attendance Management
-          </p>
-        </div>
+    <ClickSpark sparkColor={['#6366f1', '#3b82f6', '#10b981']} sparkSize={10} sparkRadius={22}>
+      <div className="container d-flex justify-content-center my-auto py-2 position-relative" style={{ zIndex: 1 }}>
+        <SpotlightCard
+          theme="light"
+          spotlightColor="rgba(99, 102, 241, 0.16)"
+          className="card shadow-lg border-0 rounded-4"
+          style={{ maxWidth: '420px', width: '100%', padding: 0, overflow: 'hidden' }}
+        >
+          {/* Card Header */}
+          <div className="px-3 py-2.5 text-center text-white" style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}>
+            <img
+              src="/icon-192.png"
+              alt="HostelGuard Security Mascot"
+              className="rounded-circle shadow mb-1.5 border border-2 border-primary border-opacity-50"
+              style={{ width: '46px', height: '46px', objectFit: 'cover' }}
+            />
+            <div>
+              <ShinyText text="HostelGuard Portal" color="#ffffff" shineColor="#60a5fa" speed={2.5} className="fw-bold mb-0 text-white d-block" style={{ fontSize: '16px' }} />
+            </div>
+            <p className="text-muted small mb-0" style={{ fontSize: '11px' }}>
+              Biometric &amp; Geofenced Attendance Management
+            </p>
+          </div>
 
         {/* Card Body */}
         <div className="card-body p-3 p-sm-3.5">
@@ -354,6 +365,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
             )}
           </div>
         </div>
+        </SpotlightCard>
       </div>
 
       {/* Forgot / Reset Password Modal */}
@@ -380,6 +392,6 @@ export default function LoginPage({ onNavigateOnboarding }) {
         isOpen={showDownloadModal}
         onClose={() => setShowDownloadModal(false)}
       />
-    </div>
+    </ClickSpark>
   );
 }

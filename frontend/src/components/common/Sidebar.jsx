@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
+import ShinyText from '../ShinyText';
 import {
   LayoutDashboard,
   Users,
@@ -64,7 +65,7 @@ export default function Sidebar({ activeTab, onSelectTab, showMobile, onCloseMob
       <div className="p-3 border-bottom border-dark d-flex align-items-center justify-content-between" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
         <div className="d-flex align-items-center gap-2">
           <img src="/icon-192.png" alt="HostelGuard" className="rounded-circle shadow-sm" style={{ width: '28px', height: '28px', objectFit: 'cover' }} />
-          <span className="text-white fw-bold" style={{ fontSize: '14.5px' }}>HostelGuard</span>
+          <ShinyText text="HostelGuard" color="#ffffff" shineColor="#93c5fd" speed={3} className="text-white fw-bold" style={{ fontSize: '14.5px' }} />
           <span className="badge bg-primary px-1.5 py-0.5" style={{ fontSize: '10px' }}>v2.0</span>
         </div>
         <button className="btn btn-sm text-light d-lg-none" onClick={onCloseMobile}>

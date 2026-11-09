@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-
 import { api } from '../../utils/api';
-
 import KpiCard from '../common/KpiCard';
+import SpotlightCard from '../SpotlightCard';
+import ShinyText from '../ShinyText';
 
 import { AttendanceTrendChart, StatusDistributionChart, BlockDistributionChart } from './AdminCharts';
 
@@ -899,7 +899,11 @@ export default function AdminDashboard({ onNavigate }) {
             <h6 className="fw-bold mb-0 text-dark">Hostel Attendance Enforcement Mode</h6>
           </div>
           <span className={`badge ${bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'bg-danger text-white' : (bleMode === 'SOFT_ANCHOR' ? 'bg-warning text-dark' : 'bg-success text-white')} px-3 py-1.5`} style={{ fontSize: '11px' }}>
-            Active: {bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'Mode 3: Strict Hostel Lock' : (bleMode === 'SOFT_ANCHOR' ? 'Mode 2: Smart Mode' : 'Mode 1: Normal Mode')}
+            {bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? (
+              <ShinyText text="Active: Mode 3: Strict Hostel Lock" color="#ffffff" shineColor="#fecaca" speed={2.5} />
+            ) : (
+              `Active: ${bleMode === 'SOFT_ANCHOR' ? 'Mode 2: Smart Mode' : 'Mode 1: Normal Mode'}`
+            )}
           </span>
         </div>
 
@@ -941,11 +945,13 @@ export default function AdminDashboard({ onNavigate }) {
               </div>
             </div>
 
-            {/* Mode 3: Strict Hostel Lock */}
+            {/* Mode 3: Strict Hostel Lock (Powered by React Bits SpotlightCard) */}
             <div className="col-12 col-md-4">
-              <div
+              <SpotlightCard
+                theme="light"
+                spotlightColor="rgba(239, 68, 68, 0.22)"
                 className={`card h-100 p-3.5 border-2 cursor-pointer transition-all ${bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'border-danger bg-danger bg-opacity-10 shadow-sm' : 'border-light bg-light'}`}
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: 'pointer', padding: '1rem' }}
                 onClick={() => !bleUpdating && handleModeChange('STRICT_REQUIRED')}
               >
                 <div className="d-flex align-items-center justify-content-between mb-2">
@@ -956,7 +962,7 @@ export default function AdminDashboard({ onNavigate }) {
                 <p className="text-muted small mb-0" style={{ fontSize: '12px', lineHeight: '1.4' }}>
                   100% Proxy-Proof. Students MUST be on Hostel Wi-Fi and standing near the floor box.
                 </p>
-              </div>
+              </SpotlightCard>
             </div>
           </div>
 
