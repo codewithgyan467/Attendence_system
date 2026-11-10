@@ -125,6 +125,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     };
 
     const errLower = String(rawErr).toLowerCase();
+    const isInsideBoundary = (typeof verifiedDistance === 'number' && verifiedDistance <= (Number(dashboard?.geofence?.radius_meters) || 150)) ||
+      (typeof studentCoords?.lat === 'number');
 
     // 1. Chrome Web Bluetooth Block on HTTP
     if (errLower.includes('chrome blocks bluetooth') || (errLower.includes('http:') && errLower.includes('bluetooth'))) {
@@ -166,19 +168,24 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       errLower.includes('floor box') ||
       errLower.includes('hardware anchor') ||
       errLower.includes('strict_ble') ||
-      errLower.includes('device_not_selected')
+      errLower.includes('device_not_selected') ||
+      errLower.includes('anchor zone')
     ) {
+      const distInfo = typeof verifiedDistance === 'number' ? ` (${verifiedDistance}m from center)` : '';
       return {
-        title: 'Floor Box Not Connected',
+        title: 'Floor ESP32 Anchor Required',
         badge: 'Step 2: Bluetooth',
-        fix: 'We could not detect the HostelGuard box for your floor.',
+        fix: isInsideBoundary
+          ? `Your GPS position is confirmed inside the hostel${distInfo}. Step 2 now requires connecting to your floor's ESP32 Bluetooth anchor to verify physical presence.`
+          : 'We could not detect the HostelGuard ESP32 box for your floor.',
         bullets: [
+          'Ensure your floor\'s ESP32 beacon is powered ON (purple/red LED glowing).',
           !isNativeMobile()
-            ? 'Web browsers block Bluetooth on web pages. Tap "Download HostelGuard App" below to install the native mobile app.'
-            : 'Turn ON your phone\'s Bluetooth and Location in your swipe-down settings menu.',
-          'Stand within 15 meters of your floor\'s HostelGuard box and tap Try Again.'
+            ? 'Web browsers block Bluetooth on HTTP. Please install the HostelGuard Mobile App or use Bluefy on iOS.'
+            : 'Turn ON your phone\'s Bluetooth and Location in your swipe-down settings shade.',
+          'Stand within 15 meters of your floor\'s ESP32 anchor board and tap Try Again.'
         ],
-        voice: 'Floor box not connected. Turn on Bluetooth and stand within 15 meters of your floor box.'
+        voice: 'Floor anchor required. Turn on Bluetooth and stand within 15 meters of your floor anchor.'
       };
     }
 
@@ -213,10 +220,25 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       errLower.includes('distance') ||
       errLower.includes('out-of-boundary')
     ) {
+      if (isInsideBoundary && (typeof verifiedDistance === 'number' && verifiedDistance <= (Number(dashboard?.geofence?.radius_meters) || 150))) {
+        return {
+          title: 'Floor Anchor Signal Needed',
+          badge: 'Step 2: Bluetooth Anchor',
+          fix: `You are inside the hostel boundary (${verifiedDistance}m), but physical presence could not be confirmed. Step 2 requires connecting to your floor's ESP32 beacon.`,
+          bullets: [
+            'Ensure the floor ESP32 anchor is powered ON (LED glowing).',
+            'Turn ON Bluetooth and Location on your phone.',
+            'Stand within 15 meters of the beacon and tap Try Again.'
+          ],
+          voice: 'Please connect to your floor ESP32 beacon and tap Try Again.'
+        };
+      }
       return {
         title: 'Location Not Clear',
         badge: 'Step 1: Location',
-        fix: 'Your phone GPS position could not be confirmed inside the hostel boundary.',
+        fix: rawErr.includes('coarse') || rawErr.includes('accuracy')
+          ? rawErr
+          : 'Your phone GPS position could not be confirmed inside the hostel boundary.',
         bullets: [
           'Turn ON Location/GPS on your device with High Accuracy.',
           'Stand near a window or corridor to get a clear satellite GPS fix, then tap Try Again.'
@@ -1985,6 +2007,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                             <div className="small text-dark mb-2 fw-medium" style={{ fontSize: '13px', lineHeight: '1.45' }}>
                               {translated.fix}
                             </div>
+
+                            {checkinError && typeof checkinError === 'string' && checkinError !== translated.fix && (
+                              <div className="text-secondary small px-2.5 py-1.5 mb-2 bg-white rounded border border-secondary border-opacity-25" style={{ fontSize: '11px', wordBreak: 'break-word', lineHeight: '1.35' }}>
+                                <span className="fw-semibold text-dark">Server Diagnostics:</span> {checkinError}
+                              </div>
+                            )}
 
                             {translated.bullets && translated.bullets.length > 0 && (
                               <div className="p-2.5 rounded bg-white border border-secondary border-opacity-25 mt-1">

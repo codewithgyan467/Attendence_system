@@ -55,79 +55,173 @@ export const clearLocalWardenUrl = () => {
   }
 };
 
-export const probeLocalWardenIp = async (manualIp = null) => {
+/**
+ * Helper to ping /api/v1/ping-hostel with a strict AbortController timeout.
+ * Validates genuine JSON response from a live Warden server.
+ */
+const verifyHostelPing = async (targetCandidate, timeoutMs = 1500) => {
+  if (!targetCandidate) return null;
   const isNative = Capacitor.isNativePlatform();
-  // NEVER use browserOrigin on Native mobile (it's https://localhost which Capacitor serves locally as index.html)
-  const browserOrigin = (!isNative && typeof window !== 'undefined' && window.location.origin && 
-    !window.location.hostname.endsWith('onrender.com') && 
-    !window.location.hostname.endsWith('vercel.app')) ? window.location.origin : null;
+  const isMobile = isNative || (typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || ''));
+  let clean = targetCandidate.trim().replace(/\/+$/, '');
+  if (!clean.startsWith('http')) clean = `http://${clean}`;
 
-  const isMobileClient = isNative || (typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || ''));
-  const savedWarden = getLocalWardenUrl();
-  const validSavedWarden = (isMobileClient && savedWarden && (savedWarden.includes('localhost') || savedWarden.includes('127.0.0.1')))
-    ? null
-    : savedWarden;
+  // Block mobile clients from pinging mobile's own localhost (which is the phone itself)
+  if ((isMobile || (typeof window !== 'undefined' && window.location.protocol === 'https:')) && 
+      (clean.includes('localhost') || clean.includes('127.0.0.1') || clean.includes('10.0.2.2'))) {
+    return null;
+  }
 
-  const candidates = manualIp
-    ? [manualIp.startsWith('http') ? manualIp : `http://${manualIp}`]
-    : Array.from(new Set([
-        'http://172.20.10.2:5000',
-        'http://172.20.10.3:5000',
-        'http://172.20.10.4:5000',
-        'http://172.20.10.1:5000',
-        'http://192.168.137.1:5000',
-        'http://192.168.43.1:5000',
-        'http://192.168.1.100:5000',
-        'http://192.168.1.1:5000',
-        'http://192.168.0.100:5000',
-        'http://192.168.0.1:5000',
-        ...(isMobileClient ? [] : ['http://localhost:5000']),
-        ...(validSavedWarden ? [validSavedWarden.replace(/\/api\/v1\/?$/, '')] : []),
-        ...((browserOrigin && !browserOrigin.includes('localhost') && !browserOrigin.includes('127.0.0.1')) ? [browserOrigin] : [])
-      ])).filter(c => !isMobileClient || (!c.includes('localhost') && !c.includes('127.0.0.1')));
-
-  const probeCandidate = async (cand) => {
-    if (!cand || ((isMobileClient || window?.location?.protocol === 'https:') && (cand.includes('localhost') || cand.includes('127.0.0.1')))) {
-      throw new Error('Localhost is not the Warden PC on mobile client');
-    }
-    const cleanCand = cand.replace(/\/+$/, '');
-    const probeUrl = cleanCand.endsWith('/api/v1') ? `${cleanCand}/health` : `${cleanCand}/api/v1/health`;
-    const res = await fetch(probeUrl, { signal: AbortSignal.timeout(1800) });
-    if (res && res.ok) {
-      // Must be real backend JSON, NOT Capacitor's fallback index.html!
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('text/html')) {
-        throw new Error('Received HTML instead of API response');
-      }
-      const data = await res.json().catch(() => null);
-      if (data && (data.status === 'ok' || data.status === 'HEALTHY' || data.service || data.uptime !== undefined || data.models)) {
-        const fullApi = cleanCand.endsWith('/api/v1') ? cleanCand : `${cleanCand}/api/v1`;
-        setLocalWardenUrl(fullApi);
-        return fullApi;
-      }
-    }
-    throw new Error('Candidate unreachable');
-  };
+  const baseOrigin = clean.replace(/\/api\/v1\/?$/, '');
+  const pingUrl = `${baseOrigin}/api/v1/ping-hostel`;
 
   try {
-    const winnerUrl = await Promise.any(candidates.map(probeCandidate));
-    return { success: true, url: winnerUrl };
-  } catch (_) {
-    // Cloud fallback discovery if internet is available
-    try {
-      const cloudRes = await fetch('https://hostelguard-backend-oimp.onrender.com/api/v1/attendance/time-window', {
-        signal: AbortSignal.timeout(1800)
-      });
-      if (cloudRes && cloudRes.ok) {
-        const cloudData = await cloudRes.json().catch(() => ({}));
-        if (cloudData?.wardenLanApiUrl) {
-          const cloudUrl = await probeCandidate(cloudData.wardenLanApiUrl);
-          return { success: true, url: cloudUrl };
-        }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    const res = await fetch(pingUrl, {
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json', 'Cache-Control': 'no-store' }
+    });
+    clearTimeout(timer);
+
+    if (res && res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) return null; // Ignore HTML fallback from Capacitor
+      const data = await res.json().catch(() => null);
+      if (data && (data.status === 'ok' || data.wardenIp)) {
+        const fullApi = `${baseOrigin}/api/v1`;
+        return { fullApi, wardenIp: data.wardenIp, port: data.port || 5000 };
       }
-    } catch (_) {}
-    return { success: false };
+    }
+  } catch (_) {}
+  return null;
+};
+
+/**
+ * Frontend Auto-Healing LAN Discovery & Subnet Scanner
+ * Resolution Order:
+ * 1. Fast Health Verification of cached localStorage IP (strict 1500ms timeout)
+ * 2. Auto-Eviction: If cached IP fails, immediately clear it from localStorage
+ * 3. Step A (Direct Local Host): If window.location.hostname is a private LAN IP, use it
+ * 4. Step B (Cloud Discovery Sync): Fetch latest published Warden LAN IP from Cloud Registry
+ * 5. Step C (Fast Parallel Subnet Sweep): Probe common gateway & hotspot subnets in parallel
+ */
+export const probeLocalWardenIp = async (manualIp = null) => {
+  const isNative = Capacitor.isNativePlatform();
+  const isMobileClient = isNative || (typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || ''));
+
+  // If a manual IP was submitted by the user in the UI, verify it immediately
+  if (manualIp) {
+    const verified = await verifyHostelPing(manualIp, 2000);
+    if (verified) {
+      setLocalWardenUrl(verified.fullApi);
+      return { success: true, url: verified.fullApi, wardenIp: verified.wardenIp };
+    }
+    return { success: false, reason: 'MANUAL_IP_UNREACHABLE' };
   }
+
+  // 1. Fast Health Verification of cached IP
+  const cachedUrl = getLocalWardenUrl();
+  if (cachedUrl) {
+    const pingRes = await verifyHostelPing(cachedUrl, 1500);
+    if (pingRes) {
+      return { success: true, url: pingRes.fullApi, wardenIp: pingRes.wardenIp };
+    }
+    // Auto-Eviction: Cached IP is stale / router changed -> Immediately clear from localStorage
+    clearLocalWardenUrl();
+  }
+
+  // 2. Step A: Direct Local Host (if browser opened directly on Warden LAN IP, e.g. http://172.20.10.4:5000)
+  if (!isNative && typeof window !== 'undefined' && window.location.hostname) {
+    const host = window.location.hostname;
+    const isPrivate = /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(host);
+    if (isPrivate && !window.location.hostname.endsWith('onrender.com') && !window.location.hostname.endsWith('vercel.app')) {
+      const port = window.location.port || 5000;
+      const directCandidate = `http://${host}:${port}`;
+      const verified = await verifyHostelPing(directCandidate, 1500);
+      if (verified) {
+        setLocalWardenUrl(verified.fullApi);
+        return { success: true, url: verified.fullApi, wardenIp: verified.wardenIp };
+      }
+    }
+  }
+
+  // 3. Step B: Cloud Discovery Sync (Query cloud registry for latest Warden laptop LAN IP)
+  try {
+    const cloudEndpoints = [
+      'https://hostelguard-backend-oimp.onrender.com/api/v1/lan-discovery',
+      'https://hostelguard-backend-oimp.onrender.com/api/v1/attendance/time-window'
+    ];
+
+    for (const endpoint of cloudEndpoints) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2000);
+        const cloudRes = await fetch(endpoint, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        if (cloudRes && cloudRes.ok) {
+          const cloudData = await cloudRes.json().catch(() => ({}));
+          const publishedUrl = cloudData?.wardenLanApiUrl || cloudData?.local_warden_url || (cloudData?.wardenIp ? `http://${cloudData.wardenIp}:${cloudData.port || 5000}/api/v1` : null);
+
+          if (publishedUrl) {
+            const verified = await verifyHostelPing(publishedUrl, 1500);
+            if (verified) {
+              setLocalWardenUrl(verified.fullApi);
+              return { success: true, url: verified.fullApi, wardenIp: verified.wardenIp };
+            }
+          }
+        }
+      } catch (_) {}
+    }
+  } catch (_) {}
+
+  // 4. Step C: Fast Parallel Subnet Sweep across common gateway & hotspot candidates
+  const sweepCandidates = [
+    // iPhone & iOS Personal Hotspot default range
+    'http://172.20.10.1:5000',
+    'http://172.20.10.2:5000',
+    'http://172.20.10.3:5000',
+    'http://172.20.10.4:5000',
+    'http://172.20.10.5:5000',
+    // Windows Laptop Mobile Hotspot default gateway
+    'http://192.168.137.1:5000',
+    // Android Mobile Hotspot default gateway
+    'http://192.168.43.1:5000',
+    // Standard Hostel Wi-Fi router Class C subnets
+    'http://192.168.1.100:5000',
+    'http://192.168.1.1:5000',
+    'http://192.168.1.2:5000',
+    'http://192.168.0.100:5000',
+    'http://192.168.0.1:5000',
+    'http://192.168.0.2:5000',
+    'http://192.168.29.1:5000',
+    'http://192.168.29.100:5000',
+    // Class A subnets
+    'http://10.0.0.1:5000',
+    'http://10.0.0.100:5000'
+  ];
+
+  if (!isMobileClient) {
+    sweepCandidates.push('http://localhost:5000');
+  }
+
+  try {
+    const sweepPromises = sweepCandidates.map(async (cand) => {
+      const res = await verifyHostelPing(cand, 1500);
+      if (res) return res;
+      throw new Error('Unreachable');
+    });
+
+    const winner = await Promise.any(sweepPromises);
+    if (winner && winner.fullApi) {
+      setLocalWardenUrl(winner.fullApi);
+      return { success: true, url: winner.fullApi, wardenIp: winner.wardenIp };
+    }
+  } catch (_) {}
+
+  return { success: false, reason: 'WIFI_ROUTER_CHANGED' };
 };
 
 // Dynamically determine the API base URL:

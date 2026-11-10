@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
 import { api } from '../../utils/api';
 import KpiCard from '../common/KpiCard';
 import {
@@ -18,7 +19,12 @@ import {
   BedDouble,
   Calendar,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Wifi,
+  QrCode,
+  Copy,
+  Check,
+  ExternalLink
 } from 'lucide-react';
 import { exportToExcel, exportToCsv } from '../../utils/exportUtils';
 import { formatTime12h, getTodayDateIST } from '../../utils/timeUtils';
@@ -31,6 +37,12 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
   const [statusMsg, setStatusMsg] = useState(null);
+
+  // Live Wi-Fi Roaming & QR Code State
+  const [liveWardenIp, setLiveWardenIp] = useState(null);
+  const [liveCheckinUrl, setLiveCheckinUrl] = useState(null);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState(null);
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
   // Review modal state
   const [reviewModal, setReviewModal] = useState({ open: false, req: null, decision: 'APPROVED', note: '' });
@@ -52,6 +64,42 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
 
   useEffect(() => {
     loadAllData();
+  }, []);
+
+  // Poll active Warden IP every 5 seconds & generate scannable check-in QR code
+  useEffect(() => {
+    let isMounted = true;
+    const fetchLivePing = async () => {
+      try {
+        const root = typeof window !== 'undefined' && window.location.origin ? window.location.origin : '';
+        const isLocalHost = !root.endsWith('onrender.com') && !root.endsWith('vercel.app');
+        const pingBase = isLocalHost ? root : (localStorage.getItem('hg_local_warden_url') || 'http://localhost:5000');
+        const cleanBase = pingBase.replace(/\/api\/v1\/?$/, '');
+
+        const res = await fetch(`${cleanBase}/api/v1/ping-hostel`, {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(2000)
+        });
+        if (res && res.ok) {
+          const data = await res.json();
+          if (isMounted && data?.wardenIp) {
+            setLiveWardenIp(data.wardenIp);
+            const checkinUrl = `http://${data.wardenIp}:${data.port || 5000}`;
+            setLiveCheckinUrl(checkinUrl);
+            QRCode.toDataURL(checkinUrl, { width: 140, margin: 1, color: { dark: '#0f172a', light: '#ffffff' } })
+              .then(url => { if (isMounted) setQrCodeDataUrl(url); })
+              .catch(() => {});
+          }
+        }
+      } catch (_) {}
+    };
+
+    fetchLivePing();
+    const interval = setInterval(fetchLivePing, 5000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const loadMusterData = async () => {
@@ -205,6 +253,71 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
           <button type="button" className="btn-close" onClick={() => setErrorMsg(null)}></button>
         </div>
       )}
+
+      {/* Dynamic Wi-Fi Roaming & Floor Anchor Live QR Code Banner */}
+      <div className="card shadow-sm border-0 mb-4 rounded-3 overflow-hidden" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', color: '#fff' }}>
+        <div className="card-body p-3 p-md-3.5 d-flex flex-wrap align-items-center justify-content-between gap-3">
+          <div className="d-flex align-items-center gap-3">
+            {qrCodeDataUrl ? (
+              <div className="bg-white p-1.5 rounded-3 shadow-sm d-flex align-items-center justify-content-center" style={{ minWidth: '96px', minHeight: '96px' }}>
+                <img src={qrCodeDataUrl} alt="Student Check-In QR Code" style={{ width: '88px', height: '88px' }} />
+              </div>
+            ) : (
+              <div className="bg-white bg-opacity-10 p-3 rounded-3 d-flex align-items-center justify-content-center" style={{ width: '96px', height: '96px' }}>
+                <QrCode size={40} className="text-light opacity-50" />
+              </div>
+            )}
+            <div>
+              <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
+                <span className="badge bg-success bg-opacity-75 text-white d-inline-flex align-items-center gap-1 py-1 px-2">
+                  <span className="spinner-grow spinner-grow-sm text-light" style={{ width: '8px', height: '8px' }}></span>
+                  Live Wi-Fi Roaming Active
+                </span>
+                <span className="badge bg-secondary bg-opacity-50 text-light py-1 px-2" style={{ fontSize: '11px' }}>
+                  Auto-Detecting 4 Floor Routers
+                </span>
+              </div>
+              <h6 className="fw-bold mb-1 text-white d-flex align-items-center gap-2">
+                <Wifi size={17} className="text-info" />
+                Student Check-In Portal Address
+              </h6>
+              <div className="d-flex align-items-center gap-2 flex-wrap">
+                <code className="fs-6 fw-bold text-warning bg-black bg-opacity-50 px-2 py-0.5 rounded border border-secondary border-opacity-25">
+                  {liveCheckinUrl || 'Detecting Active Router IP...'}
+                </code>
+                {liveCheckinUrl && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-light py-0.5 px-2 d-inline-flex align-items-center gap-1"
+                    style={{ fontSize: '11.5px' }}
+                    onClick={() => {
+                      if (navigator.clipboard) {
+                        navigator.clipboard.writeText(liveCheckinUrl);
+                        setCopiedUrl(true);
+                        setTimeout(() => setCopiedUrl(false), 2000);
+                      }
+                    }}
+                  >
+                    {copiedUrl ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+                    <span>{copiedUrl ? 'Copied!' : 'Copy URL'}</span>
+                  </button>
+                )}
+              </div>
+              <p className="small text-light opacity-75 mb-0 mt-1" style={{ fontSize: '11.5px' }}>
+                📱 Students on the floor Wi-Fi or mobile hotspot can scan the QR code or type this URL in any browser.
+              </p>
+            </div>
+          </div>
+          <div className="text-md-end text-start">
+            <span className="badge bg-info bg-opacity-25 text-info border border-info border-opacity-25 py-1 px-2.5 mb-1" style={{ fontSize: '11px' }}>
+              Port 5000: Open &amp; Broadcasting
+            </span>
+            <div className="text-light opacity-50 small" style={{ fontSize: '11px' }}>
+              Polling every 5s • Zero Server Restarts Needed
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* KPI Cards (3-Tier & Safety Defaulter Metrics) */}
       <div className="row g-3 mb-4">

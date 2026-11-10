@@ -50,8 +50,13 @@ export default function LoginPage({ onNavigateOnboarding }) {
   useEffect(() => {
     let active = true;
     probeLocalWardenIp().then((res) => {
-      if (active && res.success) {
+      if (!active) return;
+      if (res.success) {
         setCurrentWardenUrl(res.url);
+      } else if (res.reason === 'WIFI_ROUTER_CHANGED') {
+        setCurrentWardenUrl(null);
+        setShowServerSettings(true);
+        setErrorMsg('Wi-Fi network changed. Enter the new Warden IP shown on the Warden laptop or scan the Warden QR code.');
       }
     }).catch(() => {});
     return () => { active = false; };
@@ -109,17 +114,28 @@ export default function LoginPage({ onNavigateOnboarding }) {
     setSuccessBanner('Switched to Cloud Server! You can now sign in.');
   };
 
-  const handleSaveManualIp = (e) => {
+  const handleSaveManualIp = async (e) => {
     e.preventDefault();
     if (!manualIp.trim()) return;
     let clean = manualIp.trim();
     if (!clean.startsWith('http')) clean = `http://${clean}`;
     clean = clean.replace(/\/+$/, '');
     const full = clean.endsWith('/api/v1') ? clean : `${clean}/api/v1`;
-    setLocalWardenUrl(full);
-    setCurrentWardenUrl(full);
-    setErrorMsg('');
-    setSuccessBanner(`Server IP saved: ${full}. You can now sign in.`);
+
+    setDiscoveringWarden(true);
+    const res = await probeLocalWardenIp(clean);
+    setDiscoveringWarden(false);
+
+    if (res.success) {
+      setCurrentWardenUrl(res.url);
+      setErrorMsg('');
+      setSuccessBanner(`Connected to Warden Server at ${res.url}! You can now sign in.`);
+    } else {
+      setLocalWardenUrl(full);
+      setCurrentWardenUrl(full);
+      setErrorMsg('');
+      setSuccessBanner(`Server IP saved: ${full}. You can now sign in.`);
+    }
     setManualIp('');
     setShowServerSettings(false);
   };
