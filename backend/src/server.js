@@ -141,7 +141,15 @@ app.use(['/api/v1/admin/wifi-cluster', '/api/admin/wifi-cluster'], wifiClusterRo
 // Serve Frontend Static Assets if built
 const frontendDistPath = path.join(__dirname, '../../frontend/dist');
 if (fs.existsSync(frontendDistPath)) {
-  app.use(express.static(frontendDistPath));
+  app.use(express.static(frontendDistPath, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+    }
+  }));
   app.get('*', (req, res, next) => {
     if (
       req.originalUrl.startsWith('/api') ||
@@ -150,6 +158,9 @@ if (fs.existsSync(frontendDistPath)) {
     ) {
       return next();
     }
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(frontendDistPath, 'index.html'));
   });
 }

@@ -590,6 +590,7 @@ const initDatabase = async () => {
     whatsapp_no: 'TEXT',
     device_id: 'TEXT',
     device_model: 'TEXT',
+    updated_at: 'DATETIME',
     is_active: 'INTEGER DEFAULT 1',
     failed_attempts: 'INTEGER DEFAULT 0',
     is_flagged_forge: 'INTEGER DEFAULT 0',
