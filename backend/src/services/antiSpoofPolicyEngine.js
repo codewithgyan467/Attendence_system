@@ -240,7 +240,7 @@ class AntiSpoofPolicyEngine {
     );
 
     if (isIosSilentAttested) {
-      if (bleMode === 'STRICT_LOCK') {
+      if (isStrictMode) {
         // Strict Lock Mode 3 requires physical ESP32 BLE hardware beacon, silent bypass is disallowed
         bleMatchStatus = 'STRICT_BLE_ANCHOR_REQUIRED';
         riskScore += 85;

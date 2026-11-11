@@ -481,6 +481,8 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
               </div>
             </div>
           </div>
+        </>
+      )}
 
       {/* ========================================================= */}
       {/* MODAL 1: Emergency Evacuation Muster Roll                  */}
@@ -726,8 +728,6 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
           </div>
         </div>
       )}
-    </>
-  )}
 
       {(subTab === 'warden_exceptions' || subTab === 'warden_overview') && (
         <>

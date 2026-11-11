@@ -400,10 +400,11 @@ describe('HostelGuard Strict Mode: Dual ESP32 Hardware Presence Lock Enforcement
     expect(selfRes.reason).toBe('SELF_RELAY_PROHIBITED');
   });
 
-  test('12. Genuine iOS Silent Attestation (Apple GPU + in geofence) passes Layer 2 in STRICT_REQUIRED', async () => {
-    const evaluation = await antiSpoofPolicyEngine.evaluateLocationAndEnvironment({
+  test('12. Genuine iOS Silent Attestation (Apple GPU + in geofence) passes Layer 2 in SOFT_ANCHOR and requires hardware in STRICT', async () => {
+    // 12a. In SOFT_ANCHOR mode, genuine Apple GPU attestation passes
+    const evalSoft = await antiSpoofPolicyEngine.evaluateLocationAndEnvironment({
       student: { id: testStudentId, roll_number: 'BEACON_TEST_01', failed_attempts: 0 },
-      geofence,
+      geofence: { ...geofence, ble_mode: 'SOFT_ANCHOR' },
       clientLat: 28.5455,
       clientLon: 77.1930,
       accuracy: 10,
@@ -421,15 +422,36 @@ describe('HostelGuard Strict Mode: Dual ESP32 Hardware Presence Lock Enforcement
       }
     });
 
-    expect(evaluation.bleMatchStatus).toBe('VERIFIED_IOS_HARDWARE_ATTESTED');
-    expect(evaluation.decisionOutcome).not.toBe('DENY');
-    expect(evaluation.unfairMeansFlags).not.toContain('STRICT_BLE_ANCHOR_FAILED');
+    expect(evalSoft.bleMatchStatus).toBe('VERIFIED_IOS_HARDWARE_ATTESTED');
+    expect(evalSoft.decisionOutcome).not.toBe('DENY');
+    expect(evalSoft.unfairMeansFlags).not.toContain('STRICT_BLE_ANCHOR_FAILED');
+
+    // 12b. In STRICT_REQUIRED mode, physical hardware beacon is strictly required
+    const evalStrict = await antiSpoofPolicyEngine.evaluateLocationAndEnvironment({
+      student: { id: testStudentId, roll_number: 'BEACON_TEST_01', failed_attempts: 0 },
+      geofence,
+      clientLat: 28.5455,
+      clientLon: 77.1930,
+      accuracy: 10,
+      bleProof: {
+        channel: 'IOS_SILENT_HARDWARE_ATTESTED',
+        isIosSilentAttested: true,
+        gpuRenderer: 'Apple GPU'
+      },
+      deviceInfo: {
+        isIOS: true,
+        gpuRenderer: 'Apple GPU'
+      }
+    });
+
+    expect(evalStrict.bleMatchStatus).toBe('STRICT_BLE_ANCHOR_REQUIRED');
+    expect(evalStrict.unfairMeansFlags).toContain('STRICT_BLE_ANCHOR_FAILED');
   });
 
   test('13. Spoofed iOS User-Agent from Android (Adreno/Mali GPU) is REJECTED', async () => {
     const evaluation = await antiSpoofPolicyEngine.evaluateLocationAndEnvironment({
       student: { id: testStudentId, roll_number: 'BEACON_TEST_01', failed_attempts: 0 },
-      geofence,
+      geofence: { ...geofence, ble_mode: 'SOFT_ANCHOR' },
       clientLat: 28.5455,
       clientLon: 77.1930,
       accuracy: 10,
