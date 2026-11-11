@@ -7,6 +7,7 @@
 
 const { getQuery } = require('../db/database');
 const authorizedWifiService = require('../services/authorizedWifiService');
+const localVaultDb = require('../config/localVaultDb');
 
 function isPrivateIp(ip) {
   if (!ip) return false;
@@ -46,21 +47,22 @@ async function strictLanGuard(req, res, next) {
     const clientIp = (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) || req.ip || req.connection?.remoteAddress || '127.0.0.1';
 
     // 1. Allow private LAN IPs (Class A, B, C) and authorized multi-router Wi-Fi subnets
-    if (isPrivateIp(clientIp) || authorizedWifiService.isAuthorized(clientIp) || req.headers['x-hostel-lan-verified'] === 'true') {
+    if (isPrivateIp(clientIp) || authorizedWifiService.isAuthorized(clientIp)) {
       return next();
     }
 
-    // 2. Allow if hardware cryptographic BLE beacon signature or token is present (unforgeable 15m proof)
-    const hasBleProof = Boolean(
-      req.headers['x-hostel-ble-token'] ||
-      req.body?.bleBeacon?.compactVerified ||
-      req.body?.bleBeacon?.rollingCode ||
-      req.body?.ble_beacon?.rollingCode
-    );
-    if (hasBleProof) {
-      // Auto-learn this router/subnet since genuine short-range BLE beacon proof confirms physical presence
-      authorizedWifiService.authorizeIp(clientIp, 'Auto-Learned via Floor Beacon', true);
-      return next();
+    // 2. Only auto-authorize non-private IP if raw BLE payload passes cryptographically verified HMAC in localVaultDb
+    const rawBlePayload = req.body?.ble_proof?.rawPayload ||
+      req.body?.bleBeacon?.rawPayload ||
+      req.body?.rawBlePayload;
+
+    if (rawBlePayload && typeof rawBlePayload === 'string') {
+      const hmacResult = await localVaultDb.verifyBeaconInLocalVault(rawBlePayload).catch(() => ({ valid: false }));
+      if (hmacResult && hmacResult.valid) {
+        // Auto-learn this router/subnet since genuine short-range BLE beacon proof confirms physical presence
+        authorizedWifiService.authorizeIp(clientIp, `Auto-Learned via Floor Beacon ${hmacResult.anchorId || ''}`, true);
+        return next();
+      }
     }
 
     // If request comes from public WAN during STRICT LOCK, reject

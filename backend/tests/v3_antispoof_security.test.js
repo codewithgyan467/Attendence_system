@@ -2,6 +2,7 @@ const request = require('supertest');
 const { app } = require('../src/server');
 const { initDatabase, runQuery, getQuery, allQuery } = require('../src/db/database');
 const { v4: uuidv4 } = require('uuid');
+const { getIstDateString } = require('../src/utils/istTime');
 
 describe('HostelGuard v3.0 Zero-Trust Anti-Spoof & Unfair-Means Security Suite', () => {
   const TEST_ROLL_V3 = 'TEST_V3_001';
@@ -198,10 +199,10 @@ describe('HostelGuard v3.0 Zero-Trust Anti-Spoof & Unfair-Means Security Suite',
   });
 
   test('Layer 13.2: Roommate Multi-Account Collusion on same device within 15 min blocked', async () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getIstDateString();
     const sharedDevId = 'DEV-SHARED-ROOMMATE-DEVICE';
 
-    await runQuery(`DELETE FROM attendance_records WHERE student_id IN (?, ?) AND date = ?`, [TEST_STUDENT_ID, TEST_STUDENT_ID_PEER, today]);
+    await runQuery(`DELETE FROM attendance_records WHERE student_id IN (?, ?)`, [TEST_STUDENT_ID, TEST_STUDENT_ID_PEER]);
 
     // 1. Student 1 marks attendance today using shared device
     const c1Token = uuidv4();
@@ -245,8 +246,8 @@ describe('HostelGuard v3.0 Zero-Trust Anti-Spoof & Unfair-Means Security Suite',
 
   test('Layer 5: Replay attack & race-condition atomicity guarantees single commit', async () => {
     // Delete existing attendance for today first so verify-location allows it
-    const today = new Date().toISOString().split('T')[0];
-    await runQuery(`DELETE FROM attendance_records WHERE student_id = ? AND date = ?`, [TEST_STUDENT_ID, today]);
+    const today = getIstDateString();
+    await runQuery(`DELETE FROM attendance_records WHERE student_id = ?`, [TEST_STUDENT_ID]);
 
     // Obtain legitimate fresh challenge
     const res = await request(app)

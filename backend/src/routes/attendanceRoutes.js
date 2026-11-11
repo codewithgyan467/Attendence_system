@@ -7,7 +7,7 @@ const { validateLocation } = require('../services/geofenceService');
 const { recordFailedLocationAttempt, resetFailedLocationAttempt } = require('../services/fraudService');
 const { attendanceLimiter } = require('../middleware/rateLimiter');
 const aiServiceClient = require('../services/aiServiceClient');
-const { optionalAuth } = require('../middleware/auth');
+const { optionalAuth, requireAuth } = require('../middleware/auth');
 const { getAttendanceWindowStatus } = require('../services/scheduleService');
 const antiSpoofPolicyEngine = require('../services/antiSpoofPolicyEngine');
 const embeddingCache = require('../services/embeddingCache');
@@ -388,12 +388,14 @@ const verifyLocationHandler = async (req, res) => {
         message: 'GPS signal accuracy is coarse. Step near a window or check in via Hostel Wi-Fi/Beacon.',
         distanceMeters: null,
         permittedRadiusMeters: evaluation.allowedRadius,
-      bleMatchStatus: evaluation.bleMatchStatus,
-      wifiMatchStatus: evaluation.wifiMatchStatus,
-      ble_time_sync_packet: bleTimeSyncPacket,
-      bleTimeSyncPacket: bleTimeSyncPacket,
+        bleMatchStatus: evaluation.bleMatchStatus,
+        wifiMatchStatus: evaluation.wifiMatchStatus,
+        ble_time_sync_packet: bleTimeSyncPacket,
+        bleTimeSyncPacket: bleTimeSyncPacket,
         failedAttempts: student.failed_attempts || 0,
-        isFlaggedForge: Boolean(student.is_flagged_forge)
+        isFlaggedForge: Boolean(student.is_flagged_forge),
+        detectedSpoofApps: evaluation.detectedSpoofApps || [],
+        detectedAppDetails: evaluation.detectedAppDetails || []
       });
     }
 
@@ -464,13 +466,15 @@ const verifyLocationHandler = async (req, res) => {
         message: detailsMsg,
         distanceMeters: evaluation.distanceMeters,
         permittedRadiusMeters: evaluation.allowedRadius,
-      bleMatchStatus: evaluation.bleMatchStatus,
-      wifiMatchStatus: evaluation.wifiMatchStatus,
-      ble_time_sync_packet: bleTimeSyncPacket,
-      bleTimeSyncPacket: bleTimeSyncPacket,
+        bleMatchStatus: evaluation.bleMatchStatus,
+        wifiMatchStatus: evaluation.wifiMatchStatus,
+        ble_time_sync_packet: bleTimeSyncPacket,
+        bleTimeSyncPacket: bleTimeSyncPacket,
         failedAttempts: fraudRecord.failedAttempts,
         isFlaggedForge: fraudRecord.isFlaggedForge,
-        alertTriggered: fraudRecord.alertTriggered
+        alertTriggered: fraudRecord.alertTriggered,
+        detectedSpoofApps: evaluation.detectedSpoofApps || [],
+        detectedAppDetails: evaluation.detectedAppDetails || []
       });
     }
 
@@ -483,12 +487,14 @@ const verifyLocationHandler = async (req, res) => {
         message: 'Verification flagged for Warden manual confirmation due to multi-signal anomalies.',
         distanceMeters: evaluation.distanceMeters,
         permittedRadiusMeters: evaluation.allowedRadius,
-      bleMatchStatus: evaluation.bleMatchStatus,
-      wifiMatchStatus: evaluation.wifiMatchStatus,
-      ble_time_sync_packet: bleTimeSyncPacket,
-      bleTimeSyncPacket: bleTimeSyncPacket,
+        bleMatchStatus: evaluation.bleMatchStatus,
+        wifiMatchStatus: evaluation.wifiMatchStatus,
+        ble_time_sync_packet: bleTimeSyncPacket,
+        bleTimeSyncPacket: bleTimeSyncPacket,
         failedAttempts: student.failed_attempts || 0,
-        isFlaggedForge: Boolean(student.is_flagged_forge)
+        isFlaggedForge: Boolean(student.is_flagged_forge),
+        detectedSpoofApps: evaluation.detectedSpoofApps || [],
+        detectedAppDetails: evaluation.detectedAppDetails || []
       });
     }
 
@@ -588,7 +594,9 @@ const verifyLocationHandler = async (req, res) => {
       ble_time_sync_packet: bleTimeSyncPacket,
       bleTimeSyncPacket: bleTimeSyncPacket,
       bleVerified: Boolean(ble_proof?.compactVerified || evaluation.bleMatchStatus === 'VERIFIED_BEACON_PROXIMITY' || evaluation.bleMatchStatus === 'VERIFIED_IOS_HARDWARE_ATTESTED'),
-      studentName: student.full_name
+      studentName: student.full_name,
+      detectedSpoofApps: evaluation.detectedSpoofApps || [],
+      detectedAppDetails: evaluation.detectedAppDetails || []
     });
   } catch (err) {
     console.error('Location verification error:', err);
@@ -1152,7 +1160,7 @@ router.post('/verify-face', attendanceLimiter, strictLanGuard, verifyFaceHandler
 router.post('/mark', attendanceLimiter, strictLanGuard, verifyFaceHandler);
 
 // 3. Attendance Status Lookup
-router.get('/status/:identifier', async (req, res) => {
+router.get('/status/:identifier', requireAuth, async (req, res) => {
   try {
     const id = req.params.identifier;
     const today = getTodayDateString();
@@ -1160,6 +1168,12 @@ router.get('/status/:identifier', async (req, res) => {
     const student = await getQuery(`SELECT * FROM students WHERE id = ? OR roll_number = ?`, [id, id]);
     if (!student) {
       return res.status(404).json({ success: false, error: 'Student not found.' });
+    }
+
+    if (req.user && req.user.role === 'STUDENT') {
+      if (req.user.id !== student.id && req.user.username !== student.roll_number && req.user.studentId !== student.id) {
+        return res.status(403).json({ success: false, error: 'Unauthorized: You can only view your own attendance status.' });
+      }
     }
 
     const record = await getQuery(`
@@ -1187,18 +1201,27 @@ router.get('/status/:identifier', async (req, res) => {
 
 
 // 4. Request In-Person Physical Warden Verification (Medical / Bandages / Camera Malfunction)
-router.post('/request-physical-verification', async (req, res) => {
+router.post('/request-physical-verification', requireAuth, async (req, res) => {
   try {
     const { student_id, roll_number, reason, notes } = req.body;
     const today = getTodayDateString();
 
+    const targetStudentId = student_id || req.user.studentId || req.user.id;
+    const targetRollNumber = roll_number || req.user.username;
+
     const student = await getQuery(
       `SELECT * FROM students WHERE id = ? OR roll_number = ?`,
-      [student_id || req.user?.id, roll_number || req.user?.roll_number]
+      [targetStudentId, targetRollNumber]
     );
 
     if (!student) {
       return res.status(404).json({ success: false, error: 'Student record not found.' });
+    }
+
+    if (req.user && req.user.role === 'STUDENT') {
+      if (req.user.id !== student.id && req.user.username !== student.roll_number && req.user.studentId !== student.id) {
+        return res.status(403).json({ success: false, error: 'Unauthorized: You can only submit verification requests for your own account.' });
+      }
     }
 
     const existingRecord = await getQuery(

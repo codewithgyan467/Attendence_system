@@ -57,6 +57,7 @@ function sanitizeFormulaInjection(value) {
 
 // Base router authentication guard
 router.use(requireAuth);
+router.use(requireRole('ADMIN', 'WARDEN'));
 
 // In-memory short TTL cache to make dashboard stats instantaneous
 let adminDashboardCache = null;
@@ -497,7 +498,7 @@ router.put('/students/:id', async (req, res) => {
 });
 
 // Delete Individual Student Record (When Student Leaves the Hostel)
-router.delete('/students/:id', async (req, res) => {
+router.delete('/students/:id', requireRole('ADMIN'), async (req, res) => {
   try {
     const studentIdentifier = req.params.id;
 
@@ -1121,7 +1122,7 @@ router.post('/students/manual-add', async (req, res) => {
 });
 
 // Clear All Student Data (Fresh Slate)
-router.post('/students/clear-all', async (req, res) => {
+router.post('/students/clear-all', requireRole('ADMIN'), async (req, res) => {
   try {
     await clearAllStudentData();
     await recordAuditEvent(
@@ -2002,7 +2003,7 @@ router.delete('/attendance/:id', async (req, res) => {
 });
 
 // DELETE all / date-filtered attendance records
-router.delete('/attendance', async (req, res) => {
+router.delete('/attendance', requireRole('ADMIN'), async (req, res) => {
   try {
     const { date } = req.query;
     let sql = 'DELETE FROM attendance_records';
@@ -2302,7 +2303,7 @@ router.delete('/security/alerts/:id', async (req, res) => {
 });
 
 // DELETE all security alerts
-router.delete('/security/alerts', async (req, res) => {
+router.delete('/security/alerts', requireRole('ADMIN'), async (req, res) => {
   try {
     const result = await runQuery('DELETE FROM security_audit_logs');
     await recordAuditEvent(req.user.id, req.user.username, 'PURGE_SECURITY_LOGS', 'SECURITY', 'ALL', 'Purged all security incident and spoofing logs', req);
@@ -2359,7 +2360,7 @@ router.delete('/audit-logs/:id', async (req, res) => {
 });
 
 // DELETE all audit logs
-router.delete('/audit-logs', async (req, res) => {
+router.delete('/audit-logs', requireRole('ADMIN'), async (req, res) => {
   try {
     const result = await runQuery('DELETE FROM admin_audit_events');
     // Record fresh entry so there is an immutable marker that audit trail was cleared

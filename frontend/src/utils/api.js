@@ -624,7 +624,10 @@ export const api = {
     getFeedback: () => request('/warden/feedback'),
     respondFeedback: (id, data) => request(`/warden/feedback/${encodeURIComponent(id)}/respond`, { method: 'POST', body: JSON.stringify(data) }),
     getAttendanceLedger: (params = {}) => request(`/warden/attendance-ledger${params.year || params.month ? '?' + new URLSearchParams(params).toString() : ''}`),
-    getStudentLedger: (studentId, year) => request(`/warden/student-ledger/${encodeURIComponent(studentId)}${year ? '?year=' + year : ''}`)
+    getStudentLedger: (studentId, year) => request(`/warden/student-ledger/${encodeURIComponent(studentId)}${year ? '?year=' + year : ''}`),
+    getEmergencyMuster: () => request('/warden/emergency-muster'),
+    getPendingPhysicalVerifications: () => request('/warden/pending-physical-verifications'),
+    verifyPhysicalAttendance: (data) => request('/warden/verify-physical-attendance', { method: 'POST', body: JSON.stringify(data) })
   },
 
   // Student APIs

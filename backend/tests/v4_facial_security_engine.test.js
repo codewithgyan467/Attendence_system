@@ -148,8 +148,7 @@ describe('HostelGuard Enterprise v4.0 - Advanced Facial Security & Anti-Spoofing
     expect(consumed.is_used).toBe(1);
 
     // Verify attendance recorded
-    const today = new Date().toISOString().split('T')[0];
-    const record = await getQuery(`SELECT * FROM attendance_records WHERE student_id = ? AND date = ?`, [testStudentId, today]);
+    const record = await getQuery(`SELECT * FROM attendance_records WHERE student_id = ? ORDER BY created_at DESC LIMIT 1`, [testStudentId]);
     expect(record).not.toBeNull();
     expect(record.status).toBe('PRESENT');
   });

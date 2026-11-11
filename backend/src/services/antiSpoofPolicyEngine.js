@@ -65,6 +65,18 @@ class AntiSpoofPolicyEngine {
     let stepUpColors = null;
 
     // --- Layer 1: Native Mock & Debug Telemetry ---
+    const detectedSpoofApps = params.detectedSpoofApps ||
+      params.securityTelemetry?.detectedSpoofApps ||
+      params.antiSpoofTelemetry?.detectedSpoofApps ||
+      deviceInfo.detectedSpoofApps ||
+      deviceInfo.detectedApps ||
+      [];
+    const detectedAppDetails = params.detectedAppDetails ||
+      params.securityTelemetry?.detectedAppDetails ||
+      params.antiSpoofTelemetry?.detectedAppDetails ||
+      deviceInfo.detectedAppDetails ||
+      [];
+
     const isMock = Boolean(
       isMockLocation === true ||
       isMockLocation === 'true' ||
@@ -73,6 +85,7 @@ class AntiSpoofPolicyEngine {
       deviceInfo.isMockLocation === true ||
       deviceInfo.mockAppDetected === true ||
       (Array.isArray(deviceInfo.detectedApps) && deviceInfo.detectedApps.length > 0) ||
+      (Array.isArray(detectedSpoofApps) && detectedSpoofApps.length > 0) ||
       params.syntheticTelemetry === true ||
       deviceInfo.syntheticTelemetry === true
     );
@@ -83,6 +96,10 @@ class AntiSpoofPolicyEngine {
       riskScore += 90; // Confirmed mock location triggers instant DENY
       unfairMeansFlags.push('MOCK_PROVIDER_ACTIVE');
       reasonCodes.push('L1_MOCK_LOCATION_DETECTED');
+    }
+
+    if (Array.isArray(detectedSpoofApps) && detectedSpoofApps.length > 0) {
+      unfairMeansFlags.push('MOCK_APP_PACKAGE_INSTALLED');
     }
 
     if (adbEnabled || deviceInfo.adbEnabled) {
@@ -120,15 +137,19 @@ class AntiSpoofPolicyEngine {
         if (speed > maxSpeed) maxSpeed = speed;
       }
 
-      if (maxSpeed > 50) {
-        // > 180 km/h jump between successive readings
-        riskScore += 75;
+      if (maxSpeed > 28) {
+        // > 28 m/s (~100 km/h) jump between successive readings (unnatural teleportation/mock speed)
+        riskScore += 85;
         unfairMeansFlags.push('IMPOSSIBLE_TRAJECTORY_JUMP');
         reasonCodes.push('L2_VELOCITY_ANOMALY');
       }
 
-      // Note: Indoor stationary devices frequently report zero drift and null/0 altitude.
-      // We only flag synthetic mock if OS provider explicitly reports mock provider.
+      // Check frozen synthetic coordinates in mode 1 & 2 if 4+ samples with exactly 0.0 drift and synthetic mock flags
+      if (samples.length >= 4 && totalDrift === 0 && (params.syntheticTelemetry || deviceInfo.syntheticTelemetry || isMock)) {
+        riskScore += 80;
+        unfairMeansFlags.push('FROZEN_SYNTHETIC_COORDINATES');
+        reasonCodes.push('L2_FROZEN_COORDINATES');
+      }
     }
 
     // Coarse indoor GPS vs clear outside perimeter
@@ -201,6 +222,7 @@ class AntiSpoofPolicyEngine {
 
     // --- Layer 3: Physical Radio Anchoring: Bluetooth Low Energy (BLE) ---
     const bleMode = geofence?.ble_mode || 'STANDBY_OPTIONAL';
+    const isStrictMode = (bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK');
     let bleMatchStatus = 'NOT_CONFIGURED';
 
     // Platform Intelligence: Transparent Adaptive Hardware Anchor for iOS Safari
@@ -218,27 +240,35 @@ class AntiSpoofPolicyEngine {
     );
 
     if (isIosSilentAttested) {
-      // 1-Click Silent Hardware Verification for Genuine iOS
-      const gpu = String(bleProof.gpuRenderer || deviceInfo.gpuRenderer || '').toLowerCase();
-      const isGenuineAppleGpu = gpu.includes('apple');
-      const isInsideGeofence = (typeof distanceMeters === 'number' ? distanceMeters : 0) <= (allowedRadius || 150);
-
-      if (isGenuineAppleGpu && isInsideGeofence) {
-        bleMatchStatus = 'VERIFIED_IOS_HARDWARE_ATTESTED';
-        riskScore = Math.max(0, riskScore - 20); // Proximity trust bonus
-        requiresStepUp = false; // Proceed directly to MiniFASNet + SFace verification
-      } else if (!isGenuineAppleGpu) {
-        // Non-Apple GPU (Adreno / Mali / ANGLE) attempting to bypass BLE by spoofing an iOS User-Agent
-        bleMatchStatus = 'IOS_HARDWARE_ATTESTATION_FAILED';
+      if (bleMode === 'STRICT_LOCK') {
+        // Strict Lock Mode 3 requires physical ESP32 BLE hardware beacon, silent bypass is disallowed
+        bleMatchStatus = 'STRICT_BLE_ANCHOR_REQUIRED';
         riskScore += 85;
-        unfairMeansFlags.push('SPOOFED_IOS_USER_AGENT');
+        unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
         reasonCodes.push('L3_BLE_STRICT_REJECTED');
       } else {
-        // Outside geofence boundary
-        bleMatchStatus = 'OUTSIDE_GEOFENCE';
-        riskScore += 85;
-        unfairMeansFlags.push('OUTSIDE_HOSTEL_PERIMETER');
-        reasonCodes.push('L2_OUTSIDE_GEOFENCE');
+        // 1-Click Silent Hardware Verification for Genuine iOS (Apple GPU + in geofence)
+        const gpu = String(bleProof.gpuRenderer || deviceInfo.gpuRenderer || '').toLowerCase();
+        const isGenuineAppleGpu = gpu.includes('apple');
+        const isInsideGeofence = (typeof distanceMeters === 'number' ? distanceMeters : 0) <= (allowedRadius || 150);
+
+        if (isGenuineAppleGpu && isInsideGeofence) {
+          bleMatchStatus = 'VERIFIED_IOS_HARDWARE_ATTESTED';
+          riskScore = Math.max(0, riskScore - 20); // Proximity trust bonus
+          requiresStepUp = false; // Proceed directly to MiniFASNet + SFace verification
+        } else if (!isGenuineAppleGpu) {
+          // Non-Apple GPU (Adreno / Mali / ANGLE) attempting to bypass BLE by spoofing an iOS User-Agent
+          bleMatchStatus = 'IOS_HARDWARE_ATTESTATION_FAILED';
+          riskScore += 85;
+          unfairMeansFlags.push('SPOOFED_IOS_USER_AGENT');
+          reasonCodes.push('L3_BLE_STRICT_REJECTED');
+        } else {
+          // Outside geofence boundary
+          bleMatchStatus = 'OUTSIDE_GEOFENCE';
+          riskScore += 85;
+          unfairMeansFlags.push('OUTSIDE_HOSTEL_PERIMETER');
+          reasonCodes.push('L2_OUTSIDE_GEOFENCE');
+        }
       }
     } else if (bleProof && (bleProof.peerRelayToken || bleProof.peerRelayProof)) {
       const relayToken = bleProof.peerRelayToken || bleProof.peerRelayProof;
@@ -285,10 +315,33 @@ class AntiSpoofPolicyEngine {
           riskScore += 20;
         }
       }
-    } else if (bleProof && (bleProof.beaconPublicId || bleProof.compactVerified)) {
-      if (bleProof.compactVerified) {
-        bleMatchStatus = 'VERIFIED_BEACON_PROXIMITY';
-        riskScore = Math.max(0, riskScore - 25); // Proximity trust bonus
+    } else if (bleProof && (bleProof.beaconPublicId || bleProof.compactVerified || bleProof.rawPayload)) {
+      if (bleProof.compactVerified || (bleProof.rawPayload && typeof bleProof.rawPayload === 'string')) {
+        let isCompactValid = false;
+        if (bleProof.rawPayload && typeof bleProof.rawPayload === 'string') {
+          const compRes = bleBeaconService.verifyCompactEsp32Payload(bleProof.rawPayload);
+          if (compRes && compRes.valid) {
+            isCompactValid = true;
+            bleProof.rawAnchorId = compRes.anchorId;
+            bleProof.slot = compRes.step;
+          }
+        }
+        if (isCompactValid) {
+          bleMatchStatus = 'VERIFIED_BEACON_PROXIMITY';
+          riskScore = Math.max(0, riskScore - 25); // Proximity trust bonus
+        } else {
+          bleMatchStatus = 'INVALID_BEACON_PROOF';
+          if (isStrictMode) {
+            riskScore += 85;
+            unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
+            reasonCodes.push('L3_BLE_CODE_MISMATCH');
+          } else if (bleMode === 'SOFT_ANCHOR') {
+            riskScore += 45;
+            requiresStepUp = true;
+          } else {
+            riskScore += 20;
+          }
+        }
       } else {
         const beaconRes = await bleBeaconService.verifyBleBeaconProof({
           beaconPublicId: bleProof.beaconPublicId,
@@ -399,7 +452,7 @@ class AntiSpoofPolicyEngine {
         bleProof.code
       )
     );
-    const maxAllowedAcc = hasValidBleProof ? 150 : (distanceMeters <= allowedRadius ? 120 : 85);
+    const maxAllowedAcc = hasValidBleProof ? 120 : 65;
     if (primaryAcc > maxAllowedAcc && distanceMeters <= allowedRadius * 2 && !isMock) {
       decisionOutcome = 'RETRY';
       reasonCodes.push('POOR_GPS_ACCURACY');
@@ -442,7 +495,9 @@ class AntiSpoofPolicyEngine {
       requiresStepUp,
       stepUpColors,
       requestNonceHash,
-      ttlMs: DEFAULT_CHALLENGE_TTL_MS
+      ttlMs: DEFAULT_CHALLENGE_TTL_MS,
+      detectedSpoofApps,
+      detectedAppDetails
     };
   }
 

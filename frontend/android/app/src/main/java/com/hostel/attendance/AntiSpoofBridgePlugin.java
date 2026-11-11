@@ -2,12 +2,14 @@ package com.hostel.attendance;
 
 import android.app.AppOpsManager;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.net.Uri;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -91,22 +93,30 @@ public class AntiSpoofBridgePlugin extends Plugin {
         }
     }
 
-    @PluginMethod
-    public void checkMockStatus(PluginCall call) {
+    private JSObject buildDeviceSpoofReport() {
         Context context = getContext();
         JSObject ret = new JSObject();
         boolean isMock = false;
         List<String> reasons = new ArrayList<>();
         JSArray detectedApps = new JSArray();
+        JSArray detectedAppDetails = new JSArray();
 
         // 1. Check if known fake GPS packages are installed
         PackageManager pm = context.getPackageManager();
         for (String pkg : KNOWN_MOCK_PACKAGES) {
             try {
-                pm.getPackageInfo(pkg, 0);
+                PackageInfo pi = pm.getPackageInfo(pkg, 0);
+                String appName = pm.getApplicationLabel(pi.applicationInfo).toString();
                 detectedApps.put(pkg);
+                
+                JSObject detail = new JSObject();
+                detail.put("packageName", pkg);
+                detail.put("appName", appName);
+                detail.put("isMockApp", true);
+                detectedAppDetails.put(detail);
+
                 isMock = true;
-                reasons.add("KNOWN_SPOOFER_INSTALLED:" + pkg);
+                reasons.add("KNOWN_SPOOFER_INSTALLED:" + pkg + " (" + appName + ")");
             } catch (PackageManager.NameNotFoundException ignored) {}
         }
 
@@ -126,6 +136,14 @@ public class AntiSpoofBridgePlugin extends Plugin {
                                         if (mode == AppOpsManager.MODE_ALLOWED) {
                                             isMock = true;
                                             detectedApps.put(p.packageName);
+
+                                            String appName = pm.getApplicationLabel(ai).toString();
+                                            JSObject detail = new JSObject();
+                                            detail.put("packageName", p.packageName);
+                                            detail.put("appName", appName);
+                                            detail.put("isMockApp", true);
+                                            detectedAppDetails.put(detail);
+
                                             reasons.add("APPOPS_MOCK_ACTIVE:" + p.packageName);
                                         }
                                     } catch (Exception ignored) {}
@@ -154,23 +172,74 @@ public class AntiSpoofBridgePlugin extends Plugin {
             } catch (SecurityException ignored) {}
         }
 
-        // 4. Developer Settings Mock Location (Legacy fallback)
+        // 4. Developer Settings Mock Location & ADB Check
+        boolean isAdbEnabled = false;
+        boolean isDevOptionsEnabled = false;
         try {
             String allowMock = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ALLOW_MOCK_LOCATION);
             if (allowMock != null && !allowMock.equals("0")) {
                 isMock = true;
                 reasons.add("SECURE_SETTINGS_ALLOW_MOCK_LOCATION");
             }
+            int adb = Settings.Global.getInt(context.getContentResolver(), Settings.Global.ADB_ENABLED, 0);
+            isAdbEnabled = (adb == 1);
+            int dev = Settings.Global.getInt(context.getContentResolver(), Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0);
+            isDevOptionsEnabled = (dev == 1);
         } catch (Exception ignored) {}
 
         ret.put("isMock", isMock);
         ret.put("mockDetected", isMock);
+        ret.put("isMockLocation", isMock);
+        ret.put("mockConfidence", isMock ? 100 : 0);
         ret.put("mockReason", reasons.isEmpty() ? "NONE" : String.join(";", reasons));
+        ret.put("reasons", reasons);
         ret.put("detectedApps", detectedApps);
+        ret.put("detectedSpoofApps", detectedApps);
+        ret.put("detectedAppDetails", detectedAppDetails);
+        ret.put("isAdbEnabled", isAdbEnabled);
+        ret.put("isDeveloperOptionsEnabled", isDevOptionsEnabled);
         ret.put("satellitesVisible", satellitesVisible);
         ret.put("satellitesUsed", satellitesUsedInFix);
         ret.put("isNativeBridge", true);
+        return ret;
+    }
+
+    @PluginMethod
+    public void checkMockStatus(PluginCall call) {
+        JSObject ret = buildDeviceSpoofReport();
         call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void evaluateDeviceSpoofState(PluginCall call) {
+        JSObject ret = buildDeviceSpoofReport();
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        String packageName = call.getString("packageName");
+        try {
+            Intent intent;
+            if (packageName != null && !packageName.trim().isEmpty()) {
+                intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.parse("package:" + packageName.trim()));
+            } else {
+                intent = new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS);
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            try {
+                Intent intent = new Intent(Settings.ACTION_SETTINGS);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+                call.resolve();
+            } catch (Exception e2) {
+                call.reject("Could not open settings: " + e2.getMessage());
+            }
+        }
     }
 
     @PluginMethod

@@ -132,9 +132,8 @@ describe('Security, Concurrency & Release Hardening Tests', () => {
     let challengeToken;
 
     beforeEach(async () => {
-      // Clear today's attendance record for test student
-      const today = new Date().toISOString().split('T')[0];
-      await runQuery(`DELETE FROM attendance_records WHERE student_id = ? AND date = ?`, [testStudentId, today]);
+      // Clear all attendance records for test student
+      await runQuery(`DELETE FROM attendance_records WHERE student_id = ?`, [testStudentId]);
 
       // Obtain a valid challenge token
       challengeToken = uuidv4();

@@ -45,45 +45,7 @@ router.post('/login', authLimiter, async (req, res) => {
       return res.status(403).json({ success: false, error: 'Account has been deactivated. Please contact hostel administration.' });
     }
 
-    let isMatch = await bcrypt.compare(password, user.password_hash);
-    if (!isMatch && !user.must_change_password) {
-      // Support standard demo credential variations so students and wardens are never locked out in offline testing
-      const cleanPass = String(password).trim();
-      const lowerPass = cleanPass.toLowerCase();
-      if (user.role === 'STUDENT') {
-        if (
-          lowerPass === 'student@12345' ||
-          lowerPass === 'student@1234' ||
-          lowerPass === 'student@123' ||
-          lowerPass === 'student123' ||
-          lowerPass === 'student' ||
-          lowerPass === 'password' ||
-          cleanPass === user.username
-        ) {
-          isMatch = true;
-        }
-      } else if (user.role === 'WARDEN') {
-        if (
-          lowerPass === 'warden@12345' ||
-          lowerPass === 'warden@123' ||
-          lowerPass === 'warden123' ||
-          lowerPass === 'warden' ||
-          lowerPass === 'password'
-        ) {
-          isMatch = true;
-        }
-      } else if (user.role === 'ADMIN') {
-        if (
-          lowerPass === 'admin@12345' ||
-          lowerPass === 'admin@123' ||
-          lowerPass === 'admin123' ||
-          lowerPass === 'admin' ||
-          lowerPass === 'password'
-        ) {
-          isMatch = true;
-        }
-      }
-    }
+    const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
       return res.status(401).json({ success: false, error: 'Invalid username or password.' });
     }

@@ -77,15 +77,36 @@ export async function getNativeOrBrowserLocation(options = {}) {
       const acc = hardwareLoc?.accuracy ?? coordinates?.coords?.accuracy ?? 15;
       const alt = hardwareLoc?.altitude ?? coordinates?.coords?.altitude ?? null;
 
+      // Halt fallback when mock detected: return isMockLocation: true immediately
+      if (isMock) {
+        return {
+          latitude: lat ? parseFloat(Number(lat).toFixed(6)) : 0,
+          longitude: lon ? parseFloat(Number(lon).toFixed(6)) : 0,
+          accuracy: acc,
+          altitude: alt,
+          isMockLocation: true,
+          mockReason: nativeMockResult?.mockReason || hardwareLoc?.mockReason || 'NATIVE_MOCK_DETECTED',
+          detectedApps: nativeMockResult?.detectedApps || hardwareLoc?.detectedApps || [],
+          detectedSpoofApps: nativeMockResult?.detectedSpoofApps || nativeMockResult?.detectedApps || [],
+          detectedAppDetails: nativeMockResult?.detectedAppDetails || [],
+          satellitesVisible: hardwareLoc?.satellitesVisible ?? nativeMockResult?.satellitesVisible ?? null,
+          satellitesUsed: hardwareLoc?.satellitesUsed ?? nativeMockResult?.satellitesUsed ?? null,
+          connectedWifi: wifiInfo,
+          source: 'NATIVE_MOCK_DETECTED_HALT'
+        };
+      }
+
       if (lat !== undefined && lat !== null && lon !== undefined && lon !== null && !isNaN(lat) && !isNaN(lon)) {
         const result = {
           latitude: parseFloat(Number(lat).toFixed(6)),
           longitude: parseFloat(Number(lon).toFixed(6)),
           accuracy: acc,
           altitude: alt,
-          isMockLocation: isMock,
-          mockReason: nativeMockResult?.mockReason || hardwareLoc?.mockReason || (isMock ? 'NATIVE_MOCK_DETECTED' : 'NONE'),
-          detectedApps: nativeMockResult?.detectedApps || hardwareLoc?.detectedApps || [],
+          isMockLocation: false,
+          mockReason: 'NONE',
+          detectedApps: [],
+          detectedSpoofApps: [],
+          detectedAppDetails: [],
           satellitesVisible: hardwareLoc?.satellitesVisible ?? nativeMockResult?.satellitesVisible ?? null,
           satellitesUsed: hardwareLoc?.satellitesUsed ?? nativeMockResult?.satellitesUsed ?? null,
           connectedWifi: wifiInfo,
@@ -981,5 +1002,62 @@ export async function scanHostelBleBeacon(options = {}) {
 // Enterprise Staff-Level Aliases for Zero Discrepancy
 export const getHighAccuracyGPS = getNativeOrBrowserLocation;
 export const scanForESP32Beacon = scanHostelBleBeacon;
+
+/**
+ * Comprehensive device security and mock-location audit for student devices.
+ */
+export async function checkDeviceMockSecurity() {
+  if (isNativeMobile() && AntiSpoofBridge) {
+    try {
+      if (AntiSpoofBridge.evaluateDeviceSpoofState) {
+        const res = await AntiSpoofBridge.evaluateDeviceSpoofState();
+        return {
+          isMockLocation: Boolean(res.isMockLocation || res.isMock || res.mockDetected),
+          detectedSpoofApps: res.detectedSpoofApps || res.detectedApps || [],
+          detectedAppDetails: res.detectedAppDetails || [],
+          reasons: res.reasons || (res.mockReason ? [res.mockReason] : []),
+          isAdbEnabled: Boolean(res.isAdbEnabled),
+          isDeveloperOptionsEnabled: Boolean(res.isDeveloperOptionsEnabled)
+        };
+      }
+      if (AntiSpoofBridge.checkMockStatus) {
+        const res = await AntiSpoofBridge.checkMockStatus();
+        return {
+          isMockLocation: Boolean(res.isMock || res.mockDetected),
+          detectedSpoofApps: res.detectedSpoofApps || res.detectedApps || [],
+          detectedAppDetails: res.detectedAppDetails || [],
+          reasons: res.mockReason ? [res.mockReason] : [],
+          isAdbEnabled: false,
+          isDeveloperOptionsEnabled: false
+        };
+      }
+    } catch (e) {
+      console.warn('AntiSpoofBridge security check error:', e);
+    }
+  }
+  return {
+    isMockLocation: false,
+    detectedSpoofApps: [],
+    detectedAppDetails: [],
+    reasons: [],
+    isAdbEnabled: false,
+    isDeveloperOptionsEnabled: false
+  };
+}
+
+/**
+ * Opens system settings for an offending fake GPS app or developer options.
+ */
+export async function openSpoofAppSettings(packageName = null) {
+  if (isNativeMobile() && AntiSpoofBridge && AntiSpoofBridge.openAppSettings) {
+    try {
+      await AntiSpoofBridge.openAppSettings({ packageName });
+      return true;
+    } catch (e) {
+      console.warn('Could not open app settings via bridge:', e);
+    }
+  }
+  return false;
+}
 
 

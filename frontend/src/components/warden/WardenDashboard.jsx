@@ -24,7 +24,8 @@ import {
   QrCode,
   Copy,
   Check,
-  ExternalLink
+  ExternalLink,
+  UserCheck
 } from 'lucide-react';
 import { exportToExcel, exportToCsv } from '../../utils/exportUtils';
 import { formatTime12h, getTodayDateIST } from '../../utils/timeUtils';
@@ -119,6 +120,48 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
       const res = await api.warden.getPendingPhysicalVerifications();
       if (res?.success) setPendingPhysicalList(res.pending || []);
     } catch (_) {}
+  };
+
+  const handleExportMusterCsv = () => {
+    if (!musterData) return;
+    const list = musterTab === 'missing'
+      ? (musterData.missingUnaccounted || [])
+      : musterTab === 'inside'
+        ? (musterData.verifiedInside || [])
+        : (musterData.approvedLeave || []);
+    
+    const formatted = list.map(st => ({
+      'Roll Number': st.roll_number,
+      'Full Name': st.full_name,
+      'Hostel Block': st.hostel_block,
+      'Room Number': st.room_number || '',
+      'Phone': st.phone || '',
+      'Emergency Parent Phone': st.emergency_phone || '',
+      'Status': musterTab === 'missing' ? 'UNACCOUNTED / MISSING' : (musterTab === 'inside' ? 'VERIFIED INSIDE' : 'APPROVED LEAVE'),
+      'Date': getTodayDateIST()
+    }));
+    exportToCsv(formatted, `HostelGuard_Muster_${musterTab.toUpperCase()}_${getTodayDateIST()}.csv`);
+  };
+
+  const handleExportMusterExcel = () => {
+    if (!musterData) return;
+    const list = musterTab === 'missing'
+      ? (musterData.missingUnaccounted || [])
+      : musterTab === 'inside'
+        ? (musterData.verifiedInside || [])
+        : (musterData.approvedLeave || []);
+    
+    const formatted = list.map(st => ({
+      'Roll Number': st.roll_number,
+      'Full Name': st.full_name,
+      'Hostel Block': st.hostel_block,
+      'Room Number': st.room_number || '',
+      'Phone': st.phone || '',
+      'Emergency Parent Phone': st.emergency_phone || '',
+      'Status': musterTab === 'missing' ? 'UNACCOUNTED / MISSING' : (musterTab === 'inside' ? 'VERIFIED INSIDE' : 'APPROVED LEAVE'),
+      'Date': getTodayDateIST()
+    }));
+    exportToExcel(formatted, `HostelGuard_Muster_${musterTab.toUpperCase()}_${getTodayDateIST()}`, 'Muster Roll');
   };
 
   const handleConfirmPhysicalAttendance = async (item) => {
@@ -229,13 +272,35 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
             Hostel block supervision, daily roll call exceptions, absence verifications, and resident appeals.
           </p>
         </div>
-        <button
-          className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
-          onClick={loadAllData}
-          disabled={loading}
-        >
-          <RefreshCw size={14} /> Refresh Data
-        </button>
+        <div className="d-flex align-items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            className="btn btn-outline-danger btn-sm d-flex align-items-center gap-1 shadow-sm fw-semibold"
+            onClick={() => {
+              loadMusterData();
+              setShowMusterModal(true);
+            }}
+          >
+            <ShieldAlert size={14} /> 🚨 Emergency Muster
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline-primary btn-sm d-flex align-items-center gap-1 shadow-sm fw-semibold"
+            onClick={() => {
+              loadPendingPhysical();
+              setShowPhysicalQueueModal(true);
+            }}
+          >
+            <UserCheck size={14} /> 📋 Physical Verification Desk
+          </button>
+          <button
+            className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
+            onClick={loadAllData}
+            disabled={loading}
+          >
+            <RefreshCw size={14} /> Refresh Data
+          </button>
+        </div>
       </div>
 
       {statusMsg && (
@@ -408,7 +473,15 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                               <span>Capacity: <strong>{b.capacity || total}</strong></span>
                             </div>
                           </div>
-                    
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
       {/* ========================================================= */}
       {/* MODAL 1: Emergency Evacuation Muster Roll                  */}
       {/* ========================================================= */}
@@ -653,16 +726,8 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
           </div>
         </div>
       )}
-    </div>
-  );
-})}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+    </>
+  )}
 
       {(subTab === 'warden_exceptions' || subTab === 'warden_overview') && (
         <>

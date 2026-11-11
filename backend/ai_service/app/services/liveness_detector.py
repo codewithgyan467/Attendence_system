@@ -173,12 +173,12 @@ class LivenessDetectorV4:
         """
         if self.minifas_net is None or pad_crop_80_bgr is None:
             return {
-                "available": True,
-                "is_live": True,
-                "live_prob": 0.95,
-                "spoof_prob": 0.05,
-                "predicted_class": "LIVE",
-                "reason": "Direct MiniFASNet fast-pass"
+                "available": False,
+                "is_live": False,
+                "live_prob": 0.0,
+                "spoof_prob": 1.0,
+                "predicted_class": "MODEL_UNAVAILABLE",
+                "reason": "MiniFASNet model not loaded or patch is missing"
             }
 
         try:
@@ -215,12 +215,12 @@ class LivenessDetectorV4:
         except Exception as e:
             logger.warning(f"Pre-cropped MiniFASNet inference warning: {e}")
             return {
-                "available": True,
-                "is_live": True,
-                "live_prob": 0.90,
-                "spoof_prob": 0.10,
-                "predicted_class": "LIVE",
-                "reason": "PAD fallback"
+                "available": False,
+                "is_live": False,
+                "live_prob": 0.0,
+                "spoof_prob": 1.0,
+                "predicted_class": "ERROR",
+                "reason": f"PAD inference exception: {e}"
             }
 
     def evaluate_enrollment_angle(self, bgr_img: np.ndarray, raw_face: np.ndarray, angle_label: str = "FRONT") -> dict:
@@ -357,15 +357,13 @@ class LivenessDetectorV4:
             yaw_deltas = [p.get("yaw_ratio", 0.0) - initial_pose.get("yaw_ratio", 0.0) for p in temporal_poses[1:]]
             min_yaw_delta = min(yaw_deltas) if yaw_deltas else 0.0
             turn_left_detected = ("TURN_LEFT" in observed_actions) or (min_yaw_delta <= -0.10)
-            challenge_passed = turn_left_detected or steady_frontal
+            challenge_passed = turn_left_detected
             return {
                 "challenge_passed": challenge_passed,
                 "expected": expected_challenge,
                 "observed": observed_actions,
                 "min_yaw_delta": round(min_yaw_delta, 3),
-                "reason": "Turn left gesture verified" if turn_left_detected else (
-                    "Steady frontal live pose verified" if steady_frontal else f"Turn left challenge not completed (detected: {observed_actions})"
-                )
+                "reason": "Turn left gesture verified" if turn_left_detected else f"Turn left challenge not completed (detected: {observed_actions})"
             }
 
         if expected_challenge == "TURN_RIGHT":
@@ -373,15 +371,13 @@ class LivenessDetectorV4:
             yaw_deltas = [p.get("yaw_ratio", 0.0) - initial_pose.get("yaw_ratio", 0.0) for p in temporal_poses[1:]]
             max_yaw_delta = max(yaw_deltas) if yaw_deltas else 0.0
             turn_right_detected = ("TURN_RIGHT" in observed_actions) or (max_yaw_delta >= 0.10)
-            challenge_passed = turn_right_detected or steady_frontal
+            challenge_passed = turn_right_detected
             return {
                 "challenge_passed": challenge_passed,
                 "expected": expected_challenge,
                 "observed": observed_actions,
                 "max_yaw_delta": round(max_yaw_delta, 3),
-                "reason": "Turn right gesture verified" if turn_right_detected else (
-                    "Steady frontal live pose verified" if steady_frontal else f"Turn right challenge not completed (detected: {observed_actions})"
-                )
+                "reason": "Turn right gesture verified" if turn_right_detected else f"Turn right challenge not completed (detected: {observed_actions})"
             }
 
         if expected_challenge == "NOD_DOWN":
@@ -389,15 +385,13 @@ class LivenessDetectorV4:
             pitch_deltas = [p.get("pitch_ratio", 0.5) - initial_pose.get("pitch_ratio", 0.5) for p in temporal_poses[1:]]
             max_pitch_delta = max(pitch_deltas) if pitch_deltas else 0.0
             nod_detected = ("NOD_DOWN" in observed_actions) or (max_pitch_delta >= 0.08)
-            challenge_passed = nod_detected or steady_frontal
+            challenge_passed = nod_detected
             return {
                 "challenge_passed": challenge_passed,
                 "expected": expected_challenge,
                 "observed": observed_actions,
                 "max_pitch_delta": round(max_pitch_delta, 3),
-                "reason": "Nod downward gesture verified" if nod_detected else (
-                    "Steady frontal live pose verified" if steady_frontal else f"Nod downward challenge not completed (detected: {observed_actions})"
-                )
+                "reason": "Nod downward gesture verified" if nod_detected else f"Nod downward challenge not completed (detected: {observed_actions})"
             }
         return {"challenge_passed": False, "reason": f"Unrecognized challenge type: {expected_challenge}"}
 

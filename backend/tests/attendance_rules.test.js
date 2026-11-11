@@ -2,6 +2,7 @@ const request = require('supertest');
 const { app } = require('../src/server');
 const { initDatabase, runQuery, getQuery } = require('../src/db/database');
 const { v4: uuidv4 } = require('uuid');
+const { getIstDateString } = require('../src/utils/istTime');
 
 let adminToken = '';
 const TEST_STUDENT_ID = 'TEST-STUDENT-UUID-001';
@@ -156,7 +157,7 @@ describe('Attendance Domain Rules & Fraud Security', () => {
   });
 
   test('Duplicate attendance enforcement: Re-verifying location when marked today returns 400', async () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getIstDateString();
 
     // Mark test student present for today
     await runQuery(`

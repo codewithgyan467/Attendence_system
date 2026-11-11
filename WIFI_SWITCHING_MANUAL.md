@@ -149,3 +149,4 @@ When testing without institutional Wi-Fi routers using a smartphone's Personal H
 | **Mixed Content Error on Mobile Chrome** | Student accessed `https://...onrender.com` instead of local HTTP | Have student scan the Warden QR code or navigate directly to `http://<WARDEN_IP>:5000`. |
 | **Port 5000 already in use** | Previous Node process still running | Run `taskkill /F /IM node.exe` in Command Prompt, then relaunch `Start_Warden_Server.bat`. |
 | **Warden IP shows `127.0.0.1`** | Wi-Fi is disconnected or connected via a virtual adapter | Connect laptop to active Wi-Fi; `wifiRoamingWatcher` will update within 5s. |
+

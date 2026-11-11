@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 
 describe('Operational Enhancements & System Optimization Suite', () => {
   let wardenToken;
+  let studentToken;
   let testUserId;
   let testStudentId;
   let testStudentRoll = 'MUSTER_TEST_01';
@@ -40,6 +41,9 @@ describe('Operational Enhancements & System Optimization Suite', () => {
         id, user_id, roll_number, full_name, email, course, admission_year, semester, hostel_block, room_number, phone, whatsapp_no, device_id, is_active
       ) VALUES (?, ?, ?, 'Muster Test Resident', 'muster@hostel.edu', 'B.Tech CS', 2024, 4, 'Block A', '101', '+919876543299', '+919876543288', 'DEV-MUSTER-01', 1)
     `, [testStudentId, testUserId, testStudentRoll]);
+
+    const { generateToken } = require('../src/middleware/auth');
+    studentToken = generateToken({ id: testUserId, username: testStudentRoll, role: 'STUDENT', student_id: testStudentId });
   });
 
   afterAll(async () => {
@@ -59,6 +63,7 @@ describe('Operational Enhancements & System Optimization Suite', () => {
   test('2. Student can request in-person physical verification (fallback for injuries/camera failure)', async () => {
     const res = await request(app)
       .post('/api/v1/attendance/request-physical-verification')
+      .set('Authorization', `Bearer ${studentToken}`)
       .send({
         student_id: testStudentId,
         roll_number: testStudentRoll,
@@ -106,10 +111,9 @@ describe('Operational Enhancements & System Optimization Suite', () => {
     expect(res.body.success).toBe(true);
 
     // Verify student attendance record is now PRESENT with WARDEN_PHYSICAL_SIGN_OFF
-    const today = new Date().toISOString().split('T')[0];
     const record = await getQuery(`
-      SELECT * FROM attendance_records WHERE student_id = ? AND date = ?
-    `, [testStudentId, today]);
+      SELECT * FROM attendance_records WHERE student_id = ? ORDER BY created_at DESC LIMIT 1
+    `, [testStudentId]);
 
     expect(record).toBeDefined();
     expect(record.status).toBe('PRESENT');

@@ -10,7 +10,7 @@ const crypto = require('crypto');
  * Guarantees 100% offline, zero-disk sub-0.05ms biometric matching and robust LAN attendance vaulting.
  */
 
-const dataDir = path.join(__dirname, '../../../data');
+const dataDir = path.join(__dirname, '../../data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }

@@ -292,7 +292,7 @@ router.get('/emergency-muster', async (req, res) => {
 });
 
 // 8. Pending Physical In-Person Verifications Queue (Medical injuries, bandages, camera failure)
-router.get('/pending-physical-verifications', async (req, res) => {
+router.get(['/pending-physical-verifications', '/physical-verifications'], async (req, res) => {
   try {
     const today = getIstDateString();
     const pending = await allQuery(`

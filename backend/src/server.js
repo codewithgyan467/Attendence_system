@@ -212,11 +212,22 @@ app.get(['/api/v1/lan-discovery', '/lan-discovery'], async (req, res) => {
 
 app.post(['/api/v1/lan-discovery', '/lan-discovery'], async (req, res) => {
   try {
+    const expectedKey = process.env.LAN_SYNC_KEY || 'hostelguard-internal-sync';
+    const providedKey = req.headers['x-lan-sync-key'];
+    if (providedKey !== expectedKey) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Invalid LAN sync credentials.' });
+    }
+
     const { wardenIp, port = 5000, fullUrl } = req.body;
     if (!wardenIp && !fullUrl) {
       return res.status(400).json({ success: false, error: 'wardenIp or fullUrl required' });
     }
     const cleanIp = wardenIp || (fullUrl ? new URL(fullUrl).hostname : '127.0.0.1');
+
+    if (!isPrivateSubnetHostname(cleanIp)) {
+      return res.status(400).json({ success: false, error: 'Target IP must be a valid private hostel subnet or localhost address.' });
+    }
+
     const targetUrl = fullUrl || `http://${cleanIp}:${port}/api/v1`;
     global.wardenIp = cleanIp;
     global.wardenLanApiUrl = targetUrl;

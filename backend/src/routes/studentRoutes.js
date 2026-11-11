@@ -13,6 +13,7 @@ const aiServiceClient = require('../services/aiServiceClient');
 const embeddingCache = require('../services/embeddingCache');
 const { getStudentAttendanceSummary } = require('../services/attendanceStatsService');
 const wifiClusterService = require('../services/wifiClusterService');
+const bleBeaconService = require('../services/bleBeaconService');
 
 // 1. Privacy-First Deprecation: Public scraping of all student records is disabled to protect student privacy
 router.get('/allotment-list', async (req, res) => {
@@ -379,19 +380,19 @@ router.post('/onboard', async (req, res) => {
       photos
     } = req.body;
 
-    let targetRoll = roll_number ? roll_number.trim() : '';
-
-    if (onboarding_token) {
-      try {
-        const decoded = jwt.verify(onboarding_token, JWT_SECRET);
-        targetRoll = decoded.roll_number;
-      } catch (tokErr) {
-        return res.status(401).json({ success: false, error: 'Onboarding session expired. Please verify your OTP again.' });
-      }
+    if (!onboarding_token) {
+      return res.status(401).json({ success: false, error: 'Verified onboarding token is required. Please verify OTP first.' });
     }
 
-    if (!targetRoll) {
-      return res.status(400).json({ success: false, error: 'Roll number or verified onboarding token is required.' });
+    let targetRoll = '';
+    try {
+      const decoded = jwt.verify(onboarding_token, JWT_SECRET);
+      if (decoded.purpose !== 'BIOMETRIC_ONBOARDING' || !decoded.roll_number) {
+        return res.status(401).json({ success: false, error: 'Invalid onboarding token purpose. Please verify OTP again.' });
+      }
+      targetRoll = decoded.roll_number;
+    } catch (tokErr) {
+      return res.status(401).json({ success: false, error: 'Onboarding session expired or invalid. Please verify your OTP again.' });
     }
 
     if (!photos || !Array.isArray(photos) || photos.length === 0) {
@@ -620,6 +621,24 @@ router.get('/dashboard', async (req, res) => {
       WHERE is_active = 1
     `);
 
+    // Sanitize beacons to never expose shared_secret_hex or mac_address
+    const sanitizedBeacons = (activeBeacons || []).map(b => ({
+      beacon_public_id: b.beacon_public_id,
+      block_name: b.block_name,
+      is_active: b.is_active,
+      last_seen_at: b.last_seen_at
+    }));
+
+    let bleTimeSyncPacket = null;
+    try {
+      if (activeBeacons && activeBeacons.length > 0) {
+        const beaconFull = await bleBeaconService.resolveBeacon(activeBeacons[0].beacon_public_id);
+        if (beaconFull && beaconFull.shared_secret_ref) {
+          bleTimeSyncPacket = bleBeaconService.generateTimeSyncPacket(beaconFull.beacon_public_id, beaconFull.shared_secret_ref);
+        }
+      }
+    } catch (_) {}
+
     const faceEmbeddingsCount = await getQuery(`
       SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ? OR student_id = ?
     `, [student.id, student.roll_number]);
@@ -692,11 +711,9 @@ router.get('/dashboard', async (req, res) => {
       monthlyBreakdown: summary.monthlyBreakdown,
       lifetime: summary.lifetime,
       geofence: activeGeofence,
-      beacons: activeBeacons || [],
+      beacons: sanitizedBeacons,
       wifi_cluster_endpoints: wifiClusterService.getEndpoints(),
-      ble_time_sync_packet: (activeBeacons && activeBeacons[0]?.shared_secret_ref)
-        ? bleBeaconService.generateTimeSyncPacket(activeBeacons[0].beacon_public_id, activeBeacons[0].shared_secret_ref)
-        : null,
+      ble_time_sync_packet: bleTimeSyncPacket,
       recentHistory: history
     });
   } catch (err) {

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
 import { api, setActiveBleMode, setLocalWardenUrl } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
-import { getNativeOrBrowserLocation, isNativeMobile, scanHostelBleBeacon, verifyGenuineIOSDevice } from '../../utils/nativeHardware';
+import { getNativeOrBrowserLocation, isNativeMobile, scanHostelBleBeacon, verifyGenuineIOSDevice, checkDeviceMockSecurity, openSpoofAppSettings } from '../../utils/nativeHardware';
 import { Line } from 'react-chartjs-2';
 import {
   UserCheck,
@@ -36,7 +36,8 @@ import {
   Compass,
   ExternalLink,
   ArrowLeft,
-  ArrowRight
+  ArrowRight,
+  Settings
 } from 'lucide-react';
 import GeofenceMap from '../common/GeofenceMap';
 import { playBiometricChime, detectFaceAngle, detectBlinkEvent, resetBlinkTracker, generateOptimizedBiometricPayload } from '../../utils/faceAngleGuide';
@@ -75,6 +76,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [verifiedWifiAnchor, setVerifiedWifiAnchor] = useState(null);
   const [activeChallenge, setActiveChallenge] = useState('HOLD_STILL');
   const [activeChallengeInstruction, setActiveChallengeInstruction] = useState('Fit face into oval and hold steady');
+  const [showSpoofModal, setShowSpoofModal] = useState(false);
+  const [spoofModalData, setSpoofModalData] = useState({ apps: [], reasons: [] });
 
   // iOS Device Detection and Bluefy QR Code
   const isIOSDevice = typeof navigator !== 'undefined' && (
@@ -589,6 +592,21 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         accuracy: pos.accuracy || 10
       });
 
+      // Native Mock & Fake GPS Blocker Guard
+      if (pos.isMockLocation || (pos.detectedSpoofApps && pos.detectedSpoofApps.length > 0) || (pos.detectedApps && pos.detectedApps.length > 0)) {
+        const appsList = pos.detectedAppDetails && pos.detectedAppDetails.length > 0
+          ? pos.detectedAppDetails
+          : (pos.detectedSpoofApps || pos.detectedApps || []).map(p => ({ packageName: p, appName: p, isMockApp: true }));
+        setSpoofModalData({
+          apps: appsList,
+          reasons: pos.mockReason ? [pos.mockReason] : ['Mock location provider active on device']
+        });
+        setShowSpoofModal(true);
+        setCheckinError('Mock Location Detected: Fake GPS / mock provider is active on this device. Real hardware GPS is required.');
+        setCheckinStep('failed');
+        return;
+      }
+
       // Layer 1 Check: Geofence Perimeter Verification
       const centerLat = Number(dashboard?.geofence?.latitude) || 26.140462;
       const centerLng = Number(dashboard?.geofence?.longitude) || 91.656606;
@@ -777,12 +795,29 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         setVerifiedWifiAnchor(null);
         const dist = res.distanceMeters ? ` (${Math.round(res.distanceMeters)}m away)` : '';
         setVerifiedDistance(res.distanceMeters || null);
+        if (res?.detectedSpoofApps?.length > 0 || res?.detectedAppDetails?.length > 0 || res?.reason === 'MOCK_LOCATION_ACTIVE') {
+          const appsList = res.detectedAppDetails && res.detectedAppDetails.length > 0
+            ? res.detectedAppDetails
+            : (res.detectedSpoofApps || []).map(p => ({ packageName: p, appName: p, isMockApp: true }));
+          setSpoofModalData({
+            apps: appsList,
+            reasons: [res.message || 'Mock location app detected on device']
+          });
+          setShowSpoofModal(true);
+        }
         setCheckinError(res.message || res.error || `Location rejected by hostel geofence policy${dist}.`);
         setCheckinStep('failed');
       }
     } catch (err) {
       setVerifiedBeaconInfo(null);
       setVerifiedWifiAnchor(null);
+      if (err?.detectedSpoofApps?.length > 0 || err?.detectedAppDetails?.length > 0) {
+        setSpoofModalData({
+          apps: err.detectedAppDetails || err.detectedSpoofApps.map(p => ({ packageName: p, appName: p, isMockApp: true })),
+          reasons: [err.message || 'Mock location detected']
+        });
+        setShowSpoofModal(true);
+      }
       setCheckinError(err.message || 'Location verification rejected.');
       setCheckinStep('failed');
       fetchStudentData();
@@ -1070,7 +1105,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
     try {
       // Capture 3-frame burst if not already captured
-      let frames = burstFrames;
+      let frames = Array.isArray(burstFrames) && burstFrames.length > 0 ? burstFrames : null;
       if (!frames || frames.length === 0) {
         try {
           frames = await captureBurstFrames(videoRef.current, 3, 100);
@@ -2066,6 +2101,14 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                               </button>
                             )}
 
+                            <button
+                              type="button"
+                              className="btn btn-outline-secondary px-4 py-2 fw-semibold d-inline-flex align-items-center justify-content-center gap-2 shadow-sm rounded-3 w-100 mt-1"
+                              onClick={() => setShowPhysicalReviewModal(true)}
+                            >
+                              <UserCheck size={16} /> Request In-Person Physical Verification
+                            </button>
+
                             {/* iOS Safari Guidance if BLE failed on Safari */}
                             {isBle && isSafariOnIOS && (
                               <div className="card border p-3 rounded-3 mt-1 text-center bg-white shadow-xs w-100">
@@ -2973,6 +3016,112 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     </div>
                   </form>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rapido-Style Mock Location / Fake GPS Blocker Modal */}
+      {showSpoofModal && (
+        <div
+          className="modal show d-block"
+          style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(6px)', zIndex: 1060 }}
+        >
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '440px' }}>
+            <div className="modal-content border-0 shadow-2xl rounded-4 overflow-hidden">
+              <div className="bg-danger text-white p-4 text-center">
+                <div className="d-inline-flex p-3 rounded-circle bg-white bg-opacity-20 mb-2">
+                  <ShieldAlert size={42} className="text-white" />
+                </div>
+                <h5 className="fw-bold mb-1 text-white">Mock Location Detected</h5>
+                <p className="small mb-0 text-white-50" style={{ fontSize: '12px' }}>
+                  Anti-Spoofing Policy Violation &bull; Hardware GPS Required
+                </p>
+              </div>
+
+              <div className="modal-body p-4 text-start">
+                <div className="alert alert-danger bg-danger bg-opacity-10 border-danger border-opacity-25 rounded-3 p-3 mb-3">
+                  <div className="fw-semibold text-danger small mb-1">
+                    🚫 Fake GPS or Location Spoofer Active
+                  </div>
+                  <div className="text-dark small" style={{ fontSize: '11.5px', lineHeight: '1.45' }}>
+                    HostelGuard strict biometric security requires authentic hardware GPS coordinates and live Bluetooth beacon proximity. To complete attendance roll call, you must disable mock location providers and uninstall spoofing applications.
+                  </div>
+                </div>
+
+                {spoofModalData.apps && spoofModalData.apps.length > 0 && (
+                  <div className="mb-3">
+                    <div className="fw-bold text-dark small mb-2 text-uppercase tracking-wider" style={{ fontSize: '11px' }}>
+                      Detected Mock Applications ({spoofModalData.apps.length}):
+                    </div>
+                    <div className="d-flex flex-column gap-2">
+                      {spoofModalData.apps.map((app, idx) => (
+                        <div
+                          key={idx}
+                          className="d-flex align-items-center justify-content-between p-2.5 rounded-3 bg-light border border-secondary border-opacity-25"
+                        >
+                          <div className="d-flex align-items-center gap-2 overflow-hidden">
+                            <AlertTriangle size={18} className="text-danger flex-shrink-0" />
+                            <div className="text-truncate">
+                              <div className="fw-semibold text-dark small text-truncate" style={{ fontSize: '12px' }}>
+                                {app.appName || app.packageName || 'Unknown Spoofer'}
+                              </div>
+                              <div className="text-muted text-truncate" style={{ fontSize: '10px' }}>
+                                {app.packageName || ''}
+                              </div>
+                            </div>
+                          </div>
+                          {isNativeMobile() && (
+                            <button
+                              type="button"
+                              className="btn btn-outline-danger btn-sm py-1 px-2.5 fw-semibold flex-shrink-0"
+                              style={{ fontSize: '11px' }}
+                              onClick={() => openSpoofAppSettings(app.packageName)}
+                            >
+                              App Info
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="p-3 bg-light rounded-3 border border-secondary border-opacity-25 mb-3">
+                  <div className="fw-bold text-dark small mb-1" style={{ fontSize: '12px' }}>
+                    📋 How to resolve:
+                  </div>
+                  <ol className="mb-0 ps-3 small text-muted" style={{ fontSize: '11.5px', lineHeight: '1.45' }}>
+                    <li className="mb-1">Uninstall the mock GPS applications listed above.</li>
+                    <li className="mb-1">Go to <b>Settings &rarr; Developer Options</b> and set <b>Select mock location app</b> to <b>None</b>.</li>
+                    <li>Return to HostelGuard and tap <b>Re-check Location</b>.</li>
+                  </ol>
+                </div>
+
+                <div className="d-flex flex-column gap-2">
+                  {isNativeMobile() && (
+                    <button
+                      type="button"
+                      className="btn btn-outline-dark fw-semibold py-2 d-flex align-items-center justify-content-center gap-2"
+                      style={{ fontSize: '12px' }}
+                      onClick={() => openSpoofAppSettings(null)}
+                    >
+                      <Settings size={14} /> Open Developer Settings
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-primary fw-bold py-2.5 d-flex align-items-center justify-content-center gap-2 shadow-sm"
+                    style={{ fontSize: '13px' }}
+                    onClick={() => {
+                      setShowSpoofModal(false);
+                      handleVerifyLocation();
+                    }}
+                  >
+                    <RefreshCw size={14} /> Re-check Location &amp; Hardware
+                  </button>
+                </div>
               </div>
             </div>
           </div>

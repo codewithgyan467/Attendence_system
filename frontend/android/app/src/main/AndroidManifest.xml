@@ -1,6 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Package Visibility for Android 11+ (API 30+) Anti-Spoof Detection -->
+    <queries>
+        <package android:name="com.lexa.fakegps" />
+        <package android:name="com.rosteam.gpsemulator" />
+        <package android:name="com.incorporateapps.fakegps.fre" />
+        <package android:name="com.app.fakelocation" />
+        <package android:name="com.fakegps.mock" />
+        <package android:name="com.gsmartstudio.fakegps" />
+        <package android:name="com.marlon.floating.fake.location" />
+        <package android:name="com.usefullapps.fakegpslocation" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
