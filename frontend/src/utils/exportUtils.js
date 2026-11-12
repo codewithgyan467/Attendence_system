@@ -1,15 +1,20 @@
-import * as XLSX from 'xlsx';
-
 /**
  * Universal Data Exporter: Supports both Excel (.xlsx) and CSV (.csv)
  * Formatted with clean column labels and automatic cell type detection.
+ * Dynamically loads XLSX on demand to optimize initial mobile bundle size.
  */
 
-export function exportToExcel({ filename, sheetName = 'Sheet1', data, headers }) {
+async function getXlsx() {
+  return await import('xlsx');
+}
+
+export async function exportToExcel({ filename, sheetName = 'Sheet1', data, headers }) {
   if (!data || data.length === 0) {
     alert('No data available to export.');
     return;
   }
+
+  const XLSX = await getXlsx();
 
   let formattedData = data;
   if (headers && headers.length > 0) {
@@ -31,11 +36,13 @@ export function exportToExcel({ filename, sheetName = 'Sheet1', data, headers })
   XLSX.writeFile(workbook, cleanName);
 }
 
-export function exportToCsv({ filename, data, headers }) {
+export async function exportToCsv({ filename, data, headers }) {
   if (!data || data.length === 0) {
     alert('No data available to export.');
     return;
   }
+
+  const XLSX = await getXlsx();
 
   let formattedData = data;
   if (headers && headers.length > 0) {
@@ -67,11 +74,11 @@ export function exportToCsv({ filename, data, headers }) {
 /**
  * Generic export helper that takes format ('csv' or 'excel')
  */
-export function exportReport(format, options) {
+export async function exportReport(format, options) {
   if (format === 'excel' || format === 'xlsx') {
-    exportToExcel(options);
+    await exportToExcel(options);
   } else {
-    exportToCsv(options);
+    await exportToCsv(options);
   }
 }
 

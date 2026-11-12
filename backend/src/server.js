@@ -408,6 +408,18 @@ async function startServer() {
       }
     }, THIRTY_SECONDS_MS);
 
+    // Background Housekeeping: Purge expired attendance challenges and OTPs (>24h old) every hour
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    setInterval(async () => {
+      try {
+        const { runQuery } = require('./db/database');
+        await runQuery(`DELETE FROM attendance_challenges WHERE expires_at < datetime('now', '-24 hours')`);
+        await runQuery(`DELETE FROM password_reset_otps WHERE expires_at < datetime('now', '-24 hours')`);
+      } catch (_) {
+        // Non-fatal housekeeping
+      }
+    }, ONE_HOUR_MS);
+
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`=======================================================`);
       console.log(`🚀 Smart Hostel Attendance Enterprise Backend is LIVE!`);
