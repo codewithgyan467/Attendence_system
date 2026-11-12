@@ -747,17 +747,17 @@ export default function AttendanceManager() {
 
           {/* Critical Safety Alert Banner if any resident missed >= 2 consecutive nights */}
           {ledgerData && ledgerData.safetyAlertCount > 0 && (
-            <div className="alert alert-danger d-flex align-items-center justify-content-between p-3 rounded-4 shadow-sm border-danger border-opacity-50">
+            <div className="alert alert-danger d-flex align-items-center justify-content-between p-2.5 rounded-2 border-danger border-opacity-50 mb-3">
               <div className="d-flex align-items-center gap-2">
-                <AlertTriangle size={24} className="text-danger flex-shrink-0" />
+                <AlertTriangle size={20} className="text-danger flex-shrink-0" />
                 <div>
-                  <strong className="text-danger fs-6">🚨 Critical Defaulter Safety Alert:</strong>
-                  <div className="small text-danger opacity-90">
+                  <strong className="text-danger">Critical Defaulter Safety Alert:</strong>
+                  <div className="hg-text-xs text-danger opacity-90">
                     <strong>{ledgerData.safetyAlertCount} resident student{ledgerData.safetyAlertCount > 1 ? 's' : ''}</strong> have missed <strong>2 or more consecutive roll calls</strong> without an approved gate pass or excused leave.
                   </div>
                 </div>
               </div>
-              <span className="badge bg-danger text-white px-3 py-2 fw-bold">
+              <span className="badge bg-danger text-white px-2.5 py-1 fw-bold hg-badge">
                 {ledgerData.safetyAlertCount} At-Risk
               </span>
             </div>
@@ -765,42 +765,42 @@ export default function AttendanceManager() {
 
           {/* KPI Summary Banner (Month-to-Date & 3-Tier State) */}
           {ledgerData && (
-            <div className="row g-3">
+            <div className="row g-2 mb-3">
               <div className="col-12 col-sm-6 col-lg-3">
-                <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-                  <div className="text-muted small fw-medium">Active Ledger Period</div>
-                  <div className="fw-bold fs-5 text-primary mt-1">{ledgerData.monthName}</div>
-                  <div className="text-muted small" style={{ fontSize: '11px' }}>
+                <div className="card hg-card p-2.5 bg-white h-100">
+                  <div className="text-muted hg-text-xs fw-medium">Active Ledger Period</div>
+                  <div className="fw-bold fs-6 text-primary mt-1">{ledgerData.monthName}</div>
+                  <div className="text-muted hg-text-xs hg-tabular">
                     {ledgerData.daysElapsed || ledgerData.daysInMonth} of {ledgerData.daysInMonth} days passed ({ledgerData.daysRemaining || 0} left)
                   </div>
                 </div>
               </div>
               <div className="col-12 col-sm-6 col-lg-3">
-                <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-                  <div className="text-muted small fw-medium">Official Holidays Excluded</div>
-                  <div className="fw-bold fs-5 text-secondary mt-1">{ledgerData.monthlyHolidays} Days</div>
-                  <div className="text-muted small" style={{ fontSize: '11px' }}>
+                <div className="card hg-card p-2.5 bg-white h-100">
+                  <div className="text-muted hg-text-xs fw-medium">Official Holidays Excluded</div>
+                  <div className="fw-bold fs-6 text-secondary mt-1 hg-tabular">{ledgerData.monthlyHolidays} Days</div>
+                  <div className="text-muted hg-text-xs hg-tabular">
                     Session {ledgerData.year}: {ledgerData.yearlyHolidays} holidays excluded
                   </div>
                 </div>
               </div>
               <div className="col-12 col-sm-6 col-lg-3">
-                <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-                  <div className="text-muted small fw-medium">Net Active Days (Month)</div>
-                  <div className="fw-bold fs-5 text-success mt-1">{ledgerData.monthlyActiveDays} Active Days</div>
-                  <div className="text-muted small" style={{ fontSize: '11px' }}>
+                <div className="card hg-card p-2.5 bg-white h-100">
+                  <div className="text-muted hg-text-xs fw-medium">Net Active Days (Month)</div>
+                  <div className="fw-bold fs-6 text-success mt-1 hg-tabular">{ledgerData.monthlyActiveDays} Active Days</div>
+                  <div className="text-muted hg-text-xs hg-tabular">
                     Session Net Active Days: {ledgerData.yearlyActiveDays}
                   </div>
                 </div>
               </div>
               <div className="col-12 col-sm-6 col-lg-3">
-                <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-                  <div className="text-muted small fw-medium">Safety Defaulters (&ge;2 Nights)</div>
-                  <div className={`fw-bold fs-5 mt-1 ${(ledgerData.safetyAlertCount || 0) > 0 ? 'text-danger' : 'text-success'}`}>
+                <div className="card hg-card p-2.5 bg-white h-100">
+                  <div className="text-muted hg-text-xs fw-medium">Safety Defaulters (&ge;2 Nights)</div>
+                  <div className={`fw-bold fs-6 mt-1 hg-tabular ${(ledgerData.safetyAlertCount || 0) > 0 ? 'text-danger' : 'text-success'}`}>
                     {ledgerData.safetyAlertCount || 0} Residents
                   </div>
-                  <div className="text-muted small" style={{ fontSize: '11px' }}>
-                    {(ledgerData.safetyAlertCount || 0) === 0 ? '✓ All residents verified safely' : 'Requires immediate welfare check'}
+                  <div className="text-muted hg-text-xs">
+                    {(ledgerData.safetyAlertCount || 0) === 0 ? 'All residents verified safely' : 'Requires immediate welfare check'}
                   </div>
                 </div>
               </div>
@@ -808,7 +808,7 @@ export default function AttendanceManager() {
           )}
 
           {/* Ledger Table Card */}
-          <div className="card shadow-sm border-0 rounded-4 overflow-hidden">
+          <div className="card hg-card mb-3 overflow-hidden">
             <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
               <div className="d-flex align-items-center gap-2">
                 <Calendar size={18} className="text-primary" />
@@ -916,23 +916,23 @@ export default function AttendanceManager() {
 
       {/* Override Attendance Modal */}
       {showOverrideModal && selectedRecord && (
-        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal show d-block hg-modal-backdrop" tabIndex="-1">
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content shadow rounded-3 border-0">
-              <div className="modal-header border-bottom py-3">
-                <h6 className="modal-title fw-bold">
+            <div className="modal-content hg-card shadow rounded-2 border-0">
+              <div className="modal-header border-bottom py-2.5 px-3">
+                <h6 className="modal-title fw-bold mb-0">
                   Administrative Override &bull; {selectedRecord.full_name} ({selectedRecord.roll_no || selectedRecord.roll_number})
                 </h6>
                 <button type="button" className="btn-close" onClick={() => setShowOverrideModal(false)}></button>
               </div>
               <form onSubmit={handleSaveOverride}>
-                <div className="modal-body p-4">
+                <div className="modal-body p-3">
                   <div className="mb-3">
-                    <label className="form-label small fw-medium">Record Date</label>
+                    <label className="form-label hg-text-xs fw-medium">Record Date</label>
                     <input type="text" className="form-control form-control-sm" value={selectedDate || todayStr} disabled />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label small fw-medium">Override Decision Status</label>
+                    <label className="form-label hg-text-xs fw-medium">Override Decision Status</label>
                     <select
                       className="form-select form-select-sm"
                       value={overrideStatus}
@@ -944,7 +944,7 @@ export default function AttendanceManager() {
                     </select>
                   </div>
                   <div className="mb-3">
-                    <label className="form-label small fw-medium">Administrative Justification / Reason *</label>
+                    <label className="form-label hg-text-xs fw-medium">Administrative Justification / Reason *</label>
                     <textarea
                       className="form-control"
                       rows="3"
@@ -953,10 +953,10 @@ export default function AttendanceManager() {
                       onChange={(e) => setOverrideReason(e.target.value)}
                       required
                     ></textarea>
-                    <div className="form-text small">This reason will be immutably recorded in the system audit log.</div>
+                    <div className="form-text hg-text-xs">This reason will be immutably recorded in the system audit log.</div>
                   </div>
                 </div>
-                <div className="modal-footer border-top bg-light py-2">
+                <div className="modal-footer border-top bg-light py-2 px-3">
                   <button type="button" className="btn btn-sm btn-secondary" onClick={() => setShowOverrideModal(false)}>
                     Cancel
                   </button>
@@ -972,12 +972,12 @@ export default function AttendanceManager() {
 
       {/* Clear Attendance Modal */}
       {showClearModal && (
-        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal show d-block hg-modal-backdrop" tabIndex="-1">
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content shadow rounded-3 border-0">
-              <div className="modal-header border-bottom py-3 bg-danger text-white">
-                <h6 className="modal-title fw-bold d-flex align-items-center gap-2">
-                  <AlertTriangle size={18} />
+            <div className="modal-content hg-card shadow rounded-2 border-0">
+              <div className="modal-header border-bottom py-2.5 px-3 bg-danger text-white">
+                <h6 className="modal-title fw-bold d-flex align-items-center gap-2 mb-0">
+                  <AlertTriangle size={16} />
                   Purge Attendance Records
                 </h6>
                 <button type="button" className="btn-close btn-close-white" onClick={() => setShowClearModal(false)}></button>

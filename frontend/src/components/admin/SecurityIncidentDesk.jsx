@@ -698,12 +698,12 @@ export default function SecurityIncidentDesk() {
 
       {/* Reset Strike Modal */}
       {showResetModal && selectedStudent && (
-        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1055 }}>
+        <div className="modal show d-block hg-modal-backdrop" tabIndex="-1" style={{ zIndex: 1055 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content rounded-3 border-0 shadow">
-              <div className="modal-header border-bottom">
-                <h6 className="modal-title fw-bold d-flex align-items-center gap-2">
-                  <RotateCcw size={18} className="text-danger" />
+            <div className="modal-content hg-card rounded-2 border-0 shadow">
+              <div className="modal-header border-bottom py-2.5 px-3">
+                <h6 className="modal-title fw-bold d-flex align-items-center gap-2 mb-0">
+                  <RotateCcw size={16} className="text-danger" />
                   Reset Security Strike Counter
                 </h6>
                 <button type="button" className="btn-close" onClick={() => setShowResetModal(false)}></button>
@@ -762,10 +762,10 @@ export default function SecurityIncidentDesk() {
 
       {/* Clear Incident Logs Confirmation Modal */}
       {showClearLogsModal && (
-        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+        <div className="modal show d-block hg-modal-backdrop" tabIndex="-1" style={{ zIndex: 1060 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content rounded-3 border-0 shadow">
-              <div className="modal-header border-bottom bg-danger-subtle text-danger">
+            <div className="modal-content hg-card rounded-2 border-0 shadow">
+              <div className="modal-header border-bottom py-2.5 px-3 bg-danger-subtle text-danger">
                 <h6 className="modal-title fw-bold d-flex align-items-center gap-2">
                   <Trash2 size={18} />
                   Clear All Security & Forge Incident Logs

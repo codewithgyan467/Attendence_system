@@ -936,9 +936,9 @@ export default function StudentRosterManager() {
 
       {/* MODAL 1: Multi-Format Upload with Validation Preview (Excel, Word, CSV) */}
       {showUploadModal && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal show d-block hg-modal-backdrop">
           <div className="modal-dialog modal-lg">
-            <div className="modal-content">
+            <div className="modal-content hg-card shadow rounded-2 border-0">
               <div className="modal-header">
                 <div className="d-flex align-items-center gap-2">
                   <div className="p-2 rounded bg-primary-subtle text-primary">
@@ -1127,11 +1127,11 @@ export default function StudentRosterManager() {
 
       {/* MODAL 2: View Student Details - Full 13 Fields */}
       {showViewModal && selectedStudent && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal show d-block hg-modal-backdrop">
           <div className="modal-dialog modal-lg">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title fw-bold">Student Identity & Academic Record</h5>
+            <div className="modal-content hg-card shadow rounded-2 border-0">
+              <div className="modal-header py-2.5 px-3">
+                <h6 className="modal-title fw-bold mb-0">Student Identity &amp; Academic Record</h6>
                 <button type="button" className="btn-close" onClick={() => setShowViewModal(false)}></button>
               </div>
               <div className="modal-body" style={{ fontSize: '13px' }}>
@@ -1194,11 +1194,11 @@ export default function StudentRosterManager() {
 
       {/* MODAL 3: Edit Student - 13 Details */}
       {showEditModal && selectedStudent && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal show d-block hg-modal-backdrop">
           <div className="modal-dialog modal-lg">
-            <form onSubmit={handleSaveEdit} className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title fw-bold">Edit Student Details ({selectedStudent.roll_number})</h5>
+            <form onSubmit={handleSaveEdit} className="modal-content hg-card shadow rounded-2 border-0">
+              <div className="modal-header py-2.5 px-3">
+                <h6 className="modal-title fw-bold mb-0">Edit Student Details ({selectedStudent.roll_number})</h6>
                 <button type="button" className="btn-close" onClick={() => setShowEditModal(false)}></button>
               </div>
               <div className="modal-body" style={{ fontSize: '13px' }}>
@@ -1383,13 +1383,13 @@ export default function StudentRosterManager() {
 
       {/* MODAL: Manual Add Student Record */}
       {showManualModal && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 1055 }}>
+        <div className="modal show d-block hg-modal-backdrop" style={{ zIndex: 1055 }}>
           <div className="modal-dialog modal-lg">
-            <form onSubmit={handleManualAddSubmit} autoComplete="off" className="modal-content shadow-lg border-0 rounded-3">
-              <div className="modal-header bg-success text-white py-3">
+            <form onSubmit={handleManualAddSubmit} autoComplete="off" className="modal-content hg-card shadow-lg border-0 rounded-2">
+              <div className="modal-header bg-success text-white py-2.5 px-3">
                 <div className="d-flex align-items-center gap-2">
-                  <UserPlus size={20} />
-                  <h5 className="modal-title fw-bold mb-0 text-white">Manual Student Registration</h5>
+                  <UserPlus size={18} />
+                  <h6 className="modal-title fw-bold mb-0 text-white">Manual Student Registration</h6>
                 </div>
                 <button type="button" className="btn-close btn-close-white" onClick={() => setShowManualModal(false)}></button>
               </div>
@@ -1622,13 +1622,13 @@ export default function StudentRosterManager() {
 
       {/* MODAL: Delete Individual Student Confirmation */}
       {showDeleteModal && studentToDelete && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(3px)', zIndex: 1060 }}>
+        <div className="modal show d-block hg-modal-backdrop" style={{ zIndex: 1060 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg rounded-3">
-              <div className="modal-header bg-danger text-white py-3">
+            <div className="modal-content hg-card border-0 shadow-lg rounded-2">
+              <div className="modal-header bg-danger text-white py-2.5 px-3">
                 <div className="d-flex align-items-center gap-2">
-                  <Trash2 size={20} />
-                  <h5 className="modal-title fw-bold mb-0 text-white">Delete Student Record</h5>
+                  <Trash2 size={18} />
+                  <h6 className="modal-title fw-bold mb-0 text-white">Delete Student Record</h6>
                 </div>
                 <button
                   type="button"
@@ -1692,9 +1692,9 @@ export default function StudentRosterManager() {
 
       {/* MODAL 5: Admin One-Click Password Reset for Student */}
       {showResetModal && resetTargetStudent && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+        <div className="modal show d-block hg-modal-backdrop" style={{ zIndex: 1060 }}>
           <div className="modal-dialog">
-            <form onSubmit={handleAdminResetPassword} className="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <form onSubmit={handleAdminResetPassword} className="modal-content hg-card border-0 shadow-lg rounded-2 overflow-hidden">
               <div className="modal-header bg-dark text-white p-3">
                 <div className="d-flex align-items-center gap-2">
                   <Key size={18} className="text-warning" />

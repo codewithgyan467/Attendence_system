@@ -28,7 +28,7 @@ export default function KpiCard({
 
   return (
     <div
-      className={`hg-kpi-card h-100 ${isClickable ? 'hg-kpi-clickable' : ''}`}
+      className={`card hg-card h-100 ${isClickable ? 'hg-kpi-clickable' : ''}`}
       onClick={onClick}
       role={isClickable ? 'button' : undefined}
       tabIndex={isClickable ? 0 : undefined}
@@ -40,41 +40,45 @@ export default function KpiCard({
       } : undefined}
       style={{
         cursor: isClickable ? 'pointer' : 'default',
-        transition: 'transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease',
         userSelect: isClickable ? 'none' : 'auto'
       }}
     >
-      <div className="d-flex align-items-center justify-content-between mb-2">
-        <span className="text-uppercase fw-bold text-muted" style={{ fontSize: '11px', letterSpacing: '0.5px' }}>
-          {title}
-        </span>
-        {Icon && (
-          <div className="hg-kpi-icon" style={{ backgroundColor: c.bg, color: c.fg }}>
-            <Icon size={20} />
+      <div className="card-body p-3 d-flex flex-column justify-content-between">
+        <div>
+          <div className="d-flex align-items-center justify-content-between mb-1">
+            <span className="text-uppercase fw-semibold text-muted hg-text-xs">
+              {title}
+            </span>
+            {Icon && (
+              <div className="hg-kpi-icon rounded-2" style={{ backgroundColor: c.bg, color: c.fg }}>
+                <Icon size={18} />
+              </div>
+            )}
           </div>
-        )}
-      </div>
-
-      <div className="hg-kpi-value">{value}</div>
-
-      <div className="d-flex align-items-center justify-content-between mt-2">
-        {subtitle && <span className="text-muted" style={{ fontSize: '12px' }}>{subtitle}</span>}
-        {badgeText && (
-          <span className="badge" style={{ backgroundColor: c.bg, color: c.text, fontSize: '11px' }}>
-            {badgeText}
-          </span>
-        )}
-      </div>
-
-      {actionText && (
-        <div
-          className="mt-2.5 pt-2 border-top d-flex align-items-center justify-content-between"
-          style={{ fontSize: '11.5px', color: c.text, fontWeight: 600 }}
-        >
-          <span>{actionText}</span>
-          <span style={{ fontSize: '14px', lineHeight: 1 }}>&rarr;</span>
+          <div className="hg-kpi-value hg-tabular mb-1">{value}</div>
         </div>
-      )}
+
+        <div>
+          <div className="d-flex align-items-center justify-content-between mt-1">
+            {subtitle && <span className="text-muted hg-text-xs">{subtitle}</span>}
+            {badgeText && (
+              <span className="badge hg-badge" style={{ backgroundColor: c.bg, color: c.text }}>
+                {badgeText}
+              </span>
+            )}
+          </div>
+
+          {actionText && (
+            <div
+              className="mt-2 pt-1.5 border-top d-flex align-items-center justify-content-between hg-text-xs"
+              style={{ color: c.text, fontWeight: 600 }}
+            >
+              <span>{actionText}</span>
+              <span className="ms-1">&rarr;</span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

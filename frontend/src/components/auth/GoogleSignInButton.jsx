@@ -176,11 +176,11 @@ export default function GoogleSignInButton({
       {/* Development / Demo Quick Connect Modal */}
       {showDemoModal && (
         <div
-          className="modal fade show d-block"
-          style={{ backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(3px)', zIndex: 1060 }}
+          className="modal fade show d-block hg-modal-backdrop"
+          style={{ zIndex: 1060 }}
         >
           <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '400px' }}>
-            <div className="modal-content border-0 shadow-lg rounded-4">
+            <div className="modal-content hg-card border-0 shadow-lg rounded-2">
               <div className="modal-header border-0 pb-0">
                 <div className="d-flex align-items-center gap-2">
                   <svg width="22" height="22" viewBox="0 0 48 48">

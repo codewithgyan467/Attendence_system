@@ -79,11 +79,8 @@ export default function AppDownloadModal({ isOpen, onClose }) {
 
   return (
     <div
-      className="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center p-2 p-sm-3"
+      className="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center p-2 p-sm-3 hg-modal-backdrop"
       style={{
-        backgroundColor: 'rgba(15, 23, 42, 0.8)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
         zIndex: 1060,
         overflowY: 'auto'
       }}
@@ -92,19 +89,17 @@ export default function AppDownloadModal({ isOpen, onClose }) {
       }}
     >
       <div
-        className="card border-0 shadow-lg rounded-4 overflow-hidden d-flex flex-column my-auto"
+        className="card hg-card border-0 shadow-lg rounded-2 overflow-hidden d-flex flex-column my-auto"
         style={{
           maxWidth: '640px',
           width: '100%',
-          maxHeight: 'calc(100vh - 24px)',
-          animation: 'fadeIn 0.2s ease-out'
+          maxHeight: 'calc(100vh - 24px)'
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header (Fixed at top) */}
         <div
-          className="px-3 py-2 text-white d-flex align-items-center justify-content-between flex-shrink-0"
-          style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}
+          className="px-3 py-2 text-white bg-dark border-bottom border-secondary d-flex align-items-center justify-content-between flex-shrink-0"
         >
           <div className="d-flex align-items-center gap-2">
             <img

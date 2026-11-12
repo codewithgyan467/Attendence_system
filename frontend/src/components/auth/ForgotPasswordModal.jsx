@@ -292,15 +292,14 @@ export default function ForgotPasswordModal({
 
   return (
     <div
-      className="modal show d-block"
-      style={{ backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(4px)', zIndex: 1060 }}
+      className="modal show d-block hg-modal-backdrop"
+      style={{ zIndex: 1060 }}
     >
       <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '500px' }}>
-        <div className="modal-content border-0 shadow-2xl rounded-4 overflow-hidden">
+        <div className="modal-content hg-card border-0 shadow-lg rounded-2 overflow-hidden">
           {/* Header */}
           <div
-            className="p-4 text-white position-relative"
-            style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}
+            className="p-3 text-white position-relative bg-dark border-bottom border-secondary"
           >
             <button
               type="button"

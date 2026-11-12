@@ -100,16 +100,15 @@ export default function InitialAdminSetupModal({ isOpen, user, onSetupComplete }
 
   return (
     <div
-      className="modal fade show d-block"
+      className="modal fade show d-block hg-modal-backdrop"
       tabIndex="-1"
-      style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 1060 }}
+      style={{ zIndex: 1060 }}
     >
       <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '520px' }}>
-        <div className="modal-content border-0 shadow-2xl rounded-4 overflow-hidden">
+        <div className="modal-content hg-card border-0 shadow-lg rounded-2 overflow-hidden">
           {/* Header */}
           <div
-            className="px-4 py-3.5 text-white"
-            style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}
+            className="px-3 py-2.5 text-white bg-dark border-bottom border-secondary"
           >
             <div className="d-flex align-items-center gap-2 mb-1">
               <div className="p-2 rounded-3 bg-danger bg-opacity-20 text-danger border border-danger border-opacity-30">

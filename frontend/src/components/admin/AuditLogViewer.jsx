@@ -349,10 +349,10 @@ export default function AuditLogViewer() {
 
       {/* Clear All Audit Logs Confirmation Modal */}
       {showClearModal && (
-        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+        <div className="modal show d-block hg-modal-backdrop" tabIndex="-1" style={{ zIndex: 1060 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content rounded-3 border-0 shadow">
-              <div className="modal-header border-bottom bg-danger-subtle text-danger">
+            <div className="modal-content hg-card rounded-2 border-0 shadow">
+              <div className="modal-header border-bottom py-2.5 px-3 bg-danger-subtle text-danger">
                 <h6 className="modal-title fw-bold d-flex align-items-center gap-2">
                   <Trash2 size={18} />
                   Purge Historical Audit Trail

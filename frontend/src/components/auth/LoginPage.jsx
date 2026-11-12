@@ -158,9 +158,9 @@ export default function LoginPage({ onNavigateOnboarding }) {
 
   return (
     <div className="container d-flex justify-content-center my-auto py-2">
-      <div className="card shadow-lg border-0 rounded-4" style={{ maxWidth: '420px', width: '100%', overflow: 'hidden' }}>
+      <div className="card hg-card shadow-lg border-0 rounded-2" style={{ maxWidth: '420px', width: '100%', overflow: 'hidden' }}>
         {/* Card Header */}
-        <div className="px-3 py-2.5 text-center text-white" style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}>
+        <div className="px-3 py-2.5 text-center text-white bg-dark border-bottom border-secondary">
           <img
             src="/icon-192.png"
             alt="HostelGuard Security Mascot"

@@ -892,13 +892,13 @@ export default function AdminDashboard({ onNavigate }) {
 
 
       {/* Plain-English 3-Mode Attendance Selector (One-Click Setup) */}
-      <div className="card border-0 rounded-4 shadow-sm mb-4 overflow-hidden border-start border-4 border-primary bg-white">
-        <div className="card-header bg-light py-3 px-4 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <div className="card hg-card mb-3 border-start border-3 border-primary">
+        <div className="card-header bg-light py-2 px-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
           <div className="d-flex align-items-center gap-2">
-            <Radio size={20} className="text-primary" />
+            <Radio size={18} className="text-primary" />
             <h6 className="fw-bold mb-0 text-dark">Hostel Attendance Enforcement Mode</h6>
           </div>
-          <span className={`badge ${bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'bg-danger text-white' : (bleMode === 'SOFT_ANCHOR' ? 'bg-warning text-dark' : 'bg-success text-white')} px-3 py-1.5`} style={{ fontSize: '11px' }}>
+          <span className={`badge ${bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'bg-danger text-white' : (bleMode === 'SOFT_ANCHOR' ? 'bg-warning text-dark' : 'bg-success text-white')} px-2.5 py-1 hg-badge`}>
             Active: {bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' ? 'Mode 3: Strict Hostel Lock' : (bleMode === 'SOFT_ANCHOR' ? 'Mode 2: Smart Mode' : 'Mode 1: Normal Mode')}
           </span>
         </div>
@@ -967,7 +967,7 @@ export default function AdminDashboard({ onNavigate }) {
           )}
 
           {/* Simple "System Health & Auto-Save" Banner (Replaces Complex Vault Controls) */}
-          <div className="card bg-light border p-3 rounded-4 mt-2">
+          <div className="card bg-light border p-2.5 rounded-2 mt-2">
             <div className="d-flex align-items-center justify-content-between flex-wrap gap-2.5">
               <div className="d-flex align-items-center gap-2">
                 {(vaultStatus?.unsyncedAttendanceCount || 0) === 0 ? (
@@ -1040,11 +1040,11 @@ export default function AdminDashboard({ onNavigate }) {
       </div>
 
       {/* 1-Click Multi-Floor Boxes & Multi-Wi-Fi Manager */}
-      <div className="card border-0 rounded-4 shadow-sm mb-4 overflow-hidden bg-white">
-        <div className="card-header bg-light py-3 px-4 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <div className="card hg-card mb-3 overflow-hidden bg-white">
+        <div className="card-header bg-light py-2 px-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
           <div className="d-flex align-items-center gap-2">
             <Radio size={18} className="text-primary" />
-            <h6 className="fw-bold mb-0 text-dark">🏢 Floor Boxes &amp; Multi-Wi-Fi Fleet Manager</h6>
+            <h6 className="fw-bold mb-0 text-dark">Floor Boxes &amp; Multi-Wi-Fi Fleet Manager</h6>
           </div>
           <div className="d-flex align-items-center gap-2">
             <button
@@ -1358,11 +1358,11 @@ export default function AdminDashboard({ onNavigate }) {
 
         <div
 
-          className="modal show d-block"
+          className="modal show d-block hg-modal-backdrop"
 
           tabIndex="-1"
 
-          style={{ background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', zIndex: 1060 }}
+          style={{ zIndex: 1060 }}
 
           onClick={(e) => {
 
@@ -1374,11 +1374,11 @@ export default function AdminDashboard({ onNavigate }) {
 
           <div className="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
 
-            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '16px', overflow: 'hidden' }}>
+            <div className="modal-content hg-card border-0 rounded-2 shadow overflow-hidden">
 
               {/* Modal Header */}
 
-              <div className="modal-header border-bottom bg-light px-4 py-3 d-flex align-items-center justify-content-between">
+              <div className="modal-header border-bottom bg-light px-3 py-2.5 d-flex align-items-center justify-content-between">
 
                 <div>
 

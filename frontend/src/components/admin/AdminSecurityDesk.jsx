@@ -565,13 +565,13 @@ export default function AdminSecurityDesk() {
       {/* Modal: Regenerate Master Recovery Key */}
       {showRegenModal && (
         <div
-          className="modal fade show d-block"
+          className="modal fade show d-block hg-modal-backdrop"
           tabIndex="-1"
-          style={{ backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(4px)', zIndex: 1050 }}
+          style={{ zIndex: 1050 }}
         >
           <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '480px' }}>
-            <div className="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-              <div className="modal-header bg-dark text-white py-3 px-4">
+            <div className="modal-content hg-card border-0 shadow-lg rounded-2 overflow-hidden">
+              <div className="modal-header bg-dark text-white py-2.5 px-3">
                 <h6 className="modal-title fw-bold text-white mb-0 d-flex align-items-center gap-2">
                   <Key size={18} className="text-warning" />
                   <span>Regenerate Master Recovery Key</span>

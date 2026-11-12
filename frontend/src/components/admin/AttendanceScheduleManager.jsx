@@ -524,14 +524,14 @@ export default function AttendanceScheduleManager() {
 
       {/* Modal: Add Special Day Override / Event Extension */}
       {showOverrideModal && (
-        <div className="modal show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
+        <div className="modal show d-block hg-modal-backdrop" tabIndex="-1" style={{ zIndex: 1050 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow">
-              <div className="modal-header border-bottom">
-                <h5 className="modal-title fw-bold d-flex align-items-center gap-2" style={{ fontSize: '16px' }}>
-                  <PartyPopper size={18} className="text-primary" />
+            <div className="modal-content hg-card border-0 rounded-2 shadow">
+              <div className="modal-header border-bottom py-2.5 px-3">
+                <h6 className="modal-title fw-bold d-flex align-items-center gap-2 mb-0">
+                  <PartyPopper size={16} className="text-primary" />
                   Add Event Delay / Holiday Override
-                </h5>
+                </h6>
                 <button type="button" className="btn-close" onClick={() => setShowOverrideModal(false)} />
               </div>
               <form onSubmit={handleCreateOverride}>
@@ -637,14 +637,14 @@ export default function AttendanceScheduleManager() {
 
       {/* Modal: Bulk Holiday List Uploader */}
       {showUploadModal && (
-        <div className="modal show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
+        <div className="modal show d-block hg-modal-backdrop" tabIndex="-1" style={{ zIndex: 1050 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow">
-              <div className="modal-header border-bottom">
-                <h5 className="modal-title fw-bold d-flex align-items-center gap-2" style={{ fontSize: '16px' }}>
-                  <FileSpreadsheet size={18} className="text-primary" />
-                  Upload Holiday & Event Calendar (CSV / Excel)
-                </h5>
+            <div className="modal-content hg-card border-0 rounded-2 shadow">
+              <div className="modal-header border-bottom py-2.5 px-3">
+                <h6 className="modal-title fw-bold d-flex align-items-center gap-2 mb-0">
+                  <FileSpreadsheet size={16} className="text-primary" />
+                  Upload Holiday &amp; Event Calendar (CSV / Excel)
+                </h6>
                 <button type="button" className="btn-close" onClick={() => setShowUploadModal(false)} />
               </div>
               <form onSubmit={handleUploadHolidays}>

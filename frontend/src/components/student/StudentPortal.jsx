@@ -1257,57 +1257,35 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   return (
     <div className="container-fluid px-0">
       {/* Student Greeting & Summary Banner */}
-      <div className="card shadow-sm border-0 rounded-4 mb-4 text-white overflow-hidden" style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}>
-        <div className="card-body p-4">
+      <div className="card hg-card bg-dark text-white border-secondary mb-3">
+        <div className="card-body p-3">
           <div className="d-flex flex-wrap justify-content-between align-items-center gap-3">
             <div>
-              <div className="text-primary-subtle small fw-medium text-uppercase mb-1" style={{ letterSpacing: '0.6px', fontSize: '11px' }}>
+              <div className="text-primary-subtle hg-text-xs fw-medium text-uppercase mb-1">
                 {formatDateIST(new Date())}
               </div>
-              <h3 className="fw-bold mb-1 text-white">
+              <h4 className="fw-bold mb-1 text-white">
                 {getGreeting(student.full_name || user?.username)}
-              </h3>
-              <div className="text-muted small">
-                Roll No: <span className="text-light fw-medium">{student.roll_number || user?.username}</span> &bull; {student.hostel_block || 'Hostel'} &bull; Rm {student.room_number || 'N/A'} &bull; {student.course || 'Resident'}
+              </h4>
+              <div className="text-muted hg-text-xs">
+                Roll No: <span className="text-light fw-medium hg-tabular">{student.roll_number || user?.username}</span> &bull; {student.hostel_block || 'Hostel'} &bull; Rm {student.room_number || 'N/A'} &bull; {student.course || 'Resident'}
               </div>
             </div>
 
             {/* Today's Roll Call Status Indicator */}
             <div className="d-flex align-items-center gap-2">
               <div
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '12px',
-                  background: todayStatus.status === 'PRESENT'
-                    ? 'rgba(16, 185, 129, 0.18)'
-                    : 'rgba(245, 158, 11, 0.22)',
-                  border: todayStatus.status === 'PRESENT'
-                    ? '1.5px solid #10b981'
-                    : '1.5px solid #f59e0b',
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)'
-                }}
+                className={`px-3 py-1.5 rounded-2 border ${
+                  todayStatus.status === 'PRESENT'
+                    ? 'bg-success bg-opacity-10 border-success text-success'
+                    : 'bg-warning bg-opacity-10 border-warning text-warning'
+                }`}
               >
-                <div
-                  style={{
-                    fontSize: '11px',
-                    fontWeight: '700',
-                    letterSpacing: '0.6px',
-                    textTransform: 'uppercase',
-                    color: '#cbd5e1',
-                    marginBottom: '2px'
-                  }}
-                >
+                <div className="hg-text-xs fw-bold text-uppercase text-secondary mb-0.5">
                   Today's Status
                 </div>
-                <div
-                  style={{
-                    fontSize: '14px',
-                    fontWeight: '800',
-                    letterSpacing: '0.3px',
-                    color: todayStatus.status === 'PRESENT' ? '#34d399' : '#fbbf24'
-                  }}
-                >
-                  {todayStatus.status === 'PRESENT' ? '✓ PRESENT' : 'ATTENDANCE REQUIRED'}
+                <div className="fw-bold fs-6">
+                  {todayStatus.status === 'PRESENT' ? 'PRESENT' : 'ATTENDANCE REQUIRED'}
                 </div>
               </div>
             </div>
@@ -1317,59 +1295,59 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
       {/* Consecutive Absence Safety Alert Banner */}
       {safetyAlert && safetyAlert.isSafetyAlert && (
-        <div className="alert alert-danger d-flex align-items-center gap-2 mb-4 rounded-4 shadow-sm" role="alert">
-          <AlertTriangle size={22} className="flex-shrink-0 text-danger" />
-          <div>
-            <strong>Hostel Welfare Alert:</strong> You have missed <strong>{safetyAlert.consecutiveMissedNights} consecutive roll calls</strong> without an approved gate pass or leave slip. Please meet your hostel warden or submit an attendance appeal to regularize your roll call status.
+        <div className="alert alert-danger d-flex align-items-center gap-2 mb-3 rounded-2" role="alert">
+          <AlertTriangle size={20} className="flex-shrink-0 text-danger" />
+          <div className="hg-text-xs">
+            <strong>Hostel Welfare Alert:</strong> You have missed <strong className="hg-tabular">{safetyAlert.consecutiveMissedNights} consecutive roll calls</strong> without an approved gate pass or leave slip. Please meet your hostel warden or submit an attendance appeal to regularize your roll call status.
           </div>
         </div>
       )}
 
       {/* 4 Attendance Summary Metric Cards (MTD Progress & 3-Tier State) */}
-      <div className="row g-3 mb-4">
+      <div className="row g-2 mb-3">
         <div className="col-6 col-md-3">
-          <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+          <div className="card hg-card p-2.5 bg-white h-100">
             <div className="d-flex justify-content-between align-items-center mb-1">
-              <span className="text-muted small fw-medium">This Month's Presence</span>
+              <span className="text-muted hg-text-xs fw-medium">This Month's Presence</span>
               {isOnTrack ? (
-                <span className="badge bg-success bg-opacity-10 text-success fw-bold" style={{ fontSize: '10px' }}>✓ On-Track</span>
+                <span className="badge bg-success bg-opacity-10 text-success fw-bold hg-badge">On-Track</span>
               ) : (
-                <span className="badge bg-danger bg-opacity-10 text-danger fw-bold" style={{ fontSize: '10px' }}>{monthlyAbsent} Missed</span>
+                <span className="badge bg-danger bg-opacity-10 text-danger fw-bold hg-badge hg-tabular">{monthlyAbsent} Missed</span>
               )}
             </div>
-            <div className="fw-bold fs-4 text-primary mt-1">{monthlyPresent} Days Present</div>
-            <div className="text-muted small" style={{ fontSize: '11px' }}>
+            <div className="fw-bold fs-5 text-primary mt-1 hg-tabular">{monthlyPresent} Days Present</div>
+            <div className="text-muted hg-text-xs hg-tabular">
               {monthlyPresent} of {daysElapsed} days passed · {daysRemaining} days remaining in {currentMonthShort}
             </div>
           </div>
         </div>
         <div className="col-6 col-md-3">
-          <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-            <div className="text-muted small fw-medium">Yearly Presence</div>
-            <div className="fw-bold fs-4 text-success mt-1">{yearlyPresent} / {yearlyActiveDays} Active Days</div>
-            <div className="text-muted small" style={{ fontSize: '11px' }}>
+          <div className="card hg-card p-2.5 bg-white h-100">
+            <div className="text-muted hg-text-xs fw-medium">Yearly Presence</div>
+            <div className="fw-bold fs-5 text-success mt-1 hg-tabular">{yearlyPresent} / {yearlyActiveDays} Active Days</div>
+            <div className="text-muted hg-text-xs hg-tabular">
               Day {dayOfYear} of {daysInYear} (Session {currentYear}) · {yearlyHolidays} holidays excl.
             </div>
           </div>
         </div>
         <div className="col-6 col-md-3">
-          <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-            <div className="text-muted small fw-medium">Approved Leaves / Passes</div>
-            <div className="fw-bold fs-4 text-warning mt-1">{monthlyLeave} Days ({currentMonthShort})</div>
-            <div className="text-muted small" style={{ fontSize: '11px' }}>
+          <div className="card hg-card p-2.5 bg-white h-100">
+            <div className="text-muted hg-text-xs fw-medium">Approved Leaves / Passes</div>
+            <div className="fw-bold fs-5 text-warning mt-1 hg-tabular">{monthlyLeave} Days ({currentMonthShort})</div>
+            <div className="text-muted hg-text-xs hg-tabular">
               {totalLeaveDays} total lifetime official gate &amp; night-out passes
             </div>
           </div>
         </div>
         <div className="col-6 col-md-3">
-          <div className="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
-            <div className="text-muted small fw-medium">Unauthorized Missed</div>
-            <div className={'fw-bold fs-4 mt-1 ' + (monthlyAbsent > 0 ? 'text-danger' : 'text-secondary')}>
+          <div className="card hg-card p-2.5 bg-white h-100">
+            <div className="text-muted hg-text-xs fw-medium">Unauthorized Missed</div>
+            <div className={'fw-bold fs-5 mt-1 hg-tabular ' + (monthlyAbsent > 0 ? 'text-danger' : 'text-secondary')}>
               {monthlyAbsent} Days ({currentMonthShort})
             </div>
-            <div className="text-muted small" style={{ fontSize: '11px' }}>
+            <div className="text-muted hg-text-xs hg-tabular">
               {safetyAlert && safetyAlert.isSafetyAlert ? (
-                <span className="text-danger fw-bold">⚠️ {safetyAlert.consecutiveMissedNights} consecutive nights missed!</span>
+                <span className="text-danger fw-bold">{safetyAlert.consecutiveMissedNights} consecutive nights missed!</span>
               ) : (
                 totalAbsentDays + ' total lifetime missed check-ins'
               )}
@@ -1380,7 +1358,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
       {/* Clean 7-Day Attendance Trend Chart (Requirement #7 & #21) */}
       {trendRecords.length > 0 && (
-        <div className="card border-0 shadow-sm rounded-4 p-3 mb-4 bg-white">
+        <div className="card hg-card p-3 mb-3 bg-white">
           <div className="d-flex align-items-center justify-content-between mb-2">
             <div className="d-flex align-items-center gap-2">
               <Clock size={16} className="text-primary" />
@@ -1439,51 +1417,51 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           <div className="col-lg-8">
             {/* Warning Banner if Facial Biometrics Not Yet Enrolled */}
             {dashboard && !isFaceEnrolled && (
-              <div className="card border-warning border-opacity-50 bg-warning-subtle rounded-4 p-3 mb-4 shadow-sm text-start">
+              <div className="card border-warning border-opacity-50 bg-warning-subtle rounded-2 p-2.5 mb-3 text-start">
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
                   <div className="d-flex align-items-center gap-2">
-                    <AlertTriangle size={24} className="text-warning flex-shrink-0" />
+                    <AlertTriangle size={20} className="text-warning flex-shrink-0" />
                     <div>
-                      <div className="fw-bold text-dark">Facial Biometrics Not Registered</div>
-                      <div className="small text-muted">Complete your 10-second facial identity enrollment to enable one-tap biometric attendance.</div>
+                      <div className="fw-bold text-dark hg-text-xs">Facial Biometrics Not Registered</div>
+                      <div className="hg-text-xs text-muted">Complete your 10-second facial identity enrollment to enable one-tap biometric attendance.</div>
                     </div>
                   </div>
                   <button
                     type="button"
-                    className="btn btn-warning fw-semibold btn-sm px-3 shadow-sm text-dark d-inline-flex align-items-center gap-1"
+                    className="btn btn-warning fw-semibold btn-sm px-2.5 text-dark d-inline-flex align-items-center gap-1"
                     onClick={() => {
                       setShowEnrollModal(true);
                       startEnrollCamera();
                     }}
                   >
-                    <Camera size={15} /> Complete Face Registration (10s)
+                    <Camera size={14} /> Complete Face Registration (10s)
                   </button>
                 </div>
               </div>
             )}
 
-            <div className="card shadow-sm border-0 rounded-4 overflow-hidden">
-              <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+            <div className="card hg-card mb-3 overflow-hidden">
+              <div className="card-header bg-white border-bottom py-2.5 px-3 d-flex justify-content-between align-items-center">
                 <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
-                  <UserCheck size={20} className="text-primary" />
+                  <UserCheck size={18} className="text-primary" />
                   Biometric Attendance Check-In
                 </h6>
-                <span className="badge bg-light text-dark">
+                <span className="badge bg-light text-dark border hg-badge">
                   {formatDateIST(new Date())}
                 </span>
               </div>
 
-              <div className="card-body p-4 text-center">
+              <div className="card-body p-3.5 text-center">
                 {todayStatus.isMarkedToday ? (
                   /* Polished Confirmation Screen (Requirement #13) */
-                  <div className="py-4 px-2">
-                    <div className="d-inline-flex p-3 rounded-circle bg-success bg-opacity-10 text-success mb-3 shadow-sm">
-                      <CheckCircle2 size={54} />
+                  <div className="py-3 px-2">
+                    <div className="d-inline-flex p-2.5 rounded-circle bg-success bg-opacity-10 text-success mb-2.5">
+                      <CheckCircle2 size={44} />
                     </div>
-                    <h4 className="fw-bold text-success mb-1">Attendance Marked</h4>
-                    <p className="text-muted small mb-4">You are marked <strong className="text-success">PRESENT</strong> for today's roll call.</p>
+                    <h5 className="fw-bold text-success mb-1">Attendance Marked</h5>
+                    <p className="text-muted hg-text-xs mb-3">You are marked <strong className="text-success">PRESENT</strong> for today's roll call.</p>
 
-                    <div className="card bg-light border-0 rounded-4 p-3 mx-auto text-start shadow-sm" style={{ maxWidth: '380px' }}>
+                    <div className="card bg-light border rounded-2 p-2.5 mx-auto text-start" style={{ maxWidth: '380px' }}>
                       <div className="d-flex justify-content-between py-1.5 border-bottom">
                         <span className="text-muted small">Date</span>
                         <span className="fw-semibold text-dark small">{formatDateIST(new Date())}</span>
@@ -1954,12 +1932,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
                         {/* Modern Identity Summary Card */}
                         <div
-                          className="card border-0 rounded-4 p-3.5 mx-auto text-start shadow-sm mb-4"
-                          style={{
-                            maxWidth: '360px',
-                            background: '#f8fafc',
-                            border: '1px solid #e2e8f0'
-                          }}
+                          className="card hg-card p-3 mx-auto text-start mb-3"
+                          style={{ maxWidth: '360px' }}
                         >
                           <div className="d-flex align-items-center gap-3 pb-3 mb-3 border-bottom">
                             <div
@@ -2173,57 +2147,57 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       {activeTab === 'student_history' && (
         <div className="d-flex flex-column gap-4">
           {/* Annual Session Roll Call Ledger Card */}
-          <div className="card shadow-sm border-0 rounded-4 overflow-hidden">
-            <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div className="card hg-card mb-3 overflow-hidden">
+            <div className="card-header bg-white border-bottom py-2.5 px-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
               <div className="d-flex align-items-center gap-2">
                 <Calendar size={18} className="text-primary" />
                 <h6 className="card-title mb-0 fw-semibold">
                   Session {currentYear} Official Hostel Roll Call Ledger
                 </h6>
               </div>
-              <span className="badge bg-light text-dark border">
+              <span className="badge bg-light text-dark border hg-badge">
                 Academic Course % Omitted • Pure Day-Count Ledger
               </span>
             </div>
-            <div className="card-body p-4">
-              <div className="row g-3 mb-4">
+            <div className="card-body p-3">
+              <div className="row g-2 mb-3">
                 <div className="col-12 col-sm-6 col-md-3">
-                  <div className="p-3 rounded-3 bg-light border text-center">
-                    <div className="text-muted small fw-medium">Yearly Presence</div>
-                    <div className="fw-bold fs-4 text-success mt-1">{yearlyPresent} / {yearlyActiveDays}</div>
-                    <div className="text-muted small" style={{ fontSize: '11px' }}>Net Active Days Present</div>
+                  <div className="p-2.5 rounded-2 bg-light border text-center">
+                    <div className="text-muted hg-text-xs fw-medium">Yearly Presence</div>
+                    <div className="fw-bold fs-5 text-success mt-1 hg-tabular">{yearlyPresent} / {yearlyActiveDays}</div>
+                    <div className="text-muted hg-text-xs">Net Active Days Present</div>
                   </div>
                 </div>
                 <div className="col-12 col-sm-6 col-md-3">
-                  <div className="p-3 rounded-3 bg-light border text-center">
-                    <div className="text-muted small fw-medium">Holidays Excluded</div>
-                    <div className="fw-bold fs-4 text-secondary mt-1">{yearlyHolidays} Days</div>
-                    <div className="text-muted small" style={{ fontSize: '11px' }}>Official hostel holidays</div>
+                  <div className="p-2.5 rounded-2 bg-light border text-center">
+                    <div className="text-muted hg-text-xs fw-medium">Holidays Excluded</div>
+                    <div className="fw-bold fs-5 text-secondary mt-1 hg-tabular">{yearlyHolidays} Days</div>
+                    <div className="text-muted hg-text-xs">Official hostel holidays</div>
                   </div>
                 </div>
                 <div className="col-12 col-sm-6 col-md-3">
-                  <div className="p-3 rounded-3 bg-light border text-center">
-                    <div className="text-muted small fw-medium">Yearly Missed / Absent</div>
-                    <div className="fw-bold fs-4 text-danger mt-1">{yearlyAbsent} Days</div>
-                    <div className="text-muted small" style={{ fontSize: '11px' }}>Missed roll call check-ins</div>
+                  <div className="p-2.5 rounded-2 bg-light border text-center">
+                    <div className="text-muted hg-text-xs fw-medium">Yearly Missed / Absent</div>
+                    <div className="fw-bold fs-5 text-danger mt-1 hg-tabular">{yearlyAbsent} Days</div>
+                    <div className="text-muted hg-text-xs">Missed roll call check-ins</div>
                   </div>
                 </div>
                 <div className="col-12 col-sm-6 col-md-3">
-                  <div className="p-3 rounded-3 bg-light border text-center">
-                    <div className="text-muted small fw-medium">Calendar Year Days</div>
-                    <div className="fw-bold fs-4 text-dark mt-1">{yearlySummary?.daysInYear || 365} Days</div>
-                    <div className="text-muted small" style={{ fontSize: '11px' }}>Total days in Year {currentYear}</div>
+                  <div className="p-2.5 rounded-2 bg-light border text-center">
+                    <div className="text-muted hg-text-xs fw-medium">Calendar Year Days</div>
+                    <div className="fw-bold fs-5 text-dark mt-1 hg-tabular">{yearlySummary?.daysInYear || 365} Days</div>
+                    <div className="text-muted hg-text-xs">Total days in Year {currentYear}</div>
                   </div>
                 </div>
               </div>
 
               {/* Month-by-Month Breakdown */}
-              <h6 className="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
+              <h6 className="fw-bold text-dark mb-2.5 d-flex align-items-center gap-2">
                 <Clock size={16} className="text-primary" />
                 Monthly Attendance Breakdown ({currentYear})
               </h6>
-              <div className="table-responsive rounded-3 border">
-                <table className="table table-hover align-middle mb-0">
+              <div className="table-responsive rounded-2 border">
+                <table className="table table-sm table-hover align-middle mb-0">
                   <thead className="table-light">
                     <tr className="small text-muted">
                       <th className="ps-3">Month</th>
@@ -2296,21 +2270,21 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           </div>
 
           {/* Daily Attendance History Card */}
-          <div className="card shadow-sm border-0 rounded-4">
-            <div className="card-header bg-white border-bottom py-3">
+          <div className="card hg-card mb-3">
+            <div className="card-header bg-white border-bottom py-2.5 px-3">
               <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
-                <History size={18} className="text-primary" />
+                <History size={16} className="text-primary" />
                 Daily Roll Call Verification History ({history.length} Records)
               </h6>
             </div>
             <div className="card-body p-0">
               {history.length === 0 ? (
-                <div className="text-center p-5 text-muted small">No attendance records found yet.</div>
+                <div className="text-center p-4 text-muted hg-text-xs">No attendance records found yet.</div>
               ) : (
                 <div className="table-responsive">
-                  <table className="table table-hover align-middle mb-0">
-                    <thead className="table-light">
-                      <tr className="small text-muted">
+                  <table className="table table-sm table-hover align-middle mb-0">
+                    <thead className="table-light hg-text-xs">
+                      <tr className="text-muted">
                         <th className="ps-3">Date</th>
                         <th>Check-in Time</th>
                         <th>Status</th>
@@ -2318,25 +2292,25 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                         <th className="pe-3">Recorded Distance</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="hg-text-xs">
                       {history.map((h) => (
                         <tr key={h.id || h.date}>
                           <td className="ps-3 fw-medium text-dark">{h.date}</td>
                           <td>
                             {h.time_marked ? (
-                              <span className="small text-dark"><Clock size={12} className="me-1 inline text-muted" />{formatDisplayTime12h(h.time_marked)}</span>
+                              <span className="text-dark"><Clock size={11} className="me-1 inline text-muted" />{formatDisplayTime12h(h.time_marked)}</span>
                             ) : (
-                              <span className="small text-muted">&mdash;</span>
+                              <span className="text-muted">&mdash;</span>
                             )}
                           </td>
                           <td>
-                            <span className={`badge ${h.status === 'PRESENT' ? 'bg-success' : h.status === 'OVERRIDDEN' ? 'bg-primary' : 'bg-secondary'}`}>
+                            <span className={`badge hg-badge ${h.status === 'PRESENT' ? 'bg-success' : h.status === 'OVERRIDDEN' ? 'bg-primary' : 'bg-secondary'}`}>
                               {h.status}
                             </span>
                           </td>
-                          <td><small className="text-muted">{h.verification_method || 'Facial Match'}</small></td>
+                          <td><span className="text-muted hg-text-xs">{h.verification_method || 'Facial Match'}</span></td>
                           <td className="pe-3">
-                            <small className="text-muted">{h.distance_meters ? `${h.distance_meters.toFixed(1)}m` : 'N/A'}</small>
+                            <span className="text-muted hg-text-xs">{h.distance_meters ? `${h.distance_meters.toFixed(1)}m` : 'N/A'}</span>
                           </td>
                         </tr>
                       ))}
@@ -2351,19 +2325,19 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
       {/* 3. Submit Correction Tab */}
       {activeTab === 'student_correction' && (
-        <div className="row g-4">
+        <div className="row g-3">
           <div className="col-lg-5">
-            <div className="card shadow-sm border-0 rounded-4">
-              <div className="card-header bg-white border-bottom py-3">
+            <div className="card hg-card mb-3">
+              <div className="card-header bg-white border-bottom py-2.5 px-3">
                 <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
-                  <FileCheck2 size={18} className="text-primary" />
+                  <FileCheck2 size={16} className="text-primary" />
                   Submit Attendance Appeal
                 </h6>
               </div>
-              <div className="card-body p-4">
+              <div className="card-body p-3">
                 <form onSubmit={handleSubmitCorrection}>
                   <div className="mb-3">
-                    <label className="form-label small fw-medium">Contested Date</label>
+                    <label className="form-label hg-text-xs fw-medium">Contested Date</label>
                     <input
                       type="date"
                       className="form-control form-control-sm"
@@ -2373,7 +2347,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label small fw-medium">Justification Reason</label>
+                    <label className="form-label hg-text-xs fw-medium">Justification Reason</label>
                     <textarea
                       className="form-control"
                       rows="4"
@@ -2392,35 +2366,35 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           </div>
 
           <div className="col-lg-7">
-            <div className="card shadow-sm border-0 rounded-4">
-              <div className="card-header bg-white border-bottom py-3">
+            <div className="card hg-card mb-3">
+              <div className="card-header bg-white border-bottom py-2.5 px-3">
                 <h6 className="card-title mb-0 fw-semibold">My Submitted Correction Appeals ({corrections.length})</h6>
               </div>
               <div className="card-body p-0">
                 {corrections.length === 0 ? (
-                  <div className="text-center p-4 text-muted small">No appeals submitted.</div>
+                  <div className="text-center p-3 text-muted hg-text-xs">No appeals submitted.</div>
                 ) : (
                   <div className="table-responsive">
-                    <table className="table table-hover align-middle mb-0">
-                      <thead className="table-light">
-                        <tr className="small text-muted">
+                    <table className="table table-sm table-hover align-middle mb-0">
+                      <thead className="table-light hg-text-xs">
+                        <tr className="text-muted">
                           <th className="ps-3">Date</th>
                           <th>Reason</th>
                           <th>Status</th>
                           <th className="pe-3">Resolution Notes</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="hg-text-xs">
                         {corrections.map((c) => (
                           <tr key={c.id}>
                             <td className="ps-3 fw-medium text-dark">{c.date}</td>
-                            <td style={{ maxWidth: '240px' }}><div className="small text-truncate" title={c.reason}>{c.reason}</div></td>
+                            <td style={{ maxWidth: '240px' }}><div className="text-truncate" title={c.reason}>{c.reason}</div></td>
                             <td>
-                              <span className={`badge ${c.status === 'APPROVED' ? 'bg-success' : c.status === 'REJECTED' ? 'bg-danger' : 'bg-warning text-dark'}`}>
+                              <span className={`badge hg-badge ${c.status === 'APPROVED' ? 'bg-success' : c.status === 'REJECTED' ? 'bg-danger' : 'bg-warning text-dark'}`}>
                                 {c.status}
                               </span>
                             </td>
-                            <td className="pe-3 small text-muted">{c.review_notes || c.resolution_note || '&mdash;'}</td>
+                            <td className="pe-3 text-muted">{c.review_notes || c.resolution_note || '&mdash;'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -2435,19 +2409,19 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
       {/* 4. Support & Feedback Tab */}
       {activeTab === 'student_support' && (
-        <div className="row g-4">
+        <div className="row g-3">
           <div className="col-lg-5">
-            <div className="card shadow-sm border-0 rounded-4">
-              <div className="card-header bg-white border-bottom py-3">
+            <div className="card hg-card mb-3">
+              <div className="card-header bg-white border-bottom py-2.5 px-3">
                 <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
-                  <LifeBuoy size={18} className="text-primary" />
+                  <LifeBuoy size={16} className="text-primary" />
                   Register Facility Grievance
                 </h6>
               </div>
-              <div className="card-body p-4">
+              <div className="card-body p-3">
                 <form onSubmit={handleSubmitTicket}>
                   <div className="mb-3">
-                    <label className="form-label small fw-medium">Category</label>
+                    <label className="form-label hg-text-xs fw-medium">Category</label>
                     <select
                       className="form-select form-select-sm"
                       value={ticketForm.category}
@@ -2460,7 +2434,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     </select>
                   </div>
                   <div className="mb-3">
-                    <label className="form-label small fw-medium">Subject</label>
+                    <label className="form-label hg-text-xs fw-medium">Subject</label>
                     <input
                       type="text"
                       className="form-control form-control-sm"
@@ -2471,7 +2445,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label small fw-medium">Detailed Description</label>
+                    <label className="form-label hg-text-xs fw-medium">Detailed Description</label>
                     <textarea
                       className="form-control"
                       rows="4"
@@ -2490,38 +2464,38 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           </div>
 
           <div className="col-lg-7">
-            <div className="card shadow-sm border-0 rounded-4">
-              <div className="card-header bg-white border-bottom py-3">
+            <div className="card hg-card mb-3">
+              <div className="card-header bg-white border-bottom py-2.5 px-3">
                 <h6 className="card-title mb-0 fw-semibold">My Grievance Tickets ({tickets.length})</h6>
               </div>
               <div className="card-body p-0">
                 {tickets.length === 0 ? (
-                  <div className="text-center p-4 text-muted small">No tickets submitted.</div>
+                  <div className="text-center p-3 text-muted hg-text-xs">No tickets submitted.</div>
                 ) : (
                   <div className="table-responsive">
-                    <table className="table table-hover align-middle mb-0">
-                      <thead className="table-light">
-                        <tr className="small text-muted">
+                    <table className="table table-sm table-hover align-middle mb-0">
+                      <thead className="table-light hg-text-xs">
+                        <tr className="text-muted">
                           <th className="ps-3">Subject</th>
                           <th>Category</th>
                           <th>Status</th>
                           <th className="pe-3">Warden Response</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="hg-text-xs">
                         {tickets.map((t) => (
                           <tr key={t.id}>
                             <td className="ps-3">
-                              <div className="fw-semibold text-dark small">{t.subject}</div>
-                              <div className="small text-muted text-truncate" style={{ maxWidth: '200px' }}>{t.message}</div>
+                              <div className="fw-semibold text-dark">{t.subject}</div>
+                              <div className="text-muted text-truncate" style={{ maxWidth: '200px' }}>{t.message}</div>
                             </td>
-                            <td><span className="badge bg-light text-dark">{t.category}</span></td>
+                            <td><span className="badge bg-light text-dark hg-badge">{t.category}</span></td>
                             <td>
-                              <span className={`badge ${t.status === 'RESOLVED' ? 'bg-success' : 'bg-warning text-dark'}`}>
+                              <span className={`badge hg-badge ${t.status === 'RESOLVED' ? 'bg-success' : 'bg-warning text-dark'}`}>
                                 {t.status}
                               </span>
                             </td>
-                            <td className="pe-3 small text-muted">{t.admin_response || t.resolution_note || '&mdash;'}</td>
+                            <td className="pe-3 text-muted">{t.admin_response || t.resolution_note || '&mdash;'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -2536,11 +2510,11 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
       {/* 5. Student Profile Tab */}
       {activeTab === 'student_profile' && (
-        <div className="card shadow-sm border-0 rounded-4 p-4">
-          <h5 className="fw-bold mb-3 d-flex align-items-center gap-2">
-            <User size={20} className="text-primary" />
-            Official Roster Profile & Security Parameters
-          </h5>
+        <div className="card hg-card p-3 mb-3">
+          <h6 className="fw-bold mb-3 d-flex align-items-center gap-2">
+            <User size={18} className="text-primary" />
+            Official Roster Profile &amp; Security Parameters
+          </h6>
           <div className="row g-3 small">
             <div className="col-md-6">
               <div className="p-3 bg-light rounded-3">
@@ -2608,18 +2582,18 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       {/* 6. Biometric Face Enrollment Modal */}
       {showEnrollModal && (
         <div
-          className="modal fade show d-block"
-          style={{ backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(4px)', zIndex: 1055 }}
+          className="modal fade show d-block hg-modal-backdrop"
+          style={{ zIndex: 1055 }}
           tabIndex="-1"
           role="dialog"
         >
           <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '480px' }}>
-            <div className="modal-content rounded-4 border-0 shadow-lg overflow-hidden">
-              <div className="modal-header bg-dark text-white border-0 py-3 px-4">
-                <h5 className="modal-title fw-bold fs-6 d-flex align-items-center gap-2">
-                  <Camera size={18} className="text-primary" />
+            <div className="modal-content hg-card border-0 rounded-2 shadow-lg overflow-hidden">
+              <div className="modal-header bg-dark text-white border-0 py-2.5 px-3">
+                <h6 className="modal-title fw-bold d-flex align-items-center gap-2 mb-0">
+                  <Camera size={16} className="text-primary" />
                   Facial Biometrics Enrollment
-                </h5>
+                </h6>
                 <button
                   type="button"
                   className="btn-close btn-close-white"
@@ -2947,12 +2921,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
       {/* Modal: Request Physical In-Person Warden Review */}
       {showPhysicalReviewModal && (
-        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)' }}>
+        <div className="modal show d-block hg-modal-backdrop" tabIndex="-1">
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg rounded-4">
-              <div className="modal-header border-bottom py-3 px-4 bg-light rounded-top-4">
-                <h6 className="modal-title fw-bold text-dark d-flex align-items-center gap-2">
-                  <span>🩺</span> Request In-Person Warden Check-In
+            <div className="modal-content hg-card border-0 rounded-2 shadow">
+              <div className="modal-header border-bottom py-2.5 px-3 bg-light rounded-top-2">
+                <h6 className="modal-title fw-bold text-dark d-flex align-items-center gap-2 mb-0">
+                  <UserCheck className="text-primary" size={18} /> Request In-Person Warden Check-In
                 </h6>
                 <button
                   type="button"
@@ -2961,7 +2935,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   disabled={physicalReviewSubmitting}
                 />
               </div>
-              <div className="modal-body p-4">
+              <div className="modal-body p-3">
                 {physicalReviewSuccess ? (
                   <div className="alert alert-success d-flex align-items-center gap-2 mb-0">
                     <CheckCircle2 size={18} />
@@ -2969,13 +2943,13 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   </div>
                 ) : (
                   <form onSubmit={handleRequestPhysicalVerification}>
-                    <p className="text-muted small mb-3">
+                    <p className="text-muted hg-text-xs mb-3">
                       If you have medical facial bandages, swelling, eye injury, or a broken smartphone camera, you can request an in-person roll-call check-in. The hostel warden will verify your presence in your room during evening rounds.
                     </p>
                     <div className="mb-3">
-                      <label className="form-label small fw-bold text-dark">Reason for Physical Verification</label>
+                      <label className="form-label hg-text-xs fw-bold text-dark">Reason for Physical Verification</label>
                       <select
-                        className="form-select form-select-sm rounded-3"
+                        className="form-select form-select-sm rounded-2"
                         value={physicalReviewReason}
                         onChange={(e) => setPhysicalReviewReason(e.target.value)}
                         required
@@ -2988,19 +2962,19 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                       </select>
                     </div>
                     <div className="mb-3">
-                      <label className="form-label small fw-bold text-dark">Additional Details (Optional)</label>
+                      <label className="form-label hg-text-xs fw-bold text-dark">Additional Details (Optional)</label>
                       <textarea
-                        className="form-control form-control-sm rounded-3"
+                        className="form-control form-control-sm rounded-2"
                         rows="2"
                         placeholder="E.g., Room A-204, resting with eye drops after clinic visit"
                         value={physicalReviewNotes}
                         onChange={(e) => setPhysicalReviewNotes(e.target.value)}
                       />
                     </div>
-                    <div className="d-flex justify-content-end gap-2 mt-4">
+                    <div className="d-flex justify-content-end gap-2 mt-3">
                       <button
                         type="button"
-                        className="btn btn-outline-secondary btn-sm rounded-pill px-3"
+                        className="btn btn-outline-secondary btn-sm px-3"
                         onClick={() => setShowPhysicalReviewModal(false)}
                         disabled={physicalReviewSubmitting}
                       >
@@ -3008,7 +2982,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                       </button>
                       <button
                         type="submit"
-                        className="btn btn-primary btn-sm rounded-pill px-4 fw-semibold"
+                        className="btn btn-primary btn-sm px-3 fw-semibold"
                         disabled={physicalReviewSubmitting}
                       >
                         {physicalReviewSubmitting ? 'Submitting Request...' : 'Submit Request to Warden'}
@@ -3025,49 +2999,49 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       {/* Rapido-Style Mock Location / Fake GPS Blocker Modal */}
       {showSpoofModal && (
         <div
-          className="modal show d-block"
-          style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(6px)', zIndex: 1060 }}
+          className="modal show d-block hg-modal-backdrop"
+          style={{ zIndex: 1060 }}
         >
           <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '440px' }}>
-            <div className="modal-content border-0 shadow-2xl rounded-4 overflow-hidden">
-              <div className="bg-danger text-white p-4 text-center">
-                <div className="d-inline-flex p-3 rounded-circle bg-white bg-opacity-20 mb-2">
-                  <ShieldAlert size={42} className="text-white" />
+            <div className="modal-content hg-card border-0 rounded-2 shadow overflow-hidden">
+              <div className="bg-danger text-white p-3 text-center">
+                <div className="d-inline-flex p-2 rounded-circle bg-white bg-opacity-20 mb-2">
+                  <ShieldAlert size={36} className="text-white" />
                 </div>
-                <h5 className="fw-bold mb-1 text-white">Mock Location Detected</h5>
-                <p className="small mb-0 text-white-50" style={{ fontSize: '12px' }}>
+                <h6 className="fw-bold mb-0 text-white">Mock Location Detected</h6>
+                <p className="hg-text-xs mb-0 text-white-50">
                   Anti-Spoofing Policy Violation &bull; Hardware GPS Required
                 </p>
               </div>
 
-              <div className="modal-body p-4 text-start">
-                <div className="alert alert-danger bg-danger bg-opacity-10 border-danger border-opacity-25 rounded-3 p-3 mb-3">
-                  <div className="fw-semibold text-danger small mb-1">
-                    🚫 Fake GPS or Location Spoofer Active
+              <div className="modal-body p-3 text-start">
+                <div className="alert alert-danger bg-danger bg-opacity-10 border-danger border-opacity-25 rounded-2 p-2.5 mb-3">
+                  <div className="fw-semibold text-danger hg-text-xs mb-1">
+                    Fake GPS or Location Spoofer Active
                   </div>
-                  <div className="text-dark small" style={{ fontSize: '11.5px', lineHeight: '1.45' }}>
+                  <div className="text-dark hg-text-xs">
                     HostelGuard strict biometric security requires authentic hardware GPS coordinates and live Bluetooth beacon proximity. To complete attendance roll call, you must disable mock location providers and uninstall spoofing applications.
                   </div>
                 </div>
 
                 {spoofModalData.apps && spoofModalData.apps.length > 0 && (
                   <div className="mb-3">
-                    <div className="fw-bold text-dark small mb-2 text-uppercase tracking-wider" style={{ fontSize: '11px' }}>
+                    <div className="fw-bold text-dark hg-text-xs mb-1.5 text-uppercase">
                       Detected Mock Applications ({spoofModalData.apps.length}):
                     </div>
-                    <div className="d-flex flex-column gap-2">
+                    <div className="d-flex flex-column gap-1.5">
                       {spoofModalData.apps.map((app, idx) => (
                         <div
                           key={idx}
-                          className="d-flex align-items-center justify-content-between p-2.5 rounded-3 bg-light border border-secondary border-opacity-25"
+                          className="d-flex align-items-center justify-content-between p-2 rounded-2 bg-light border"
                         >
                           <div className="d-flex align-items-center gap-2 overflow-hidden">
-                            <AlertTriangle size={18} className="text-danger flex-shrink-0" />
+                            <AlertTriangle size={16} className="text-danger flex-shrink-0" />
                             <div className="text-truncate">
-                              <div className="fw-semibold text-dark small text-truncate" style={{ fontSize: '12px' }}>
+                              <div className="fw-semibold text-dark hg-text-xs text-truncate">
                                 {app.appName || app.packageName || 'Unknown Spoofer'}
                               </div>
-                              <div className="text-muted text-truncate" style={{ fontSize: '10px' }}>
+                              <div className="text-muted text-truncate hg-text-xs">
                                 {app.packageName || ''}
                               </div>
                             </div>
@@ -3075,8 +3049,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                           {isNativeMobile() && (
                             <button
                               type="button"
-                              className="btn btn-outline-danger btn-sm py-1 px-2.5 fw-semibold flex-shrink-0"
-                              style={{ fontSize: '11px' }}
+                              className="btn btn-outline-danger btn-sm py-0.5 px-2 fw-semibold flex-shrink-0 hg-text-xs"
                               onClick={() => openSpoofAppSettings(app.packageName)}
                             >
                               App Info
@@ -3088,13 +3061,13 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   </div>
                 )}
 
-                <div className="p-3 bg-light rounded-3 border border-secondary border-opacity-25 mb-3">
-                  <div className="fw-bold text-dark small mb-1" style={{ fontSize: '12px' }}>
-                    📋 How to resolve:
+                <div className="p-2.5 bg-light rounded-2 border mb-3">
+                  <div className="fw-bold text-dark hg-text-xs mb-1">
+                    How to resolve:
                   </div>
-                  <ol className="mb-0 ps-3 small text-muted" style={{ fontSize: '11.5px', lineHeight: '1.45' }}>
-                    <li className="mb-1">Uninstall the mock GPS applications listed above.</li>
-                    <li className="mb-1">Go to <b>Settings &rarr; Developer Options</b> and set <b>Select mock location app</b> to <b>None</b>.</li>
+                  <ol className="mb-0 ps-3 hg-text-xs text-muted">
+                    <li className="mb-0.5">Uninstall the mock GPS applications listed above.</li>
+                    <li className="mb-0.5">Go to <b>Settings &rarr; Developer Options</b> and set <b>Select mock location app</b> to <b>None</b>.</li>
                     <li>Return to HostelGuard and tap <b>Re-check Location</b>.</li>
                   </ol>
                 </div>

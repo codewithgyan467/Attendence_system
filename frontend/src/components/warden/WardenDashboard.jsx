@@ -320,41 +320,40 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
       )}
 
       {/* Dynamic Wi-Fi Roaming & Floor Anchor Live QR Code Banner */}
-      <div className="card shadow-sm border-0 mb-4 rounded-3 overflow-hidden" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', color: '#fff' }}>
-        <div className="card-body p-3 p-md-3.5 d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div className="card hg-card bg-dark text-white border-secondary mb-3">
+        <div className="card-body p-3 d-flex flex-wrap align-items-center justify-content-between gap-3">
           <div className="d-flex align-items-center gap-3">
             {qrCodeDataUrl ? (
-              <div className="bg-white p-1.5 rounded-3 shadow-sm d-flex align-items-center justify-content-center" style={{ minWidth: '96px', minHeight: '96px' }}>
-                <img src={qrCodeDataUrl} alt="Student Check-In QR Code" style={{ width: '88px', height: '88px' }} />
+              <div className="bg-white p-1 rounded-2 shadow-sm d-flex align-items-center justify-content-center" style={{ minWidth: '88px', minHeight: '88px' }}>
+                <img src={qrCodeDataUrl} alt="Student Check-In QR Code" style={{ width: '80px', height: '80px' }} />
               </div>
             ) : (
-              <div className="bg-white bg-opacity-10 p-3 rounded-3 d-flex align-items-center justify-content-center" style={{ width: '96px', height: '96px' }}>
-                <QrCode size={40} className="text-light opacity-50" />
+              <div className="bg-white bg-opacity-10 p-2.5 rounded-2 d-flex align-items-center justify-content-center" style={{ width: '88px', height: '88px' }}>
+                <QrCode size={36} className="text-light opacity-50" />
               </div>
             )}
             <div>
               <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
-                <span className="badge bg-success bg-opacity-75 text-white d-inline-flex align-items-center gap-1 py-1 px-2">
+                <span className="badge bg-success bg-opacity-75 text-white d-inline-flex align-items-center gap-1 py-1 px-2 hg-badge">
                   <span className="spinner-grow spinner-grow-sm text-light" style={{ width: '8px', height: '8px' }}></span>
                   Live Wi-Fi Roaming Active
                 </span>
-                <span className="badge bg-secondary bg-opacity-50 text-light py-1 px-2" style={{ fontSize: '11px' }}>
+                <span className="badge bg-secondary bg-opacity-50 text-light py-1 px-2 hg-text-xs">
                   Auto-Detecting 4 Floor Routers
                 </span>
               </div>
               <h6 className="fw-bold mb-1 text-white d-flex align-items-center gap-2">
-                <Wifi size={17} className="text-info" />
+                <Wifi size={16} className="text-info" />
                 Student Check-In Portal Address
               </h6>
               <div className="d-flex align-items-center gap-2 flex-wrap">
-                <code className="fs-6 fw-bold text-warning bg-black bg-opacity-50 px-2 py-0.5 rounded border border-secondary border-opacity-25">
+                <code className="fs-6 fw-bold text-warning bg-black bg-opacity-50 px-2 py-0.5 rounded border border-secondary border-opacity-25 hg-tabular">
                   {liveCheckinUrl || 'Detecting Active Router IP...'}
                 </code>
                 {liveCheckinUrl && (
                   <button
                     type="button"
-                    className="btn btn-sm btn-outline-light py-0.5 px-2 d-inline-flex align-items-center gap-1"
-                    style={{ fontSize: '11.5px' }}
+                    className="btn btn-sm btn-outline-light py-0.5 px-2 d-inline-flex align-items-center gap-1 hg-text-xs"
                     onClick={() => {
                       if (navigator.clipboard) {
                         navigator.clipboard.writeText(liveCheckinUrl);
@@ -368,17 +367,17 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                   </button>
                 )}
               </div>
-              <p className="small text-light opacity-75 mb-0 mt-1" style={{ fontSize: '11.5px' }}>
-                📱 Students on the floor Wi-Fi or mobile hotspot can scan the QR code or type this URL in any browser.
+              <p className="small text-light opacity-75 mb-0 mt-1 hg-text-xs">
+                Students on floor Wi-Fi or hotspot can scan the QR code or open this URL directly.
               </p>
             </div>
           </div>
           <div className="text-md-end text-start">
-            <span className="badge bg-info bg-opacity-25 text-info border border-info border-opacity-25 py-1 px-2.5 mb-1" style={{ fontSize: '11px' }}>
+            <span className="badge bg-info bg-opacity-25 text-info border border-info border-opacity-25 py-1 px-2 mb-1 hg-badge">
               Port 5000: Open &amp; Broadcasting
             </span>
-            <div className="text-light opacity-50 small" style={{ fontSize: '11px' }}>
-              Polling every 5s • Zero Server Restarts Needed
+            <div className="text-light opacity-50 hg-text-xs">
+              Polling every 5s • Zero Server Restarts
             </div>
           </div>
         </div>
@@ -428,46 +427,46 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
       {(subTab === 'warden_overview' || !subTab) && (
         <>
           {/* Hostel Blocks Overview */}
-          <div className="row g-4 mb-4">
+          <div className="row g-3 mb-3">
             <div className="col-lg-12">
-              <div className="card shadow-sm border-0 rounded-3">
-                <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div className="card hg-card">
+                <div className="card-header bg-white border-bottom py-2 px-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                   <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
-                    <BedDouble size={18} className="text-primary" />
-                    Block Attendance & Occupancy Status
+                    <BedDouble size={16} className="text-primary" />
+                    Block Attendance &amp; Occupancy Status
                   </h6>
                   {onSelectTab && (
                     <button
                       type="button"
-                      className="btn btn-outline-primary btn-sm d-flex align-items-center gap-1 shadow-sm"
+                      className="btn btn-outline-primary btn-sm d-flex align-items-center gap-1"
                       onClick={() => onSelectTab('warden_attendance')}
                     >
-                      <Calendar size={14} /> Open Roll Call Ledger
+                      <Calendar size={13} /> Open Roll Call Ledger
                     </button>
                   )}
                 </div>
                 <div className="card-body p-3">
-                  <div className="row g-3">
+                  <div className="row g-2">
                     {blocks.map((b) => {
                       const total = b.resident_count || 0;
                       const present = b.present_today || 0;
                       const pct = total > 0 ? Math.round((present / total) * 100) : 0;
                       return (
                         <div key={b.id || b.block_name} className="col-md-4">
-                          <div className="border rounded-3 p-3 bg-light h-100">
-                            <div className="d-flex justify-content-between align-items-center mb-2">
+                          <div className="border rounded-2 p-2.5 bg-light h-100">
+                            <div className="d-flex justify-content-between align-items-center mb-1.5">
                               <h6 className="fw-bold text-dark mb-0">{b.block_name}</h6>
-                              <span className="badge bg-primary px-2 py-1">{present} / {total} Present Today</span>
+                              <span className="badge bg-primary px-2 py-0.5 hg-badge hg-tabular">{present} / {total} Present</span>
                             </div>
-                            <div className="text-muted small mb-2">{b.gender_type || 'Co-ed'} Hostel</div>
-                            <div className="progress mb-2" style={{ height: '8px' }}>
+                            <div className="text-muted hg-text-xs mb-2">{b.gender_type || 'Co-ed'} Hostel</div>
+                            <div className="progress mb-2" style={{ height: '6px' }}>
                               <div
                                 className="progress-bar bg-success"
                                 role="progressbar"
                                 style={{ width: `${pct}%` }}
                               ></div>
                             </div>
-                            <div className="d-flex justify-content-between small text-muted">
+                            <div className="d-flex justify-content-between hg-text-xs text-muted hg-tabular">
                               <span>Present: <strong className="text-success">{present}</strong></span>
                               <span>Absent: <strong className="text-danger">{Math.max(0, total - present)}</strong></span>
                               <span>Capacity: <strong>{b.capacity || total}</strong></span>
@@ -488,91 +487,91 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
       {/* MODAL 1: Emergency Evacuation Muster Roll                  */}
       {/* ========================================================= */}
       {showMusterModal && (
-        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(3px)' }}>
+        <div className="modal show d-block hg-modal-backdrop" tabIndex="-1">
           <div className="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-            <div className="modal-content border-0 shadow-lg rounded-4">
-              <div className="modal-header bg-danger text-white py-3 px-4 rounded-top-4">
+            <div className="modal-content hg-card border-0 rounded-2 shadow">
+              <div className="modal-header bg-danger text-white py-2.5 px-3 rounded-top-2">
                 <div className="d-flex align-items-center gap-2">
-                  <ShieldAlert size={22} />
+                  <ShieldAlert size={20} />
                   <div>
-                    <h5 className="modal-title fw-bold mb-0">🚨 Emergency Evacuation Muster Desk</h5>
-                    <div className="small opacity-75" style={{ fontSize: '12px' }}>
+                    <h6 className="modal-title fw-bold mb-0">Emergency Evacuation Muster Desk</h6>
+                    <div className="hg-text-xs opacity-75">
                       Official Incident Safety Ledger • Real-time Headcount for Emergency Responders
                     </div>
                   </div>
                 </div>
                 <button type="button" className="btn-close btn-close-white" onClick={() => setShowMusterModal(false)} />
               </div>
-              <div className="modal-body p-4 bg-light">
+              <div className="modal-body p-3 bg-light">
                 {musterLoading ? (
                   <div className="text-center py-5">
-                    <div className="spinner-border text-danger" role="status"></div>
-                    <p className="mt-2 text-muted small">Generating live hostel muster count...</p>
+                    <div className="spinner-border spinner-border-sm text-danger" role="status"></div>
+                    <p className="mt-2 text-muted hg-text-xs">Generating live hostel muster count...</p>
                   </div>
                 ) : musterData ? (
                   <div>
                     {/* Top Summary Stats */}
-                    <div className="row g-3 mb-4">
+                    <div className="row g-2 mb-3">
                       <div className="col-md-3">
-                        <div className="card border-0 shadow-sm rounded-3 p-3 text-center bg-white">
-                          <div className="text-muted small fw-semibold">TOTAL REGISTERED</div>
-                          <h3 className="fw-bold text-dark mb-0">{musterData.summary?.total_residents || 0}</h3>
-                          <div className="small text-muted">All active hostel beds</div>
+                        <div className="card hg-card p-2.5 text-center bg-white">
+                          <div className="text-muted hg-text-xs fw-semibold">TOTAL REGISTERED</div>
+                          <h4 className="fw-bold text-dark mb-0 hg-tabular">{musterData.summary?.total_residents || 0}</h4>
+                          <div className="hg-text-xs text-muted">All active hostel beds</div>
                         </div>
                       </div>
                       <div className="col-md-3">
-                        <div className="card border-0 shadow-sm rounded-3 p-3 text-center bg-success bg-opacity-10 border-success border-opacity-25">
-                          <div className="text-success small fw-semibold">✓ VERIFIED INSIDE</div>
-                          <h3 className="fw-bold text-success mb-0">{musterData.summary?.verified_inside_count || 0}</h3>
-                          <div className="small text-success">Biometrically Present</div>
+                        <div className="card hg-card p-2.5 text-center bg-success bg-opacity-10 border-success border-opacity-25">
+                          <div className="text-success hg-text-xs fw-semibold">VERIFIED INSIDE</div>
+                          <h4 className="fw-bold text-success mb-0 hg-tabular">{musterData.summary?.verified_inside_count || 0}</h4>
+                          <div className="hg-text-xs text-success">Biometrically Present</div>
                         </div>
                       </div>
                       <div className="col-md-3">
-                        <div className="card border-0 shadow-sm rounded-3 p-3 text-center bg-warning bg-opacity-10 border-warning border-opacity-25">
-                          <div className="text-warning small fw-semibold">✈ ON APPROVED LEAVE</div>
-                          <h3 className="fw-bold text-warning mb-0">{musterData.summary?.approved_leave_count || 0}</h3>
-                          <div className="small text-warning">Authorized Out-pass</div>
+                        <div className="card hg-card p-2.5 text-center bg-warning bg-opacity-10 border-warning border-opacity-25">
+                          <div className="text-warning hg-text-xs fw-semibold">ON APPROVED LEAVE</div>
+                          <h4 className="fw-bold text-warning mb-0 hg-tabular">{musterData.summary?.approved_leave_count || 0}</h4>
+                          <div className="hg-text-xs text-warning">Authorized Out-pass</div>
                         </div>
                       </div>
                       <div className="col-md-3">
-                        <div className="card border-0 shadow-sm rounded-3 p-3 text-center bg-danger bg-opacity-10 border-danger border-opacity-25">
-                          <div className="text-danger small fw-semibold">⚠ UNACCOUNTED / MISSING</div>
-                          <h3 className="fw-bold text-danger mb-0">{musterData.summary?.missing_unaccounted_count || 0}</h3>
-                          <div className="small text-danger">Requires Immediate Check</div>
+                        <div className="card hg-card p-2.5 text-center bg-danger bg-opacity-10 border-danger border-opacity-25">
+                          <div className="text-danger hg-text-xs fw-semibold">UNACCOUNTED / MISSING</div>
+                          <h4 className="fw-bold text-danger mb-0 hg-tabular">{musterData.summary?.missing_unaccounted_count || 0}</h4>
+                          <div className="hg-text-xs text-danger">Requires Immediate Check</div>
                         </div>
                       </div>
                     </div>
 
                     {/* Filter Tabs */}
-                    <div className="d-flex justify-content-between align-items-center mb-3">
-                      <div className="btn-group shadow-sm rounded-pill overflow-hidden bg-white p-1">
+                    <div className="d-flex justify-content-between align-items-center mb-2.5 flex-wrap gap-2">
+                      <div className="btn-group bg-white border rounded-1">
                         <button
                           type="button"
-                          className={`btn btn-sm rounded-pill px-3 fw-semibold ${musterTab === 'missing' ? 'btn-danger text-white' : 'btn-light text-dark'}`}
+                          className={`btn btn-sm px-2.5 fw-semibold ${musterTab === 'missing' ? 'btn-danger text-white' : 'btn-light text-dark'}`}
                           onClick={() => setMusterTab('missing')}
                         >
                           Unaccounted ({musterData.missingUnaccounted?.length || 0})
                         </button>
                         <button
                           type="button"
-                          className={`btn btn-sm rounded-pill px-3 fw-semibold ${musterTab === 'inside' ? 'btn-success text-white' : 'btn-light text-dark'}`}
+                          className={`btn btn-sm px-2.5 fw-semibold ${musterTab === 'inside' ? 'btn-success text-white' : 'btn-light text-dark'}`}
                           onClick={() => setMusterTab('inside')}
                         >
                           Verified Inside ({musterData.verifiedInside?.length || 0})
                         </button>
                         <button
                           type="button"
-                          className={`btn btn-sm rounded-pill px-3 fw-semibold ${musterTab === 'leave' ? 'btn-warning text-dark' : 'btn-light text-dark'}`}
+                          className={`btn btn-sm px-2.5 fw-semibold ${musterTab === 'leave' ? 'btn-warning text-dark' : 'btn-light text-dark'}`}
                           onClick={() => setMusterTab('leave')}
                         >
                           On Leave ({musterData.approvedLeave?.length || 0})
                         </button>
                       </div>
 
-                      <div className="d-flex align-items-center gap-2">
+                      <div className="d-flex align-items-center gap-1.5">
                         <button
                           type="button"
-                          className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1 shadow-sm rounded-pill px-3"
+                          className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1 px-2.5"
                           onClick={handleExportMusterCsv}
                           title="Export Muster Roll as CSV"
                         >
@@ -580,7 +579,7 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                         </button>
                         <button
                           type="button"
-                          className="btn btn-outline-success btn-sm d-flex align-items-center gap-1 shadow-sm rounded-pill px-3"
+                          className="btn btn-outline-success btn-sm d-flex align-items-center gap-1 px-2.5"
                           onClick={handleExportMusterExcel}
                           title="Export Muster Roll as Excel (.xlsx)"
                         >
@@ -588,41 +587,41 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                         </button>
                         <button
                           type="button"
-                          className="btn btn-outline-dark btn-sm d-flex align-items-center gap-1 shadow-sm rounded-pill px-3"
+                          className="btn btn-outline-dark btn-sm d-flex align-items-center gap-1 px-2.5"
                           onClick={() => window.print()}
                         >
-                          🖨️ Print
+                          Print
                         </button>
                       </div>
                     </div>
 
                     {/* Residents Table */}
-                    <div className="card border-0 shadow-sm rounded-3 overflow-hidden">
+                    <div className="card hg-card overflow-hidden">
                       <div className="table-responsive">
-                        <table className="table table-hover align-middle mb-0">
-                          <thead className="table-light small">
+                        <table className="table table-sm table-hover align-middle mb-0">
+                          <thead className="table-light hg-text-xs">
                             <tr>
                               <th>Student</th>
                               <th>Roll Number</th>
-                              <th>Block & Room</th>
+                              <th>Block &amp; Room</th>
                               <th>Phone Number</th>
                               <th>Emergency Parent Contact</th>
                               <th>Status</th>
                             </tr>
                           </thead>
-                          <tbody className="small">
+                          <tbody className="hg-text-xs">
                             {musterTab === 'missing' && (
                               (musterData.missingUnaccounted || []).length === 0 ? (
-                                <tr><td colSpan="6" className="text-center py-4 text-success fw-semibold">✓ 100% of residents are accounted for tonight!</td></tr>
+                                <tr><td colSpan="6" className="text-center py-3 text-success fw-semibold">100% of residents are accounted for tonight!</td></tr>
                               ) : (
                                 (musterData.missingUnaccounted || []).map((st) => (
                                   <tr key={st.id} className="table-danger">
                                     <td className="fw-bold">{st.full_name}</td>
-                                    <td><code className="text-dark">{st.roll_number}</code></td>
-                                    <td><span className="badge bg-secondary">{st.hostel_block}</span> Rm {st.room_number || 'N/A'}</td>
+                                    <td><code className="text-dark hg-tabular">{st.roll_number}</code></td>
+                                    <td><span className="badge bg-secondary hg-badge">{st.hostel_block}</span> Rm {st.room_number || 'N/A'}</td>
                                     <td><a href={`tel:${st.phone}`} className="text-decoration-none fw-semibold">{st.phone || 'N/A'}</a></td>
                                     <td><strong className="text-danger">{st.emergency_phone || 'Parent Contact Missing'}</strong></td>
-                                    <td><span className="badge bg-danger">MISSING / UNCHECKED</span></td>
+                                    <td><span className="badge bg-danger hg-badge">MISSING / UNCHECKED</span></td>
                                   </tr>
                                 ))
                               )
@@ -632,11 +631,11 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                               (musterData.verifiedInside || []).map((st) => (
                                 <tr key={st.id}>
                                   <td className="fw-semibold">{st.full_name}</td>
-                                  <td><code>{st.roll_number}</code></td>
-                                  <td><span className="badge bg-light text-dark border">{st.hostel_block}</span> Rm {st.room_number || 'N/A'}</td>
+                                  <td><code className="hg-tabular">{st.roll_number}</code></td>
+                                  <td><span className="badge bg-light text-dark border hg-badge">{st.hostel_block}</span> Rm {st.room_number || 'N/A'}</td>
                                   <td>{st.phone || 'N/A'}</td>
                                   <td>{st.emergency_phone || 'N/A'}</td>
-                                  <td><span className="badge bg-success">✓ PRESENT ({st.time_marked ? formatTime12h(st.time_marked) : 'Verified'})</span></td>
+                                  <td><span className="badge bg-success hg-badge">PRESENT ({st.time_marked ? formatTime12h(st.time_marked) : 'Verified'})</span></td>
                                 </tr>
                               ))
                             )}
@@ -645,11 +644,11 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                               (musterData.approvedLeave || []).map((st) => (
                                 <tr key={st.id}>
                                   <td className="fw-semibold">{st.full_name}</td>
-                                  <td><code>{st.roll_number}</code></td>
-                                  <td><span className="badge bg-light text-dark border">{st.hostel_block}</span> Rm {st.room_number || 'N/A'}</td>
+                                  <td><code className="hg-tabular">{st.roll_number}</code></td>
+                                  <td><span className="badge bg-light text-dark border hg-badge">{st.hostel_block}</span> Rm {st.room_number || 'N/A'}</td>
                                   <td>{st.phone || 'N/A'}</td>
                                   <td>{st.emergency_phone || 'N/A'}</td>
-                                  <td><span className="badge bg-warning text-dark">APPROVED LEAVE</span></td>
+                                  <td><span className="badge bg-warning text-dark hg-badge">APPROVED LEAVE</span></td>
                                 </tr>
                               ))
                             )}
@@ -662,8 +661,8 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                   <div className="text-center py-4">No muster data loaded.</div>
                 )}
               </div>
-              <div className="modal-footer border-top py-2 px-4 bg-white">
-                <button type="button" className="btn btn-secondary btn-sm rounded-pill px-3" onClick={() => setShowMusterModal(false)}>Close</button>
+              <div className="modal-footer border-top py-2 px-3 bg-white">
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowMusterModal(false)}>Close</button>
               </div>
             </div>
           </div>
@@ -674,46 +673,46 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
       {/* MODAL 2: In-Person Physical Check-In Queue                */}
       {/* ========================================================= */}
       {showPhysicalQueueModal && (
-        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)' }}>
+        <div className="modal show d-block hg-modal-backdrop" tabIndex="-1">
           <div className="modal-dialog modal-lg modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg rounded-4">
-              <div className="modal-header border-bottom py-3 px-4 bg-light rounded-top-4">
-                <h6 className="modal-title fw-bold text-dark d-flex align-items-center gap-2">
-                  <UserCheck className="text-primary" size={20} />
+            <div className="modal-content hg-card border-0 rounded-2 shadow">
+              <div className="modal-header border-bottom py-2.5 px-3 bg-light rounded-top-2">
+                <h6 className="modal-title fw-bold text-dark d-flex align-items-center gap-2 mb-0">
+                  <UserCheck className="text-primary" size={18} />
                   Pending In-Person Physical Verifications
                 </h6>
                 <button type="button" className="btn-close" onClick={() => setShowPhysicalQueueModal(false)} />
               </div>
-              <div className="modal-body p-4">
-                <p className="text-muted small mb-3">
-                  Residents who reported medical facial injuries, bandages, or broken smartphone cameras for tonight's roll call. Wardens can verify them in person during room rounds and confirm their attendance.
+              <div className="modal-body p-3">
+                <p className="text-muted hg-text-xs mb-3">
+                  Residents who reported medical facial injuries, bandages, or hardware issues for roll call. Wardens can verify them in person during room rounds and confirm their attendance.
                 </p>
 
                 {pendingPhysicalList.length === 0 ? (
-                  <div className="alert alert-light border text-center py-4 text-muted small mb-0 rounded-3">
-                    ✓ No pending physical verification requests tonight. All residents are using automated biometric check-in.
+                  <div className="alert alert-light border text-center py-3 text-muted hg-text-xs mb-0 rounded-2">
+                    No pending physical verification requests tonight. All residents are using automated biometric check-in.
                   </div>
                 ) : (
-                  <div className="list-group shadow-sm rounded-3">
+                  <div className="list-group rounded-2 border">
                     {pendingPhysicalList.map((item) => (
-                      <div key={item.id} className="list-group-item p-3 border-start border-4 border-warning">
-                        <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+                      <div key={item.id} className="list-group-item p-2.5 border-start border-3 border-warning">
+                        <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1.5">
                           <div>
                             <h6 className="fw-bold text-dark mb-0">{item.full_name} ({item.roll_number})</h6>
-                            <div className="text-muted small">
+                            <div className="text-muted hg-text-xs">
                               Block {item.hostel_block} &bull; Room {item.room_number || 'N/A'} &bull; Phone: <a href={`tel:${item.phone}`}>{item.phone || 'N/A'}</a>
                             </div>
                           </div>
                           <button
                             type="button"
-                            className="btn btn-success btn-sm rounded-pill px-3 fw-semibold shadow-sm"
+                            className="btn btn-success btn-sm px-2.5 fw-semibold"
                             disabled={verifyingPhysicalId === item.id}
                             onClick={() => handleConfirmPhysicalAttendance(item)}
                           >
-                            {verifyingPhysicalId === item.id ? 'Confirming...' : '✓ Confirm Physical Presence'}
+                            {verifyingPhysicalId === item.id ? 'Confirming...' : 'Confirm Physical Presence'}
                           </button>
                         </div>
-                        <div className="small bg-light p-2 rounded text-dark border">
+                        <div className="hg-text-xs bg-light p-2 rounded text-dark border">
                           <strong>Reported Note:</strong> {item.reason.replace('[PHYSICAL_VERIFICATION] ', '')}
                         </div>
                       </div>
@@ -721,8 +720,8 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                   </div>
                 )}
               </div>
-              <div className="modal-footer border-top py-2 px-4 bg-white">
-                <button type="button" className="btn btn-outline-secondary btn-sm rounded-pill px-3" onClick={() => setShowPhysicalQueueModal(false)}>Close</button>
+              <div className="modal-footer border-top py-2 px-3 bg-white">
+                <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setShowPhysicalQueueModal(false)}>Close</button>
               </div>
             </div>
           </div>
@@ -733,28 +732,28 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
         <>
           {/* Consecutive Night Defaulter Safety Alerts */}
           {((exceptions?.consecutiveAlerts || overview?.consecutiveAlerts || []).length > 0) && (
-            <div className="card shadow-sm border-danger border-opacity-50 rounded-4 mb-4 overflow-hidden">
-              <div className="card-header bg-danger bg-opacity-10 border-bottom border-danger border-opacity-25 py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div className="card hg-card border-danger border-opacity-50 mb-3 overflow-hidden">
+              <div className="card-header bg-danger bg-opacity-10 border-bottom border-danger border-opacity-25 py-2 px-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div className="d-flex align-items-center gap-2">
-                  <ShieldAlert size={20} className="text-danger" />
+                  <ShieldAlert size={18} className="text-danger" />
                   <div>
                     <h6 className="card-title mb-0 fw-bold text-danger">
-                      🚨 Consecutive Night Defaulter Alerts ({(exceptions?.consecutiveAlerts || overview?.consecutiveAlerts || []).length} Residents)
+                      Consecutive Night Defaulter Alerts ({(exceptions?.consecutiveAlerts || overview?.consecutiveAlerts || []).length} Residents)
                     </h6>
-                    <small className="text-danger opacity-75">
+                    <span className="text-danger opacity-75 hg-text-xs">
                       Residents who missed 2 or more consecutive roll calls without an approved gate pass or leave slip.
-                    </small>
+                    </span>
                   </div>
                 </div>
-                <span className="badge bg-danger text-white px-2 py-1">
+                <span className="badge bg-danger text-white px-2 py-0.5 hg-badge">
                   High Priority Safety Desk
                 </span>
               </div>
               <div className="card-body p-0">
                 <div className="table-responsive">
-                  <table className="table table-hover align-middle mb-0">
-                    <thead className="table-danger table-opacity-10">
-                      <tr className="small text-danger fw-bold">
+                  <table className="table table-sm table-hover align-middle mb-0">
+                    <thead className="table-danger table-opacity-10 hg-text-xs">
+                      <tr className="text-danger fw-bold">
                         <th className="ps-3">Resident Student</th>
                         <th>Roll No</th>
                         <th>Block &amp; Room</th>
@@ -763,41 +762,41 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                         <th className="pe-3 text-end">Action</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="hg-text-xs">
                       {(exceptions?.consecutiveAlerts || overview?.consecutiveAlerts || []).map((st) => (
                         <tr key={st.student_id || st.roll_number}>
                           <td className="ps-3">
                             <div className="fw-bold text-dark">{st.full_name}</div>
-                            <small className="text-muted">{st.course || 'Resident'}</small>
+                            <span className="text-muted hg-text-xs">{st.course || 'Resident'}</span>
                           </td>
-                          <td><code>{st.roll_number}</code></td>
+                          <td><code className="hg-tabular">{st.roll_number}</code></td>
                           <td>
-                            <span className="badge bg-light text-dark border me-1">{st.hostel_block}</span>
-                            <small className="text-muted">Rm {st.room_number || 'N/A'}</small>
+                            <span className="badge bg-light text-dark border me-1 hg-badge">{st.hostel_block}</span>
+                            <span className="text-muted hg-text-xs">Rm {st.room_number || 'N/A'}</span>
                           </td>
                           <td>
-                            <span className="badge bg-danger text-white fw-bold px-2 py-1">
-                              ⚠️ {st.consecutive_nights_missed} Nights Missing
+                            <span className="badge bg-danger text-white fw-bold px-2 py-0.5 hg-badge hg-tabular">
+                              {st.consecutive_nights_missed} Nights Missing
                             </span>
                             {st.last_seen_date && (
-                              <div className="text-muted small mt-1" style={{ fontSize: '11px' }}>
+                              <div className="text-muted hg-text-xs mt-0.5">
                                 Last verified: {st.last_seen_date}
                               </div>
                             )}
                           </td>
                           <td>
                             {st.phone ? (
-                              <a href={'tel:' + st.phone} className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1">
-                                <Phone size={12} /> {st.phone}
+                              <a href={'tel:' + st.phone} className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 py-0.5 px-2 hg-text-xs">
+                                <Phone size={11} /> {st.phone}
                               </a>
                             ) : (
-                              <span className="text-muted small">No phone listed</span>
+                              <span className="text-muted hg-text-xs">No phone listed</span>
                             )}
                           </td>
                           <td className="pe-3 text-end">
                             <button
                               type="button"
-                              className="btn btn-sm btn-outline-danger"
+                              className="btn btn-sm btn-outline-danger py-0.5 px-2 hg-text-xs"
                               onClick={() => {
                                 alert('Dispatching welfare verification check for ' + st.full_name + ' (' + st.roll_number + ') missing for ' + st.consecutive_nights_missed + ' nights.');
                               }}
@@ -815,121 +814,120 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
           )}
 
           {/* Exceptions & Absent Table */}
-          <div className="card shadow-sm border-0 rounded-3 mb-4">
-          <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
-            <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
-              <ShieldAlert size={18} className="text-danger" />
-              Unverified / Absent Students Today ({exceptions?.absentStudents?.length || 0})
-            </h6>
-          </div>
-          <div className="card-body p-0">
-            {!exceptions?.absentStudents || exceptions.absentStudents.length === 0 ? (
-              <div className="text-center p-4 text-muted small">
-                <CheckCircle2 size={32} className="text-success mb-2 opacity-50" />
-                <div>All residents have verified attendance today!</div>
-              </div>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-hover align-middle mb-0">
-                  <thead className="table-light">
-                    <tr className="small text-muted">
-                      <th className="ps-3">Student Name</th>
-                      <th>Roll No</th>
-                      <th>Block & Room</th>
-                      <th>Course</th>
-                      <th>Contact Phone</th>
-                      <th className="pe-3">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(subTab === 'warden_overview'
-                      ? (exceptions?.absentStudents || []).slice(0, 10)
-                      : (exceptions?.absentStudents || [])
-                    ).map((st) => (
-                      <tr key={st.id}>
-                        <td className="ps-3 fw-medium text-dark">{st.full_name}</td>
-                        <td><code>{st.roll_number}</code></td>
-                        <td>
-                          <span className="badge bg-light text-dark me-1">{st.hostel_block}</span>
-                          <small className="text-muted">Rm {st.room_number || 'N/A'}</small>
-                        </td>
-                        <td><small className="text-muted">{st.course || 'N/A'}</small></td>
-                        <td>
-                          {st.phone ? (
-                            <span className="small text-dark d-flex align-items-center gap-1">
-                              <Phone size={12} className="text-muted" /> {st.phone}
-                            </span>
-                          ) : (
-                            <span className="small text-muted">&mdash;</span>
-                          )}
-                        </td>
-                        <td className="pe-3">
-                          <span className="badge bg-danger-subtle text-danger border border-danger-subtle">
-                            ABSENT
-                          </span>
-                        </td>
+          <div className="card hg-card mb-3">
+            <div className="card-header bg-white border-bottom py-2 px-3 d-flex justify-content-between align-items-center">
+              <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
+                <ShieldAlert size={16} className="text-danger" />
+                Unverified / Absent Students Today ({exceptions?.absentStudents?.length || 0})
+              </h6>
+            </div>
+            <div className="card-body p-0">
+              {!exceptions?.absentStudents || exceptions.absentStudents.length === 0 ? (
+                <div className="text-center p-3 text-muted hg-text-xs">
+                  <CheckCircle2 size={24} className="text-success mb-1 opacity-50" />
+                  <div>All residents have verified attendance today!</div>
+                </div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="table table-sm table-hover align-middle mb-0">
+                    <thead className="table-light hg-text-xs">
+                      <tr className="text-muted">
+                        <th className="ps-3">Student Name</th>
+                        <th>Roll No</th>
+                        <th>Block &amp; Room</th>
+                        <th>Course</th>
+                        <th>Contact Phone</th>
+                        <th className="pe-3">Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody className="hg-text-xs">
+                      {(subTab === 'warden_overview'
+                        ? (exceptions?.absentStudents || []).slice(0, 10)
+                        : (exceptions?.absentStudents || [])
+                      ).map((st) => (
+                        <tr key={st.id}>
+                          <td className="ps-3 fw-medium text-dark">{st.full_name}</td>
+                          <td><code className="hg-tabular">{st.roll_number}</code></td>
+                          <td>
+                            <span className="badge bg-light text-dark me-1 hg-badge">{st.hostel_block}</span>
+                            <span className="text-muted hg-text-xs">Rm {st.room_number || 'N/A'}</span>
+                          </td>
+                          <td><span className="text-muted hg-text-xs">{st.course || 'N/A'}</span></td>
+                          <td>
+                            {st.phone ? (
+                              <span className="hg-text-xs text-dark d-flex align-items-center gap-1">
+                                <Phone size={11} className="text-muted" /> {st.phone}
+                              </span>
+                            ) : (
+                              <span className="hg-text-xs text-muted">&mdash;</span>
+                            )}
+                          </td>
+                          <td className="pe-3">
+                            <span className="badge bg-danger-subtle text-danger border border-danger-subtle hg-badge">
+                              ABSENT
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
         </>
       )}
 
       {(subTab === 'warden_corrections' || subTab === 'warden_overview') && (
         /* Correction Requests Table */
-        <div className="card shadow-sm border-0 rounded-3 mb-4">
-          <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+        <div className="card hg-card mb-3">
+          <div className="card-header bg-white border-bottom py-2 px-3 d-flex justify-content-between align-items-center">
             <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
-              <FileCheck2 size={18} className="text-primary" />
+              <FileCheck2 size={16} className="text-primary" />
               Resident Attendance Correction Appeals ({corrections.length})
             </h6>
           </div>
           <div className="card-body p-0">
             {corrections.length === 0 ? (
-              <div className="text-center p-4 text-muted small">
+              <div className="text-center p-3 text-muted hg-text-xs">
                 No attendance correction appeals pending.
               </div>
             ) : (
               <div className="table-responsive">
-                <table className="table table-hover align-middle mb-0">
-                  <thead className="table-light">
-                    <tr className="small text-muted">
+                <table className="table table-sm table-hover align-middle mb-0">
+                  <thead className="table-light hg-text-xs">
+                    <tr className="text-muted">
                       <th className="ps-3">Resident</th>
                       <th>Target Date</th>
-                      <th>Block & Room</th>
+                      <th>Block &amp; Room</th>
                       <th>Reason</th>
                       <th>Status</th>
                       <th className="text-end pe-3">Action</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="hg-text-xs">
                     {corrections.map((c) => (
                       <tr key={c.id}>
                         <td className="ps-3">
                           <div className="fw-medium text-dark">{c.full_name}</div>
-                          <code className="small">{c.roll_number}</code>
+                          <code className="hg-text-xs hg-tabular">{c.roll_number}</code>
                         </td>
-                        <td><span className="fw-semibold text-primary">{c.date}</span></td>
+                        <td><span className="fw-semibold text-primary hg-tabular">{c.date}</span></td>
                         <td>
-                          <span className="badge bg-light text-dark">{c.hostel_block} - Rm {c.room_number}</span>
+                          <span className="badge bg-light text-dark hg-badge">{c.hostel_block} - Rm {c.room_number}</span>
                         </td>
                         <td style={{ maxWidth: '300px' }}>
-                          <div className="small text-dark text-truncate" title={c.reason}>{c.reason}</div>
+                          <div className="hg-text-xs text-dark text-truncate" title={c.reason}>{c.reason}</div>
                         </td>
                         <td>
-                          <span className={`badge ${c.status === 'APPROVED' ? 'bg-success' : c.status === 'REJECTED' ? 'bg-danger' : 'bg-warning text-dark'}`}>
+                          <span className={`badge hg-badge ${c.status === 'APPROVED' ? 'bg-success' : c.status === 'REJECTED' ? 'bg-danger' : 'bg-warning text-dark'}`}>
                             {c.status}
                           </span>
                         </td>
                         <td className="text-end pe-3">
                           {c.status === 'PENDING' && (
                             <button
-                              className="btn btn-sm btn-primary py-0 px-2"
-                              style={{ fontSize: '12px' }}
+                              className="btn btn-sm btn-primary py-0 px-2 hg-text-xs"
                               onClick={() => setReviewModal({ open: true, req: c, decision: 'APPROVED', note: '' })}
                             >
                               Review
@@ -948,53 +946,52 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
 
       {(subTab === 'warden_feedback' || subTab === 'warden_overview') && (
         /* Facility Support Tickets */
-        <div className="card shadow-sm border-0 rounded-3 mb-4">
-          <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+        <div className="card hg-card mb-3">
+          <div className="card-header bg-white border-bottom py-2 px-3 d-flex justify-content-between align-items-center">
             <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
-              <LifeBuoy size={18} className="text-primary" />
+              <LifeBuoy size={16} className="text-primary" />
               Resident Facility Grievances ({tickets.length})
             </h6>
           </div>
           <div className="card-body p-0">
             {tickets.length === 0 ? (
-              <div className="text-center p-4 text-muted small">
+              <div className="text-center p-3 text-muted hg-text-xs">
                 No grievances registered by residents.
               </div>
             ) : (
               <div className="table-responsive">
-                <table className="table table-hover align-middle mb-0">
-                  <thead className="table-light">
-                    <tr className="small text-muted">
+                <table className="table table-sm table-hover align-middle mb-0">
+                  <thead className="table-light hg-text-xs">
+                    <tr className="text-muted">
                       <th className="ps-3">Resident</th>
                       <th>Room</th>
                       <th>Category</th>
-                      <th>Issue & Details</th>
+                      <th>Issue &amp; Details</th>
                       <th>Status</th>
                       <th className="text-end pe-3">Action</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="hg-text-xs">
                     {tickets.map((t) => (
                       <tr key={t.id}>
                         <td className="ps-3">
                           <div className="fw-medium text-dark">{t.full_name}</div>
-                          <code className="small">{t.roll_number}</code>
+                          <code className="hg-text-xs hg-tabular">{t.roll_number}</code>
                         </td>
                         <td>{t.room_number ? `Rm ${t.room_number}` : 'N/A'}</td>
-                        <td><span className="badge bg-light text-dark">{t.category || 'General'}</span></td>
+                        <td><span className="badge bg-light text-dark hg-badge">{t.category || 'General'}</span></td>
                         <td style={{ maxWidth: '350px' }}>
-                          <div className="fw-semibold text-dark small">{t.subject}</div>
-                          <div className="small text-muted text-truncate" title={t.message}>{t.message}</div>
+                          <div className="fw-semibold text-dark hg-text-xs">{t.subject}</div>
+                          <div className="hg-text-xs text-muted text-truncate" title={t.message}>{t.message}</div>
                         </td>
                         <td>
-                          <span className={`badge ${t.status === 'RESOLVED' ? 'bg-success' : 'bg-warning text-dark'}`}>
+                          <span className={`badge hg-badge ${t.status === 'RESOLVED' ? 'bg-success' : 'bg-warning text-dark'}`}>
                             {t.status}
                           </span>
                         </td>
                         <td className="text-end pe-3">
                           <button
-                            className="btn btn-sm btn-outline-primary py-0 px-2"
-                            style={{ fontSize: '12px' }}
+                            className="btn btn-sm btn-outline-primary py-0 px-2 hg-text-xs"
                             onClick={() => setTicketModal({ open: true, ticket: t, status: 'RESOLVED', note: '' })}
                           >
                             Respond
@@ -1012,26 +1009,26 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
 
       {/* Warden Review Correction Modal */}
       {reviewModal.open && reviewModal.req && (
-        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal show d-block hg-modal-backdrop" tabIndex="-1">
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content rounded-3 border-0 shadow">
-              <div className="modal-header border-bottom">
-                <h6 className="modal-title fw-bold">Warden Correction Adjudication</h6>
+            <div className="modal-content hg-card border-0 rounded-2 shadow">
+              <div className="modal-header border-bottom py-2.5 px-3">
+                <h6 className="modal-title fw-bold mb-0">Warden Correction Adjudication</h6>
                 <button type="button" className="btn-close" onClick={() => setReviewModal({ ...reviewModal, open: false })}></button>
               </div>
               <form onSubmit={handleReviewCorrection}>
-                <div className="modal-body p-4">
+                <div className="modal-body p-3">
                   <div className="mb-2">
                     <strong>Resident:</strong> {reviewModal.req.full_name} ({reviewModal.req.roll_number})
                   </div>
-                  <div className="mb-3 small text-muted">
+                  <div className="mb-3 hg-text-xs text-muted">
                     Contested Date: {reviewModal.req.date} &bull; Rm {reviewModal.req.room_number}
                   </div>
-                  <div className="p-3 bg-light rounded-3 mb-3 small">
+                  <div className="p-2.5 bg-light rounded-2 mb-3 hg-text-xs">
                     <strong>Reason:</strong> {reviewModal.req.reason}
                   </div>
                   <div className="mb-3">
-                    <label className="form-label small fw-medium">Warden Decision</label>
+                    <label className="form-label hg-text-xs fw-medium">Warden Decision</label>
                     <select
                       className="form-select form-select-sm"
                       value={reviewModal.decision}
@@ -1042,7 +1039,7 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                     </select>
                   </div>
                   <div className="mb-3">
-                    <label className="form-label small fw-medium">Warden Resolution Notes <span className="text-danger">*</span></label>
+                    <label className="form-label hg-text-xs fw-medium">Warden Resolution Notes <span className="text-danger">*</span></label>
                     <textarea
                       className="form-control"
                       rows="3"
@@ -1053,7 +1050,7 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                     />
                   </div>
                 </div>
-                <div className="modal-footer border-top">
+                <div className="modal-footer border-top py-2 px-3">
                   <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setReviewModal({ ...reviewModal, open: false })}>Cancel</button>
                   <button type="submit" className="btn btn-sm btn-primary" disabled={submittingReview}>
                     {submittingReview ? 'Saving...' : 'Commit Decision'}
@@ -1067,22 +1064,22 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
 
       {/* Warden Ticket Respond Modal */}
       {ticketModal.open && ticketModal.ticket && (
-        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal show d-block hg-modal-backdrop" tabIndex="-1">
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content rounded-3 border-0 shadow">
-              <div className="modal-header border-bottom">
-                <h6 className="modal-title fw-bold">Respond to Resident Grievance</h6>
+            <div className="modal-content hg-card border-0 rounded-2 shadow">
+              <div className="modal-header border-bottom py-2.5 px-3">
+                <h6 className="modal-title fw-bold mb-0">Respond to Resident Grievance</h6>
                 <button type="button" className="btn-close" onClick={() => setTicketModal({ ...ticketModal, open: false })}></button>
               </div>
               <form onSubmit={handleRespondFeedback}>
-                <div className="modal-body p-4">
+                <div className="modal-body p-3">
                   <div className="mb-2">
                     <strong>Resident:</strong> {ticketModal.ticket.full_name} ({ticketModal.ticket.roll_number})
                   </div>
-                  <div className="mb-3 small text-primary fw-medium">{ticketModal.ticket.subject}</div>
-                  <div className="p-3 bg-light rounded-3 mb-3 small">{ticketModal.ticket.message}</div>
+                  <div className="mb-3 hg-text-xs text-primary fw-medium">{ticketModal.ticket.subject}</div>
+                  <div className="p-2.5 bg-light rounded-2 mb-3 hg-text-xs">{ticketModal.ticket.message}</div>
                   <div className="mb-3">
-                    <label className="form-label small fw-medium">Status</label>
+                    <label className="form-label hg-text-xs fw-medium">Status</label>
                     <select
                       className="form-select form-select-sm"
                       value={ticketModal.status}
@@ -1093,7 +1090,7 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                     </select>
                   </div>
                   <div className="mb-3">
-                    <label className="form-label small fw-medium">Warden Remarks <span className="text-danger">*</span></label>
+                    <label className="form-label hg-text-xs fw-medium">Warden Remarks <span className="text-danger">*</span></label>
                     <textarea
                       className="form-control"
                       rows="3"
@@ -1104,7 +1101,7 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                     />
                   </div>
                 </div>
-                <div className="modal-footer border-top">
+                <div className="modal-footer border-top py-2 px-3">
                   <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setTicketModal({ ...ticketModal, open: false })}>Cancel</button>
                   <button type="submit" className="btn btn-sm btn-primary" disabled={submittingTicket}>
                     {submittingTicket ? 'Submitting...' : 'Save Remarks'}

@@ -129,7 +129,7 @@ export default function AdminDiagnostics() {
       )}
 
       {/* Primary Institutional Health Banner */}
-      <div className="card shadow-sm border-0 rounded-4 overflow-hidden mb-4">
+      <div className="card hg-card mb-3 overflow-hidden">
         <div className={`p-4 ${isAllHealthy ? 'bg-success-subtle border-start border-4 border-success' : 'bg-warning-subtle border-start border-4 border-warning'}`}>
           <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
             <div className="d-flex align-items-center gap-3">
@@ -235,7 +235,7 @@ export default function AdminDiagnostics() {
       </div>
 
       {/* Accordion for Technical Operational Details (Requirement #40) */}
-      <div className="card shadow-sm border-0 rounded-4 overflow-hidden">
+      <div className="card hg-card mb-3 overflow-hidden">
         <button
           type="button"
           className="btn btn-light w-100 py-3 px-4 d-flex align-items-center justify-content-between border-0 text-start"
