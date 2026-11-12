@@ -505,8 +505,12 @@ const verifyLocationHandler = async (req, res) => {
     const challengeId = uuidv4();
     const expiresAt = new Date(Date.now() + evaluation.ttlMs).toISOString();
 
-    const ACTIVE_CHALLENGE_POOL = ['HOLD_STILL', 'TURN_LEFT', 'TURN_RIGHT', 'NOD_DOWN'];
-    const activeChallenge = ACTIVE_CHALLENGE_POOL[Math.floor(Math.random() * ACTIVE_CHALLENGE_POOL.length)];
+    // Routine hostel check-in defaults to frontal steady gaze (HOLD_STILL) to guarantee highest SFace 128-D accuracy.
+    // Active pose challenges (TURN_LEFT, TURN_RIGHT, NOD_DOWN) are reserved for risk Step-Up verification.
+    const isRandomEnforced = process.env.ENFORCE_RANDOM_CHALLENGES === 'true';
+    const activeChallenge = (evaluation.requiresStepUp || isRandomEnforced)
+      ? ['TURN_LEFT', 'TURN_RIGHT', 'NOD_DOWN'][Math.floor(Math.random() * 3)]
+      : 'HOLD_STILL';
 
     const detectedBeaconId = ble_proof?.rawAnchorId || ble_proof?.beaconPublicId || (ble_proof?.compactVerified ? ble_proof.rawAnchorId : null) || 'A01';
     const detectedBleToken = typeof ble_proof?.rawPayload === 'string' ? ble_proof.rawPayload : (ble_proof?.token || ble_proof?.rollingCode || null);

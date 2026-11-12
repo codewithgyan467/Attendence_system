@@ -426,26 +426,28 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     let steadyStartTime = null;
     let animId = null;
     let lastCheckTime = 0;
-    const warmupUntil = Date.now() + 800;
+    const warmupUntil = Date.now() + 600;
 
     const checkFrame = async (timestamp) => {
       if (triggered || checkinStep !== 'camera_active') return;
 
-      // Sample every ~140ms for high responsiveness without CPU lag
-      if (timestamp - lastCheckTime >= 140) {
+      // Sample every ~120ms for high responsiveness without CPU lag
+      if (timestamp - lastCheckTime >= 120) {
         lastCheckTime = timestamp;
 
         if (videoRef.current && videoRef.current.readyState >= 2 && Date.now() >= warmupUntil) {
           try {
-            const analysis = await analyzeFaceFrame(videoRef.current, 'FRONT');
+            const targetStep = (activeChallenge === 'TURN_LEFT') ? 'LEFT' :
+                               (activeChallenge === 'TURN_RIGHT') ? 'RIGHT' : 'FRONT';
+            const analysis = await analyzeFaceFrame(videoRef.current, targetStep);
             if (analysis && analysis.ready) {
               if (!steadyStartTime) steadyStartTime = Date.now();
 
-              // Hold steady for 500ms or instant natural blink while centered
-              const isHeld500ms = (Date.now() - steadyStartTime) >= 500;
-              const isBlinkNatural = Boolean(analysis.blinkDetected && (Date.now() - steadyStartTime) >= 200);
+              // Hold steady for 400ms or instant natural blink while aligned
+              const isHeld400ms = (Date.now() - steadyStartTime) >= 400;
+              const isBlinkNatural = Boolean(analysis.blinkDetected && (Date.now() - steadyStartTime) >= 150);
 
-              if (isHeld500ms || isBlinkNatural) {
+              if (isHeld400ms || isBlinkNatural) {
                 triggered = true;
                 playBiometricChime('captured');
                 // Auto-capture rapid 3-frame burst (~100ms apart)
@@ -455,7 +457,8 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   pitch: analysis.pitch || 0,
                   blinkDetected: Boolean(analysis.blinkDetected),
                   faceConfidence: analysis.faceConfidence || 0.98,
-                  luminance: analysis.luminance || 100
+                  luminance: analysis.luminance || 100,
+                  boundingBox: analysis.boundingBox || null
                 };
                 handleVerifyFace(burst, clientMeshTelemetry);
                 return;
@@ -477,7 +480,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     return () => {
       if (animId) cancelAnimationFrame(animId);
     };
-  }, [checkinStep, sessionToken]);
+  }, [checkinStep, sessionToken, activeChallenge]);
 
   // Callback ref guarantees video stream attaches the exact microsecond the DOM node mounts
   const attachVideoRef = (node) => {
@@ -829,8 +832,13 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     try {
       let stream;
       try {
+        // High-definition front camera profile for sharp Android facial embeddings
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'user' }, width: { ideal: 640 }, height: { ideal: 480 } }
+          video: {
+            facingMode: { ideal: 'user' },
+            width: { ideal: 1280, min: 640 },
+            height: { ideal: 720, min: 480 }
+          }
         });
       } catch (e1) {
         try {
@@ -872,7 +880,11 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       let stream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'user' }, width: { ideal: 640 }, height: { ideal: 480 } }
+          video: {
+            facingMode: { ideal: 'user' },
+            width: { ideal: 1280, min: 640 },
+            height: { ideal: 720, min: 480 }
+          }
         });
       } catch (e1) {
         try {
@@ -1119,7 +1131,9 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         livePhotoBase64 = captureCleanFrame(videoRef.current, 640);
       }
 
-      const optimizedPayload = generateOptimizedBiometricPayload(videoRef.current);
+      const optimizedPayload = generateOptimizedBiometricPayload(videoRef.current, {
+        boundingBox: clientTelemetry?.boundingBox || null
+      });
       if (screenFlashEnabled) {
         setTimeout(() => setIsFlashing(false), 200);
       }
@@ -1756,16 +1770,17 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                       <div className="py-2 text-center">
                         <div className="mb-3">
                           <h5 className="fw-bold mb-1">
-                            {checkinStep === 'verifying_face'
-                              ? (activeChallenge === 'TURN_LEFT' ? 'Turn Head Slightly Left (~15°)' :
-                                activeChallenge === 'TURN_RIGHT' ? 'Turn Head Slightly Right (~15°)' :
-                                  activeChallenge === 'NOD_DOWN' ? 'Tilt Chin Downward' :
-                                    'Hold Steady & Face Camera')
-                              : 'Biometric Face Verification'}
+                            {activeChallenge === 'TURN_LEFT'
+                              ? 'Turn Head Slightly Left (~15°)'
+                              : activeChallenge === 'TURN_RIGHT'
+                              ? 'Turn Head Slightly Right (~15°)'
+                              : activeChallenge === 'NOD_DOWN'
+                              ? 'Tilt Chin Downward'
+                              : 'Hold Steady & Face Camera'}
                           </h5>
                           <div className="d-inline-flex align-items-center gap-1.5 px-3 py-1 rounded-pill bg-primary bg-opacity-10 text-primary small fw-semibold mt-1">
                             <Sparkles size={13} />
-                            <span>{activeChallengeInstruction || 'Position face within oval and follow challenge'}</span>
+                            <span>{activeChallengeInstruction || 'Position face within oval and look directly at camera'}</span>
                           </div>
                         </div>
 

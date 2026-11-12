@@ -141,7 +141,7 @@ async function fallbackGeometricCheck(videoEl, targetStep = 'FRONT') {
         const relY = bb.y / vH;
         const relX = bb.x / vW;
 
-        if (luminance < 42) {
+        if (luminance < 20) {
           return {
             ready: false,
             instruction: 'Lighting is too dim — face a light source 💡',
@@ -152,7 +152,7 @@ async function fallbackGeometricCheck(videoEl, targetStep = 'FRONT') {
           };
         }
 
-        if (relH < 0.28) {
+        if (relH < 0.18) {
           return {
             ready: false,
             instruction: 'Move closer to the camera',
@@ -163,10 +163,10 @@ async function fallbackGeometricCheck(videoEl, targetStep = 'FRONT') {
           };
         }
 
-        if (relH > 0.85 || relY < 0.05) {
+        if (relH > 0.90 || relY < 0.02) {
           return {
             ready: false,
-            instruction: 'Move phone slightly back so your full face & chin fit inside the circle',
+            instruction: 'Move phone slightly back so your full face fits inside the circle',
             yaw: 0,
             pitch: 0,
             luminance,
@@ -198,7 +198,7 @@ async function fallbackGeometricCheck(videoEl, targetStep = 'FRONT') {
   }
 
   // Graceful fallback when no hardware detector: check basic video presence & lighting
-  if (luminance < 40) {
+  if (luminance < 20) {
     return {
       ready: false,
       instruction: 'Lighting is too dim — face a light source 💡',
@@ -224,8 +224,8 @@ async function fallbackGeometricCheck(videoEl, targetStep = 'FRONT') {
  * Standardized rule evaluation for Front, Left, and Right target steps
  */
 function evaluatePoseRules(targetStep, yaw, pitch, luminance, box, confidence = 0.95, blendshapes = null) {
-  // 1. Lighting check
-  if (luminance < 42) {
+  // 1. Lighting check (calibrated for real-world Android front cameras in evening rooms)
+  if (luminance < 20) {
     return {
       ready: false,
       instruction: 'Lighting is too dim — face a light source 💡',
@@ -241,7 +241,7 @@ function evaluatePoseRules(targetStep, yaw, pitch, luminance, box, confidence = 
   const step = (targetStep || 'FRONT').toUpperCase();
 
   if (step === 'FRONT') {
-    if (yaw < -8) {
+    if (yaw < -16) {
       return {
         ready: false,
         instruction: 'Turn head slightly to the RIGHT ➡️',
@@ -252,7 +252,7 @@ function evaluatePoseRules(targetStep, yaw, pitch, luminance, box, confidence = 
         faceConfidence: confidence
       };
     }
-    if (yaw > 8) {
+    if (yaw > 16) {
       return {
         ready: false,
         instruction: 'Turn head slightly to the LEFT ⬅️',
@@ -263,7 +263,7 @@ function evaluatePoseRules(targetStep, yaw, pitch, luminance, box, confidence = 
         faceConfidence: confidence
       };
     }
-    if (pitch < -12) {
+    if (pitch < -16) {
       return {
         ready: false,
         instruction: 'Tilt head slightly UP ⬆️',
@@ -274,7 +274,7 @@ function evaluatePoseRules(targetStep, yaw, pitch, luminance, box, confidence = 
         faceConfidence: confidence
       };
     }
-    if (pitch > 12) {
+    if (pitch > 16) {
       return {
         ready: false,
         instruction: 'Tilt head slightly DOWN ⬇️',
@@ -299,8 +299,8 @@ function evaluatePoseRules(targetStep, yaw, pitch, luminance, box, confidence = 
   }
 
   if (step === 'LEFT') {
-    // In mirrored front camera view, turning student's left moves nose left (negative yaw)
-    if (yaw > -10) {
+    // In mirrored front camera view, turning student's left moves nose left
+    if (yaw > -8) {
       return {
         ready: false,
         instruction: 'Turn head slightly MORE to the LEFT ⬅️',
@@ -311,7 +311,7 @@ function evaluatePoseRules(targetStep, yaw, pitch, luminance, box, confidence = 
         faceConfidence: confidence
       };
     }
-    if (yaw < -30) {
+    if (yaw < -38) {
       return {
         ready: false,
         instruction: 'Turned too far left, face slightly back to center',
@@ -336,8 +336,8 @@ function evaluatePoseRules(targetStep, yaw, pitch, luminance, box, confidence = 
   }
 
   if (step === 'RIGHT') {
-    // Turning student's right moves nose right (positive yaw)
-    if (yaw < 10) {
+    // Turning student's right moves nose right
+    if (yaw < 8) {
       return {
         ready: false,
         instruction: 'Turn head slightly MORE to the RIGHT ➡️',
@@ -348,7 +348,7 @@ function evaluatePoseRules(targetStep, yaw, pitch, luminance, box, confidence = 
         faceConfidence: confidence
       };
     }
-    if (yaw > 30) {
+    if (yaw > 38) {
       return {
         ready: false,
         instruction: 'Turned too far right, face slightly back to center',
@@ -452,8 +452,8 @@ export async function analyzeFaceFrame(videoEl, targetStep = 'FRONT') {
     const luminance = computeFaceLuminance(videoEl, box);
 
     // 1. FULL-FACE FRAMING & CHIN/FOREHEAD CLIPPING CHECK
-    // Verify forehead, chin, and cheeks have at least 8% margin from video edge
-    const margin = 0.08;
+    // Accommodates normal mobile aspect ratios without aggressive boundary clipping
+    const margin = 0.02;
     if (chin.y > (1 - margin)) {
       return {
         ready: false,
@@ -487,9 +487,9 @@ export async function analyzeFaceFrame(videoEl, targetStep = 'FRONT') {
       };
     }
 
-    // Face height relative to frame must be between 30% and 75%
+    // Face height relative to frame must be reasonable for face detection
     const faceHeightRel = chin.y - forehead.y;
-    if (faceHeightRel < 0.28) {
+    if (faceHeightRel < 0.18) {
       return {
         ready: false,
         instruction: 'Move phone closer to your face',
@@ -499,7 +499,7 @@ export async function analyzeFaceFrame(videoEl, targetStep = 'FRONT') {
         faceDetected: true
       };
     }
-    if (faceHeightRel > 0.82) {
+    if (faceHeightRel > 0.88) {
       return {
         ready: false,
         instruction: 'Move phone slightly back so your full face & chin fit inside the circle',
@@ -567,12 +567,14 @@ export async function analyzeFaceFrame(videoEl, targetStep = 'FRONT') {
  * Captures clean, uncropped 640x640 offscreen frame with full head & shoulder margins
  * Never tight-crops to just the oval!
  */
-export function captureCleanFrame(videoEl, targetSize = 480) {
+export function captureCleanFrame(videoEl, targetSize = 640) {
   if (!videoEl || videoEl.readyState < 2) return null;
   const canvas = document.createElement('canvas');
   canvas.width = targetSize;
   canvas.height = targetSize;
   const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
 
   const vW = videoEl.videoWidth || 640;
   const vH = videoEl.videoHeight || 480;
@@ -583,8 +585,8 @@ export function captureCleanFrame(videoEl, targetSize = 480) {
   const sy = (vH - minDim) / 2;
 
   ctx.drawImage(videoEl, sx, sy, minDim, minDim, 0, 0, targetSize, targetSize);
-  // Optimized 480x480 @ 0.78 JPEG quality reduces network payload by ~85% (~40KB) while preserving full SFace accuracy
-  return canvas.toDataURL('image/jpeg', 0.78);
+  // High-fidelity JPEG quality 0.88 eliminates compression artifacts on low-noise Android sensors
+  return canvas.toDataURL('image/jpeg', 0.88);
 }
 
 /**

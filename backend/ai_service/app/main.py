@@ -216,63 +216,49 @@ async def _do_verify_live(req: VerifyLiveRequest):
 
             # 1. Direct MiniFASNetV2 deep PAD (<15ms) offloaded to thread pool
             pad_eval = await run_in_threadpool(liveness_detector.evaluate_pre_cropped_pad, pad_80_bgr)
-            if not pad_eval.get("is_live", True) and not req.allow_simulation_fallback:
-                return VerifyLiveResponse(
-                    is_match=False,
-                    is_live=False,
-                    similarity_score=0.0,
-                    liveness_score=pad_eval.get("live_prob", 0.0),
-                    confidence_passed=False,
-                    status="SPOOF_ATTEMPT_DETECTED",
-                    details={
-                        "message": f"Biometric anti-spoofing rejected presentation attack: {pad_eval.get('reason')}",
-                        "reason": pad_eval.get("reason"),
-                        "evaluation": pad_eval
-                    }
-                )
+            
+            # If fast-path PAD passes, test embedding match
+            if pad_eval.get("is_live", False) or req.allow_simulation_fallback:
+                # 2. Direct SFace / ArcFace embedding extraction (<10ms) offloaded to thread pool
+                live_vec, conf = await run_in_threadpool(face_engine.extract_from_pre_cropped, crop_112_bgr)
 
-            # 2. Direct SFace / ArcFace embedding extraction (<10ms) offloaded to thread pool
-            live_vec, conf = await run_in_threadpool(face_engine.extract_from_pre_cropped, crop_112_bgr)
+                # 3. Fast Cosine Matching against enrolled templates (Calibrated to 0.38 for indoor lighting)
+                threshold = 0.38 if (not req.similarity_threshold or req.similarity_threshold >= 0.60) else req.similarity_threshold
 
-            # 3. Fast Cosine Matching against enrolled templates (Calibrated to 0.38 for indoor lighting)
-            threshold = 0.38 if (not req.similarity_threshold or req.similarity_threshold >= 0.60) else req.similarity_threshold
+                def match_pre_cropped():
+                    best_sim = -1.0
+                    matched = False
+                    for stored_vec in req.stored_embeddings:
+                        sim = face_engine.compute_cosine_similarity(live_vec, stored_vec)
+                        if sim > best_sim:
+                            best_sim = sim
+                        if best_sim >= threshold:
+                            matched = True
+                            break
+                    return best_sim, bool(best_sim >= threshold)
 
-            def match_pre_cropped():
-                best_sim = -1.0
-                matched = False
-                for stored_vec in req.stored_embeddings:
-                    sim = face_engine.compute_cosine_similarity(live_vec, stored_vec)
-                    if sim > best_sim:
-                        best_sim = sim
-                    if best_sim >= threshold:
-                        matched = True
-                        break
-                return best_sim, bool(best_sim >= threshold)
-
-            best_similarity, is_match = await run_in_threadpool(match_pre_cropped)
-            status_str = "AUTHENTICATED" if is_match else "FACE_MISMATCH"
-            details_msg = (
-                "Facial recognition verified successfully (Fast-Path Pre-Crop)."
-                if is_match
-                else f"Face does not match registered student (Score: {best_similarity:.2f} < {threshold})."
-            )
-
-            return VerifyLiveResponse(
-                is_match=is_match,
-                is_live=True,
-                similarity_score=round(best_similarity, 4),
-                liveness_score=pad_eval.get("live_prob", 0.95),
-                confidence_passed=is_match,
-                status=status_str,
-                details={
-                    "message": details_msg,
-                    "best_similarity": round(best_similarity, 4),
-                    "threshold_used": threshold,
-                    "face_confidence": round(conf, 3),
-                    "pad_evaluation": pad_eval,
-                    "fast_path": True
-                }
-            )
+                best_similarity, is_match = await run_in_threadpool(match_pre_cropped)
+                if is_match:
+                    return VerifyLiveResponse(
+                        is_match=True,
+                        is_live=True,
+                        similarity_score=round(best_similarity, 4),
+                        liveness_score=pad_eval.get("live_prob", 0.95),
+                        confidence_passed=True,
+                        status="AUTHENTICATED",
+                        details={
+                            "message": "Facial recognition verified successfully (Fast-Path Pre-Crop).",
+                            "best_similarity": round(best_similarity, 4),
+                            "threshold_used": threshold,
+                            "face_confidence": round(conf, 3),
+                            "pad_evaluation": pad_eval,
+                            "fast_path": True
+                        }
+                    )
+            
+            # If fast-path is inconclusive (e.g. client pre-crop had sensor noise, low contrast, or aspect offset),
+            # fall back to full-frame YuNet detection on req.live_image_base64
+            logger.info("Fast-path pre-cropped check inconclusive; falling back to full-frame YuNet pipeline.")
         except Exception as fast_err:
             logger.warning(f"Fast-path pre-cropped evaluation notice: {fast_err}. Falling back to standard pipeline.")
 

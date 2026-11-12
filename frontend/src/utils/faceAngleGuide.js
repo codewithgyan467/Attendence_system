@@ -115,10 +115,10 @@ export async function detectFaceAngle(videoEl, activeTargetAngle = 'FRONT') {
         const faceRelWidth = bb.width / vW;
         const faceCenterX = (bb.x + bb.width / 2) / vW;
 
-        if (faceRelWidth < 0.22) {
+        if (faceRelWidth < 0.18) {
           return { detected: true, angle: 'TOO_FAR', confidence: 0.4, label: 'Move closer to camera' };
         }
-        if (faceRelWidth > 0.85) {
+        if (faceRelWidth > 0.90) {
           return { detected: true, angle: 'TOO_CLOSE', confidence: 0.4, label: 'Step back slightly' };
         }
 
@@ -220,8 +220,8 @@ export async function detectFaceAngle(videoEl, activeTargetAngle = 'FRONT') {
   const totalSampled = ((yMax - yMin) / 2) * ((xMax - xMin) / 2);
   const skinRatio = skinCount / (totalSampled || 1);
 
-  // If insufficient skin tone in the center oval, no face is centered
-  if (skinRatio < 0.16) {
+  // If insufficient skin tone in the center oval, no face is centered (calibrated for diverse lighting & skin tones)
+  if (skinRatio < 0.08) {
     return {
       detected: false,
       angle: 'NONE',
@@ -355,18 +355,20 @@ export function generateOptimizedBiometricPayload(videoEl, options = {}) {
     height: Math.floor(vH * 0.70)
   };
 
-  // 1. faceCrop112: Tight, centered 112x112 crop for SFace/ArcFace (~4 KB)
+  // 1. faceCrop112: Tight, centered 112x112 crop for SFace/ArcFace
   let faceCrop112 = null;
   try {
     const c112 = document.createElement('canvas');
     c112.width = 112;
     c112.height = 112;
     const ctx112 = c112.getContext('2d');
+    ctx112.imageSmoothingEnabled = true;
+    ctx112.imageSmoothingQuality = 'high';
     ctx112.drawImage(videoEl, faceBox.x, faceBox.y, faceBox.width, faceBox.height, 0, 0, 112, 112);
-    faceCrop112 = c112.toDataURL('image/jpeg', 0.85);
+    faceCrop112 = c112.toDataURL('image/jpeg', 0.88);
   } catch (_) {}
 
-  // 2. padCrop80: 1.5x expanded context crop scaled to 80x80 for MiniFASNetV2 (~3 KB)
+  // 2. padCrop80: 1.5x expanded context crop scaled to 80x80 for MiniFASNetV2
   let padCrop80 = null;
   try {
     const scale = 1.5;
@@ -381,30 +383,36 @@ export function generateOptimizedBiometricPayload(videoEl, options = {}) {
     c80.width = 80;
     c80.height = 80;
     const ctx80 = c80.getContext('2d');
+    ctx80.imageSmoothingEnabled = true;
+    ctx80.imageSmoothingQuality = 'high';
     ctx80.drawImage(videoEl, padX, padY, padW, padH, 0, 0, 80, 80);
-    padCrop80 = c80.toDataURL('image/jpeg', 0.82);
+    padCrop80 = c80.toDataURL('image/jpeg', 0.88);
   } catch (_) {}
 
-  // 3. livePhoto: Single downsampled 320x240 frame for audit fallback (~15 KB)
+  // 3. livePhoto: Single downsampled 480x360 frame for audit fallback
   let livePhoto = null;
   try {
     const c320 = document.createElement('canvas');
-    c320.width = 320;
-    c320.height = 240;
+    c320.width = 480;
+    c320.height = 360;
     const ctx320 = c320.getContext('2d');
-    ctx320.drawImage(videoEl, 0, 0, 320, 240);
-    livePhoto = c320.toDataURL('image/jpeg', 0.75);
+    ctx320.imageSmoothingEnabled = true;
+    ctx320.imageSmoothingQuality = 'high';
+    ctx320.drawImage(videoEl, 0, 0, 480, 360);
+    livePhoto = c320.toDataURL('image/jpeg', 0.85);
   } catch (_) {}
 
-  // 4. Single temporal micro-frame at 160x120 (~4 KB)
+  // 4. Single temporal micro-frame at 160x120
   let temporalFrame = null;
   try {
     const c160 = document.createElement('canvas');
     c160.width = 160;
     c160.height = 120;
     const ctx160 = c160.getContext('2d');
+    ctx160.imageSmoothingEnabled = true;
+    ctx160.imageSmoothingQuality = 'high';
     ctx160.drawImage(videoEl, 0, 0, 160, 120);
-    temporalFrame = c160.toDataURL('image/jpeg', 0.65);
+    temporalFrame = c160.toDataURL('image/jpeg', 0.75);
   } catch (_) {}
 
   return {

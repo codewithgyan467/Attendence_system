@@ -183,6 +183,17 @@ class LivenessDetectorV4:
 
         try:
             patch = cv2.resize(pad_crop_80_bgr, (80, 80))
+
+            # Illumination normalization for dim rooms
+            patch_gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
+            mean_brightness = float(np.mean(patch_gray))
+            if mean_brightness < 60.0:
+                lab = cv2.cvtColor(patch, cv2.COLOR_BGR2LAB)
+                l, a, b = cv2.split(lab)
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
+                cl = clahe.apply(l)
+                patch = cv2.cvtColor(cv2.merge((cl, a, b)), cv2.COLOR_LAB2BGR)
+
             blob = cv2.dnn.blobFromImage(
                 patch,
                 scalefactor=1.0,
@@ -334,10 +345,10 @@ class LivenessDetectorV4:
         yaw_span = max(yaw_values) - min(yaw_values)
         pitch_span = max(pitch_values) - min(pitch_values)
 
-        # Subject is holding steady if head rotation spans remain within calm thresholds
-        is_stable = (yaw_span < 0.25) and (pitch_span < 0.28)
-        # Subject is facing the camera generally (|yaw| < 0.40, roughly within +/-22 deg)
-        is_frontal = abs(initial_pose.get("yaw_ratio", 0.0)) < 0.40
+        # Subject is holding steady if head rotation spans remain within calm thresholds (calibrated for mobile hand-holding)
+        is_stable = (yaw_span < 0.35) and (pitch_span < 0.35)
+        # Subject is facing the camera generally (|yaw| < 0.45, roughly within +/-25 deg)
+        is_frontal = abs(initial_pose.get("yaw_ratio", 0.0)) < 0.45
         steady_frontal = bool(is_stable and is_frontal)
 
         if expected_challenge == "HOLD_STILL":
@@ -560,8 +571,8 @@ class LivenessDetectorV4:
         optical_res = self.compute_optical_flow_micromotion([vf[0] for vf in valid_frames])
         optical_pass = bool(optical_res["has_micromotion"])
 
-        # Adaptive threshold: In dim rooms with micro-motion or active challenge, accept p_live >= 0.35
-        deep_pad_pass = bool(mean_live_prob >= (0.35 if (optical_pass or active_challenge_pass) else 0.42))
+        # Adaptive threshold: In dim rooms with micro-motion or active challenge, accept p_live >= 0.30
+        deep_pad_pass = bool(mean_live_prob >= (0.30 if (optical_pass or active_challenge_pass) else 0.38))
 
         # Final Liveness Decision:
         is_live = bool(deep_pad_pass and active_challenge_pass and (temporal_pass or optical_pass))
