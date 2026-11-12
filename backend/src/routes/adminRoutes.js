@@ -104,6 +104,7 @@ router.get('/dashboard-stats', requireRole('ADMIN'), async (req, res) => {
       todayStatusCounts,
       flaggedForgeRow,
       pendingCorrectionsRow,
+      pendingFaceUpdatesRow,
       openTicketsRow,
       activeGeofence,
       trendRows,
@@ -118,6 +119,7 @@ router.get('/dashboard-stats', requireRole('ADMIN'), async (req, res) => {
       allQuery(`SELECT status, COUNT(*) as count FROM attendance_records WHERE date = ? GROUP BY status`, [today]),
       getQuery(`SELECT COUNT(*) as count FROM students WHERE is_flagged_forge = 1`),
       getQuery(`SELECT COUNT(*) as count FROM attendance_corrections WHERE status = 'PENDING'`),
+      getQuery(`SELECT COUNT(*) as count FROM face_update_requests WHERE status = 'PENDING'`),
       getQuery(`SELECT COUNT(*) as count FROM feedback_tickets WHERE status = 'OPEN'`),
       getQuery(`SELECT * FROM geofence_configs WHERE is_active = 1 LIMIT 1`),
       allQuery(`
@@ -237,6 +239,7 @@ router.get('/dashboard-stats', requireRole('ADMIN'), async (req, res) => {
         attendancePercentage: totalReg > 0 ? Math.round(((presentCount + lateCount) / totalReg) * 100) : 0,
         flaggedForgeCount: flaggedForgeRow?.count || 0,
         pendingCorrections: pendingCorrectionsRow?.count || 0,
+        pendingFaceUpdates: pendingFaceUpdatesRow?.count || 0,
         openTickets: openTicketsRow?.count || 0,
         geofenceRadius: activeGeofence?.radius_meters || 20.0
       },
@@ -539,6 +542,7 @@ router.delete('/students/:id', requireRole('ADMIN'), async (req, res) => {
       // 1. Delete corrections and records that have foreign keys
       if (studentId) {
         await runQuery(`DELETE FROM attendance_corrections WHERE student_id = ?`, [studentId]);
+        await runQuery(`DELETE FROM face_update_requests WHERE student_id = ?`, [studentId]);
         await runQuery(`DELETE FROM attendance_records WHERE student_id = ?`, [studentId]);
         await runQuery(`DELETE FROM student_face_embeddings WHERE student_id = ?`, [studentId]);
         await runQuery(`DELETE FROM student_registered_devices WHERE student_id = ?`, [studentId]);
@@ -547,6 +551,7 @@ router.delete('/students/:id', requireRole('ADMIN'), async (req, res) => {
       }
       if (rollNumber) {
         await runQuery(`DELETE FROM attendance_corrections WHERE roll_number = ?`, [rollNumber]);
+        await runQuery(`DELETE FROM face_update_requests WHERE roll_number = ?`, [rollNumber]);
         await runQuery(`DELETE FROM attendance_records WHERE roll_number = ?`, [rollNumber]);
         await runQuery(`DELETE FROM password_reset_otps WHERE identifier = ?`, [rollNumber]);
         await runQuery(`DELETE FROM security_audit_logs WHERE roll_number = ?`, [rollNumber]);
@@ -2129,6 +2134,72 @@ router.delete('/corrections', async (req, res) => {
     const result = await runQuery(sql, params);
     await recordAuditEvent(req.user.id, req.user.username, 'PURGE_CORRECTIONS', 'CORRECTION', status || 'ALL', logDetail, req);
     res.json({ success: true, message: `Successfully cleared attendance correction requests. (${result.changes || 0} removed)` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6b. Biometric Face Update Requests Management (Dual-Authority Review)
+router.get('/face-update-requests', async (req, res) => {
+  try {
+    const { status } = req.query;
+    let sql = `
+      SELECT r.*, s.full_name, s.course, s.semester, s.hostel_block, s.room_number, s.phone
+      FROM face_update_requests r
+      JOIN students s ON r.student_id = s.id
+    `;
+    const params = [];
+    if (status) {
+      sql += ' WHERE r.status = ?';
+      params.push(status);
+    }
+    sql += ' ORDER BY r.created_at DESC';
+
+    const requests = await allQuery(sql, params);
+    res.json({ success: true, requests });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/face-update-requests/:id/review', async (req, res) => {
+  try {
+    const decision = req.body.decision || req.body.action || req.body.status; // 'APPROVED' or 'REJECTED'
+    const rejection_reason = req.body.rejection_reason || req.body.reason || req.body.resolution_note || '';
+
+    if (!decision || !['APPROVED', 'REJECTED'].includes(decision)) {
+      return res.status(400).json({ success: false, error: 'Decision must be APPROVED or REJECTED.' });
+    }
+
+    const request = await getQuery(`SELECT * FROM face_update_requests WHERE id = ?`, [req.params.id]);
+    if (!request) {
+      return res.status(404).json({ success: false, error: 'Face update request not found.' });
+    }
+
+    if (request.status !== 'PENDING') {
+      return res.status(400).json({ success: false, error: `This request has already been ${request.status.toLowerCase()}.` });
+    }
+
+    await runQuery(`
+      UPDATE face_update_requests
+      SET status = ?, reviewed_by = ?, reviewer_role = 'ADMIN', reviewed_at = CURRENT_TIMESTAMP, rejection_reason = ?
+      WHERE id = ?
+    `, [decision, req.user.username, decision === 'REJECTED' ? rejection_reason : null, request.id]);
+
+    await recordAuditEvent(
+      req.user.id,
+      req.user.username,
+      'ADMIN_REVIEW_FACE_UPDATE',
+      'BIOMETRICS',
+      request.id,
+      `Administrator ${decision} face update request for student ${request.roll_number}${decision === 'REJECTED' ? ': ' + rejection_reason : ''}`,
+      req
+    );
+
+    res.json({
+      success: true,
+      message: `Face update request marked as ${decision}.`
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

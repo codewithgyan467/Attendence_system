@@ -26,6 +26,7 @@ router.get('/overview', async (req, res) => {
     const totalAbsent = Math.max(0, totalResidents - totalPresent);
 
     const pendingCorrections = await getQuery(`SELECT COUNT(*) as count FROM attendance_corrections WHERE status = 'PENDING'`);
+    const pendingFaceUpdates = await getQuery(`SELECT COUNT(*) as count FROM face_update_requests WHERE status = 'PENDING'`);
     const openTickets = await getQuery(`SELECT COUNT(*) as count FROM feedback_tickets WHERE status = 'OPEN'`);
 
     const todayLeaveRow = await getQuery(`SELECT COUNT(*) as count FROM attendance_records WHERE date = ? AND status = 'EXCUSED'`, [today]);
@@ -41,6 +42,7 @@ router.get('/overview', async (req, res) => {
         absentToday: Math.max(0, totalResidents - totalPresent - totalLeave),
         consecutiveAlertCount: consecutiveAlerts.length,
         pendingCorrections: pendingCorrections?.count || 0,
+        pendingFaceUpdates: pendingFaceUpdates?.count || 0,
         openTickets: openTickets?.count || 0,
         date: today
       },
@@ -161,6 +163,72 @@ router.post('/corrections/:id/review', async (req, res) => {
     await recordAuditEvent(req.user.id, req.user.username, 'WARDEN_REVIEW_CORRECTION', 'CORRECTION', correction.id, `Warden ${decision} correction for ${correction.roll_number}`, req);
 
     res.json({ success: true, message: `Correction request marked as ${decision}.` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 3b. Biometric Face Update Requests (Warden Review)
+router.get('/face-update-requests', async (req, res) => {
+  try {
+    const { status } = req.query;
+    let sql = `
+      SELECT r.*, s.full_name, s.course, s.semester, s.hostel_block, s.room_number, s.phone
+      FROM face_update_requests r
+      JOIN students s ON r.student_id = s.id
+    `;
+    const params = [];
+    if (status) {
+      sql += ' WHERE r.status = ?';
+      params.push(status);
+    }
+    sql += ' ORDER BY r.created_at DESC';
+
+    const requests = await allQuery(sql, params);
+    res.json({ success: true, requests });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/face-update-requests/:id/review', async (req, res) => {
+  try {
+    const decision = req.body.decision || req.body.action || req.body.status; // 'APPROVED' or 'REJECTED'
+    const rejection_reason = req.body.rejection_reason || req.body.reason || req.body.resolution_note || '';
+
+    if (!decision || !['APPROVED', 'REJECTED'].includes(decision)) {
+      return res.status(400).json({ success: false, error: 'Decision must be APPROVED or REJECTED.' });
+    }
+
+    const request = await getQuery(`SELECT * FROM face_update_requests WHERE id = ?`, [req.params.id]);
+    if (!request) {
+      return res.status(404).json({ success: false, error: 'Face update request not found.' });
+    }
+
+    if (request.status !== 'PENDING') {
+      return res.status(400).json({ success: false, error: `Request has already been ${request.status.toLowerCase()}.` });
+    }
+
+    await runQuery(`
+      UPDATE face_update_requests
+      SET status = ?, reviewed_by = ?, reviewer_role = 'WARDEN', reviewed_at = CURRENT_TIMESTAMP, rejection_reason = ?
+      WHERE id = ?
+    `, [decision, req.user.username, decision === 'REJECTED' ? rejection_reason : null, request.id]);
+
+    await recordAuditEvent(
+      req.user.id,
+      req.user.username,
+      'WARDEN_REVIEW_FACE_UPDATE',
+      'BIOMETRICS',
+      request.id,
+      `Warden ${decision} face update request for student ${request.roll_number}${decision === 'REJECTED' ? ': ' + rejection_reason : ''}`,
+      req
+    );
+
+    res.json({
+      success: true,
+      message: `Face update request marked as ${decision}.`
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

@@ -15,6 +15,7 @@ import {
   Search,
   MessageSquare,
   ShieldAlert,
+  ShieldCheck,
   Phone,
   BedDouble,
   Calendar,
@@ -48,6 +49,11 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
   // Review modal state
   const [reviewModal, setReviewModal] = useState({ open: false, req: null, decision: 'APPROVED', note: '' });
   const [submittingReview, setSubmittingReview] = useState(false);
+
+  // Biometric Face Update Review state
+  const [faceRequests, setFaceRequests] = useState([]);
+  const [faceReviewModal, setFaceReviewModal] = useState({ open: false, req: null, decision: 'APPROVED', note: '' });
+  const [submittingFaceReview, setSubmittingFaceReview] = useState(false);
 
   // Ticket response modal state
   const [ticketModal, setTicketModal] = useState({ open: false, ticket: null, status: 'RESOLVED', note: '' });
@@ -190,17 +196,19 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
     setLoading(true);
     setErrorMsg(null);
     try {
-      const [ovRes, exRes, corrRes, feedRes] = await Promise.allSettled([
+      const [ovRes, exRes, corrRes, feedRes, faceReqRes] = await Promise.allSettled([
         api.warden.getOverview(),
         api.warden.getExceptions(),
         api.warden.getCorrections(),
-        api.warden.getFeedback()
+        api.warden.getFeedback(),
+        api.warden.getFaceUpdateRequests()
       ]);
 
       if (ovRes.status === 'fulfilled' && ovRes.value.success) setOverview(ovRes.value);
       if (exRes.status === 'fulfilled' && exRes.value.success) setExceptions(exRes.value);
       if (corrRes.status === 'fulfilled' && corrRes.value.success) setCorrections(corrRes.value.requests || corrRes.value.corrections || []);
       if (feedRes.status === 'fulfilled' && feedRes.value.success) setTickets(feedRes.value.tickets || feedRes.value.feedback || []);
+      if (faceReqRes.status === 'fulfilled' && faceReqRes.value.success) setFaceRequests(faceReqRes.value.requests || []);
     } catch (err) {
       setErrorMsg(err.message || 'Failed to load warden dashboard data');
     } finally {
@@ -229,6 +237,26 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
       setErrorMsg(err.message || 'Failed to update correction');
     } finally {
       setSubmittingReview(false);
+    }
+  };
+
+  const handleReviewFaceRequest = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    setSubmittingFaceReview(true);
+    setErrorMsg(null);
+    try {
+      const res = await api.warden.reviewFaceUpdateRequest(faceReviewModal.req.id, {
+        decision: faceReviewModal.decision,
+        rejection_reason: faceReviewModal.note
+      });
+      setStatusMsg(res.message || 'Face update request status updated.');
+      setFaceReviewModal({ open: false, req: null, decision: 'APPROVED', note: '' });
+      const fRes = await api.warden.getFaceUpdateRequests();
+      if (fRes?.success) setFaceRequests(fRes.requests || []);
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to update face update request');
+    } finally {
+      setSubmittingFaceReview(false);
     }
   };
 
@@ -944,6 +972,85 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
         </div>
       )}
 
+      {(subTab === 'warden_corrections' || subTab === 'warden_overview') && (
+        /* Biometric Face Profile Update Requests Table */
+        <div className="card hg-card mb-3">
+          <div className="card-header bg-white border-bottom py-2 px-3 d-flex justify-content-between align-items-center">
+            <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
+              <ShieldCheck size={16} className="text-primary" />
+              Biometric Face Profile Update Requests ({faceRequests.length})
+            </h6>
+          </div>
+          <div className="card-body p-0">
+            {faceRequests.length === 0 ? (
+              <div className="text-center p-3 text-muted hg-text-xs">
+                No biometric face profile update requests pending.
+              </div>
+            ) : (
+              <div className="table-responsive">
+                <table className="table table-sm table-hover align-middle mb-0">
+                  <thead className="table-light hg-text-xs">
+                    <tr className="text-muted">
+                      <th className="ps-3">Resident</th>
+                      <th>Block &amp; Room</th>
+                      <th>Justification Reason</th>
+                      <th>Submitted</th>
+                      <th>Status</th>
+                      <th className="text-end pe-3">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="hg-text-xs">
+                    {faceRequests.map((r) => (
+                      <tr key={r.id}>
+                        <td className="ps-3">
+                          <div className="fw-medium text-dark">{r.full_name}</div>
+                          <code className="hg-text-xs hg-tabular">{r.roll_number}</code>
+                        </td>
+                        <td>
+                          <span className="badge bg-light text-dark hg-badge">{r.hostel_block} - Rm {r.room_number || 'N/A'}</span>
+                        </td>
+                        <td style={{ maxWidth: '320px' }}>
+                          <div className="hg-text-xs text-dark text-truncate" title={r.reason}>{r.reason}</div>
+                          {r.rejection_reason && (
+                            <div className="text-danger hg-text-xs mt-0.5">Rejected: {r.rejection_reason}</div>
+                          )}
+                        </td>
+                        <td>
+                          <span className="text-muted hg-tabular">{r.created_at ? new Date(r.created_at).toLocaleDateString() : 'N/A'}</span>
+                        </td>
+                        <td>
+                          <span className={`badge hg-badge ${r.status === 'APPROVED' ? 'bg-success' : r.status === 'COMPLETED' ? 'bg-info text-dark' : r.status === 'REJECTED' ? 'bg-danger' : 'bg-warning text-dark'}`}>
+                            {r.status}
+                          </span>
+                        </td>
+                        <td className="text-end pe-3">
+                          {r.status === 'PENDING' && (
+                            <div className="d-inline-flex gap-1">
+                              <button
+                                className="btn btn-sm btn-outline-success py-0 px-2 hg-text-xs"
+                                onClick={() => setFaceReviewModal({ open: true, req: r, decision: 'APPROVED', note: '' })}
+                              >
+                                Approve
+                              </button>
+                              <button
+                                className="btn btn-sm btn-outline-danger py-0 px-2 hg-text-xs"
+                                onClick={() => setFaceReviewModal({ open: true, req: r, decision: 'REJECTED', note: '' })}
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {(subTab === 'warden_feedback' || subTab === 'warden_overview') && (
         /* Facility Support Tickets */
         <div className="card hg-card mb-3">
@@ -1105,6 +1212,68 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
                   <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setTicketModal({ ...ticketModal, open: false })}>Cancel</button>
                   <button type="submit" className="btn btn-sm btn-primary" disabled={submittingTicket}>
                     {submittingTicket ? 'Submitting...' : 'Save Remarks'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Warden Review Face Update Modal */}
+      {faceReviewModal.open && faceReviewModal.req && (
+        <div className="modal show d-block hg-modal-backdrop" tabIndex="-1">
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content hg-card border-0 rounded-2 shadow">
+              <div className="modal-header border-bottom py-2.5 px-3">
+                <h6 className="modal-title fw-bold mb-0">
+                  {faceReviewModal.decision === 'APPROVED' ? 'Approve Face Re-enrollment' : 'Reject Face Re-enrollment'}
+                </h6>
+                <button type="button" className="btn-close" onClick={() => setFaceReviewModal({ ...faceReviewModal, open: false })}></button>
+              </div>
+              <form onSubmit={handleReviewFaceRequest}>
+                <div className="modal-body p-3">
+                  <div className="mb-2">
+                    <strong>Resident:</strong> {faceReviewModal.req.full_name} ({faceReviewModal.req.roll_number})
+                  </div>
+                  <div className="mb-2">
+                    <strong>Hostel Block:</strong> {faceReviewModal.req.hostel_block} (Room {faceReviewModal.req.room_number || 'N/A'})
+                  </div>
+                  <div className="mb-3">
+                    <strong>Stated Reason:</strong>
+                    <div className="p-2 bg-light rounded-2 mt-1 hg-text-xs text-secondary">
+                      {faceReviewModal.req.reason}
+                    </div>
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label hg-text-xs fw-medium">Warden Decision</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={faceReviewModal.decision}
+                      onChange={(e) => setFaceReviewModal({ ...faceReviewModal, decision: e.target.value })}
+                    >
+                      <option value="APPROVED">Approve (Authorize Re-enrollment)</option>
+                      <option value="REJECTED">Reject Request</option>
+                    </select>
+                  </div>
+                  {faceReviewModal.decision === 'REJECTED' && (
+                    <div className="mb-3">
+                      <label className="form-label hg-text-xs fw-medium">Rejection Reason <span className="text-danger">*</span></label>
+                      <textarea
+                        className="form-control"
+                        rows="2"
+                        placeholder="Explain why the face update was rejected..."
+                        value={faceReviewModal.note}
+                        onChange={(e) => setFaceReviewModal({ ...faceReviewModal, note: e.target.value })}
+                        required
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="modal-footer border-top py-2 px-3">
+                  <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setFaceReviewModal({ ...faceReviewModal, open: false })}>Cancel</button>
+                  <button type="submit" className={`btn btn-sm ${faceReviewModal.decision === 'APPROVED' ? 'btn-success' : 'btn-danger'}`} disabled={submittingFaceReview}>
+                    {submittingFaceReview ? 'Saving...' : faceReviewModal.decision === 'APPROVED' ? 'Confirm Approval' : 'Confirm Rejection'}
                   </button>
                 </div>
               </form>

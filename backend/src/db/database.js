@@ -556,6 +556,23 @@ const initDatabase = async () => {
     )
   `);
 
+  // 22. Biometric Face Update Requests (Dual-Authority Warden/Admin Approval Gateway)
+  await runQuery(`
+    CREATE TABLE IF NOT EXISTS face_update_requests (
+      id TEXT PRIMARY KEY,
+      student_id TEXT NOT NULL,
+      roll_number TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      status TEXT DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'APPROVED', 'REJECTED', 'COMPLETED')),
+      reviewed_by TEXT,
+      reviewer_role TEXT,
+      reviewed_at DATETIME,
+      rejection_reason TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (student_id) REFERENCES students(id)
+    )
+  `);
+
   // Automatic Non-Destructive Column Migrations (upgrades existing SQLite db schema)
   const ensureColumns = async (tableName, requiredCols) => {
     try {
@@ -715,6 +732,8 @@ const initDatabase = async () => {
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_evidence_created ON attendance_evidence(created_at);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_wifi_bssid ON site_wifi_access_points(bssid);`);
   await runQuery(`CREATE INDEX IF NOT EXISTS idx_ble_public ON site_ble_beacons(beacon_public_id);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_face_update_requests_student ON face_update_requests(student_id);`);
+  await runQuery(`CREATE INDEX IF NOT EXISTS idx_face_update_requests_status ON face_update_requests(status);`);
 
   // Verify SQLite database integrity on startup
   if (!useTurso) {
@@ -779,6 +798,7 @@ const clearAllStudentData = async () => {
   } catch (_) {}
   return await withTransaction(async ({ runQuery }) => {
     try { await runQuery('DELETE FROM attendance_evidence'); } catch (_) {}
+    try { await runQuery('DELETE FROM face_update_requests'); } catch (_) {}
     await runQuery('DELETE FROM student_face_embeddings');
     await runQuery('DELETE FROM attendance_records');
     await runQuery('DELETE FROM attendance_challenges');

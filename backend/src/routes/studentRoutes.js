@@ -855,7 +855,108 @@ router.get('/feedback', async (req, res) => {
   }
 });
 
-// 7. Student Self-Service Face Registration & Authoritative Enrollment
+// 7. Get Biometric Face Update Request Status
+router.get('/face-update-status', async (req, res) => {
+  try {
+    const student = await getQuery(
+      `SELECT * FROM students WHERE user_id = ? OR id = ? OR roll_number = ?`,
+      [req.user.id, req.user.student_id, req.user.username]
+    );
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Student profile not found.' });
+    }
+
+    const latestRequest = await getQuery(
+      `SELECT * FROM face_update_requests WHERE student_id = ? ORDER BY created_at DESC LIMIT 1`,
+      [student.id]
+    );
+
+    res.json({
+      success: true,
+      request: latestRequest || null,
+      status: latestRequest ? latestRequest.status : 'NONE'
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 8. Submit Request to Update Biometric Face Profile (Requires Warden/Admin Approval)
+router.post('/request-face-update', async (req, res) => {
+  try {
+    const { reason } = req.body;
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ success: false, error: 'A justification reason is required to request a face profile update.' });
+    }
+
+    const student = await getQuery(
+      `SELECT * FROM students WHERE user_id = ? OR id = ? OR roll_number = ?`,
+      [req.user.id, req.user.student_id, req.user.username]
+    );
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Student profile not found.' });
+    }
+
+    // Verify student is actually already enrolled
+    const existingCount = await getQuery(
+      `SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ? OR student_id = ?`,
+      [student.id, student.roll_number]
+    );
+    const hasPriorEnrollment = (existingCount?.count || 0) > 0 || student.face_enrollment_status === 'ENROLLED';
+    if (!hasPriorEnrollment) {
+      return res.status(400).json({
+        success: false,
+        error: 'Initial face enrollment does not require administrative approval. You can enroll your face directly.'
+      });
+    }
+
+    // Check if there is already a PENDING or active APPROVED request
+    const pendingOrApproved = await getQuery(
+      `SELECT * FROM face_update_requests WHERE student_id = ? AND status IN ('PENDING', 'APPROVED') ORDER BY created_at DESC LIMIT 1`,
+      [student.id]
+    );
+    if (pendingOrApproved) {
+      if (pendingOrApproved.status === 'PENDING') {
+        return res.status(400).json({
+          success: false,
+          error: 'You already have a pending face update request awaiting Warden or Admin review.'
+        });
+      }
+      if (pendingOrApproved.status === 'APPROVED') {
+        return res.status(400).json({
+          success: false,
+          error: 'Your face update request has already been approved! You can proceed to update your face profile now.'
+        });
+      }
+    }
+
+    const requestId = uuidv4();
+    await runQuery(`
+      INSERT INTO face_update_requests (id, student_id, roll_number, reason, status)
+      VALUES (?, ?, ?, ?, 'PENDING')
+    `, [requestId, student.id, student.roll_number, reason.trim()]);
+
+    await recordAuditEvent(
+      req.user.id,
+      req.user.username,
+      'REQUEST_FACE_UPDATE',
+      'BIOMETRICS',
+      requestId,
+      `Student ${student.roll_number} requested face re-enrollment approval. Reason: ${reason.trim()}`,
+      req
+    );
+
+    res.json({
+      success: true,
+      message: 'Face profile update request submitted. Awaiting approval from the Warden or Administrator.',
+      requestId
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 9. Student Self-Service Face Registration & Authoritative Enrollment
 router.post('/register-face', async (req, res) => {
   try {
     const { photos, is_re_enrollment, isReEnrollment } = req.body;
@@ -868,7 +969,7 @@ router.post('/register-face', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Student profile not found.' });
     }
 
-    // A. Check if already enrolled to prevent silent/accidental overwrite
+    // A. Check if already enrolled to prevent silent/accidental overwrite or unauthorized proxy face replacement
     const existingCount = await getQuery(
       `SELECT COUNT(*) as count FROM student_face_embeddings WHERE student_id = ? OR student_id = ?`,
       [student.id, student.roll_number]
@@ -883,6 +984,23 @@ router.post('/register-face', async (req, res) => {
         alreadyEnrolled: true,
         error: 'You have already completed biometric face enrollment. To update your face biometrics, request an authorized re-enrollment.'
       });
+    }
+
+    let approvedRequest = null;
+    if (hasPriorEnrollment) {
+      // Biometric Anti-Proxy Rule: Any re-enrollment after initial onboarding MUST be approved by Warden or Admin
+      approvedRequest = await getQuery(
+        `SELECT * FROM face_update_requests WHERE student_id = ? AND status = 'APPROVED' ORDER BY reviewed_at DESC LIMIT 1`,
+        [student.id]
+      );
+
+      if (!approvedRequest) {
+        return res.status(403).json({
+          success: false,
+          requiresApproval: true,
+          error: 'Biometric Security Policy: Updating an existing face profile requires prior approval from the Hostel Warden or Administrator. Please submit a Face Update Request from your profile.'
+        });
+      }
     }
 
     // B. Extract and validate vectors with deep PAD anti-spoofing
@@ -923,7 +1041,7 @@ router.post('/register-face', async (req, res) => {
       });
     }
 
-    // D. Safe Atomic Replacement & Version Increment
+    // D. Safe Atomic Replacement, Version Increment & Authorization Consumption
     await withTransaction(async ({ runQuery }) => {
       await runQuery(`DELETE FROM student_face_embeddings WHERE student_id = ? OR student_id = ?`, [student.id, student.roll_number]);
 
@@ -949,6 +1067,14 @@ router.post('/register-face', async (req, res) => {
             face_enrolled_version = COALESCE(face_enrolled_version, 0) + 1
         WHERE id = ?
       `, [student.id]);
+
+      // Atomically consume the approved request so it cannot be reused
+      if (approvedRequest) {
+        await runQuery(
+          `UPDATE face_update_requests SET status = 'COMPLETED' WHERE id = ?`,
+          [approvedRequest.id]
+        );
+      }
     });
 
     // Invalidate and refresh cache

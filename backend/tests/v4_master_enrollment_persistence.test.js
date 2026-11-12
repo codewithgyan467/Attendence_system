@@ -42,6 +42,7 @@ describe('HostelGuard Master Fix: Permanent Biometric Face Enrollment & Persiste
   });
 
   afterAll(async () => {
+    await runQuery(`DELETE FROM face_update_requests WHERE student_id = ?`, [studentId]);
     await runQuery(`DELETE FROM student_face_embeddings WHERE student_id = ?`, [studentId]);
     await runQuery(`DELETE FROM students WHERE id = ?`, [studentId]);
     await runQuery(`DELETE FROM users WHERE id = ?`, [userId]);
@@ -121,8 +122,52 @@ describe('HostelGuard Master Fix: Permanent Biometric Face Enrollment & Persiste
     expect(res.body.isAlreadyEnrolled).toBe(true);
   });
 
-  test('Step 5: Authorized re-enrollment with is_re_enrollment: true succeeds and increments version to 2', async () => {
+  test('Step 5: Unapproved re-enrollment attempt is blocked with 403, and requires Warden/Admin approval', async () => {
     const newPhoto = 'data:image/jpeg;base64,' + Buffer.from('photo-new-authorized').toString('base64');
+    
+    // 5a. Attempt re-enrollment without prior approval -> Expect 403 Forbidden
+    const unapprovedRes = await request(app)
+      .post('/api/v1/students/register-face')
+      .set('Authorization', `Bearer ${studentToken}`)
+      .send({
+        photos: [{ angle: 'FRONT', imageBase64: newPhoto }],
+        is_re_enrollment: true
+      });
+
+    expect(unapprovedRes.status).toBe(403);
+    expect(unapprovedRes.body.requiresApproval).toBe(true);
+
+    // 5b. Submit formal face update request
+    const reqRes = await request(app)
+      .post('/api/v1/students/request-face-update')
+      .set('Authorization', `Bearer ${studentToken}`)
+      .send({ reason: 'Facial appearance change: haircut and new glasses' });
+
+    expect(reqRes.status).toBe(200);
+    expect(reqRes.body.success).toBe(true);
+    const requestId = reqRes.body.requestId;
+
+    // 5c. Verify student face update status is PENDING
+    const statusRes = await request(app)
+      .get('/api/v1/students/face-update-status')
+      .set('Authorization', `Bearer ${studentToken}`);
+    expect(statusRes.status).toBe(200);
+    expect(statusRes.body.status).toBe('PENDING');
+
+    // 5d. Admin logs in and approves the request
+    const adminLogin = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: 'admin', password: 'Admin@12345' });
+    expect(adminLogin.status).toBe(200);
+    const adminToken = adminLogin.body.token;
+
+    const reviewRes = await request(app)
+      .post(`/api/v1/admin/face-update-requests/${requestId}/review`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ decision: 'APPROVED' });
+    expect(reviewRes.status).toBe(200);
+
+    // 5e. Authorized re-enrollment now succeeds and increments version to 2
     const res = await request(app)
       .post('/api/v1/students/register-face')
       .set('Authorization', `Bearer ${studentToken}`)
@@ -142,5 +187,20 @@ describe('HostelGuard Master Fix: Permanent Biometric Face Enrollment & Persiste
     const stRow = await getQuery(`SELECT face_enrollment_status, face_enrolled_version FROM students WHERE id = ?`, [studentId]);
     expect(stRow.face_enrollment_status).toBe('ENROLLED');
     expect(stRow.face_enrolled_version).toBe(2);
+
+    // 5f. Verify request status is now COMPLETED (consumed)
+    const consumedReq = await getQuery(`SELECT status FROM face_update_requests WHERE id = ?`, [requestId]);
+    expect(consumedReq.status).toBe('COMPLETED');
+
+    // 5g. Subsequent re-enrollment without another approval is blocked again
+    const postConsumeRes = await request(app)
+      .post('/api/v1/students/register-face')
+      .set('Authorization', `Bearer ${studentToken}`)
+      .send({
+        photos: [{ angle: 'FRONT', imageBase64: newPhoto }],
+        is_re_enrollment: true
+      });
+    expect(postConsumeRes.status).toBe(403);
+    expect(postConsumeRes.body.requiresApproval).toBe(true);
   });
 });

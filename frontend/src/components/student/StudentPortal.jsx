@@ -400,6 +400,14 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [ticketForm, setTicketForm] = useState({ category: 'Hostel Facilities', subject: '', message: '' });
   const [submittingTicket, setSubmittingTicket] = useState(false);
 
+  // Biometric Face Profile Update Request Gateway (Anti-Proxy Authorization)
+  const [faceUpdateStatus, setFaceUpdateStatus] = useState(null);
+  const [showFaceRequestModal, setShowFaceRequestModal] = useState(false);
+  const [faceRequestReason, setFaceRequestReason] = useState('Change in facial appearance / haircut / spectacles');
+  const [faceRequestCustomNote, setFaceRequestCustomNote] = useState('');
+  const [faceRequestSubmitting, setFaceRequestSubmitting] = useState(false);
+  const [faceRequestError, setFaceRequestError] = useState(null);
+
   useEffect(() => {
     fetchStudentData();
     return () => {
@@ -507,12 +515,13 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     setLoading(true);
     setErrorMsg(null);
     try {
-      const [dashRes, histRes, corrRes, tickRes, schedRes] = await Promise.allSettled([
+      const [dashRes, histRes, corrRes, tickRes, schedRes, faceUpRes] = await Promise.allSettled([
         api.student.getDashboard(),
         api.student.getHistory(),
         api.student.getCorrections(),
         api.student.getFeedback(),
-        api.attendance.getSchedule()
+        api.attendance.getSchedule(),
+        api.student.getFaceUpdateStatus()
       ]);
 
       if (dashRes.status === 'fulfilled' && dashRes.value.success) {
@@ -531,6 +540,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       if (histRes.status === 'fulfilled' && histRes.value.success) setHistory(histRes.value.records || []);
       if (corrRes.status === 'fulfilled' && corrRes.value.success) setCorrections(corrRes.value.corrections || corrRes.value.requests || []);
       if (tickRes.status === 'fulfilled' && tickRes.value.success) setTickets(tickRes.value.tickets || tickRes.value.feedback || []);
+      if (faceUpRes.status === 'fulfilled' && faceUpRes.value.success) setFaceUpdateStatus(faceUpRes.value.request || null);
       if (schedRes.status === 'fulfilled' && schedRes.value.success) {
         setScheduleStatus(schedRes.value.schedule || null);
         const schedMode = schedRes.value?.bluetoothEnforcementMode || schedRes.value?.ble_mode || schedRes.value?.schedule?.bluetoothEnforcementMode;
@@ -1039,6 +1049,33 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       if (animId) cancelAnimationFrame(animId);
     };
   }, [showEnrollModal, autoCaptureEnabled, enrollActiveAngle, enrollSubmitting, enrollPhotos.length]);
+
+  const handleSubmitFaceUpdateRequest = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const fullReason = faceRequestReason === 'Other'
+      ? faceRequestCustomNote.trim()
+      : (faceRequestCustomNote.trim() ? `${faceRequestReason} - ${faceRequestCustomNote.trim()}` : faceRequestReason);
+
+    if (!fullReason) {
+      setFaceRequestError('Please enter a justification reason for your face update request.');
+      return;
+    }
+
+    setFaceRequestSubmitting(true);
+    setFaceRequestError(null);
+    try {
+      const res = await api.student.requestFaceUpdate({ reason: fullReason });
+      setStatusMsg(res.message || 'Face update request submitted for Warden/Admin approval.');
+      setShowFaceRequestModal(false);
+      setFaceRequestCustomNote('');
+      const fuRes = await api.student.getFaceUpdateStatus();
+      if (fuRes?.success) setFaceUpdateStatus(fuRes.request || null);
+    } catch (err) {
+      setFaceRequestError(err.message || 'Failed to submit face update request.');
+    } finally {
+      setFaceRequestSubmitting(false);
+    }
+  };
 
   const handleSubmitFaceEnrollment = async () => {
     if (enrollPhotos.length === 0) {
@@ -2571,21 +2608,81 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
               <div className="p-3 bg-light rounded-3 d-flex justify-content-between align-items-center">
                 <div>
                   <div className="text-muted">Identity Verification</div>
-                  <div className={`fw-medium ${isFaceEnrolled ? 'text-success' : 'text-warning'}`}>
-                    {isFaceEnrolled ? 'Face Enrolled • Identity Verified' : 'Pending Enrollment'}
-                  </div>
+                  {!isFaceEnrolled ? (
+                    <div className="fw-medium text-warning">Pending Enrollment</div>
+                  ) : faceUpdateStatus?.status === 'APPROVED' ? (
+                    <div>
+                      <div className="fw-semibold text-success">Update Authorized ✅</div>
+                      <div className="text-muted hg-text-xs">Approved by Warden/Admin</div>
+                    </div>
+                  ) : faceUpdateStatus?.status === 'PENDING' ? (
+                    <div>
+                      <div className="fw-medium text-success">Face Enrolled • Identity Verified</div>
+                      <span className="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle hg-badge mt-0.5">
+                        <Clock size={11} className="me-1" /> Update Request Awaiting Approval
+                      </span>
+                    </div>
+                  ) : faceUpdateStatus?.status === 'REJECTED' ? (
+                    <div>
+                      <div className="fw-medium text-success">Face Enrolled • Identity Verified</div>
+                      <span className="badge bg-danger-subtle text-danger border border-danger-subtle hg-badge mt-0.5" title={faceUpdateStatus.rejection_reason || 'Rejected by Warden/Admin'}>
+                        <AlertTriangle size={11} className="me-1" /> Request Rejected
+                      </span>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="fw-medium text-success">Face Enrolled • Identity Verified</div>
+                      <div className="text-muted hg-text-xs">Secure biometric profile active</div>
+                    </div>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  className={`btn btn-sm ${isFaceEnrolled ? 'btn-outline-primary' : 'btn-primary'} fw-medium d-inline-flex align-items-center gap-1`}
-                  onClick={() => {
-                    setShowEnrollModal(true);
-                    startEnrollCamera();
-                  }}
-                >
-                  <Camera size={14} />
-                  {isFaceEnrolled ? 'Update Face Profile' : 'Enroll Face'}
-                </button>
+
+                {!isFaceEnrolled ? (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary fw-medium d-inline-flex align-items-center gap-1"
+                    onClick={() => {
+                      setShowEnrollModal(true);
+                      startEnrollCamera();
+                    }}
+                  >
+                    <Camera size={14} />
+                    Enroll Face
+                  </button>
+                ) : faceUpdateStatus?.status === 'APPROVED' ? (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-success fw-medium d-inline-flex align-items-center gap-1"
+                    onClick={() => {
+                      setShowEnrollModal(true);
+                      startEnrollCamera();
+                    }}
+                  >
+                    <Camera size={14} />
+                    Update Face Profile Now
+                  </button>
+                ) : faceUpdateStatus?.status === 'PENDING' ? (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-secondary fw-medium d-inline-flex align-items-center gap-1"
+                    disabled
+                  >
+                    <Clock size={14} />
+                    Approval Pending
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-primary fw-medium d-inline-flex align-items-center gap-1"
+                    onClick={() => {
+                      setFaceRequestError(null);
+                      setShowFaceRequestModal(true);
+                    }}
+                  >
+                    <ShieldCheck size={14} />
+                    Request Face Update
+                  </button>
+                )}
               </div>
             </div>
             <div className="col-md-6">
@@ -2595,6 +2692,105 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   {stats.failedStrikes > 0 ? `${stats.failedStrikes} Security Warnings` : 'Normal • In Good Standing'}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5b. Request Face Update Modal (Biometric Anti-Proxy Security) */}
+      {showFaceRequestModal && (
+        <div className="modal fade show d-block hg-modal-backdrop" style={{ zIndex: 1055 }} tabIndex="-1">
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '480px' }}>
+            <div className="modal-content hg-card border-0 rounded-2 shadow-lg overflow-hidden">
+              <div className="modal-header bg-dark text-white border-0 py-2.5 px-3">
+                <h6 className="modal-title fw-bold d-flex align-items-center gap-2 mb-0">
+                  <ShieldCheck size={16} className="text-primary" />
+                  Request Face Profile Update
+                </h6>
+                <button
+                  type="button"
+                  className="btn-close btn-close-white"
+                  onClick={() => setShowFaceRequestModal(false)}
+                  disabled={faceRequestSubmitting}
+                />
+              </div>
+              <form onSubmit={handleSubmitFaceUpdateRequest}>
+                <div className="modal-body p-3">
+                  <div className="alert alert-info py-2 px-2.5 hg-text-xs mb-3 d-flex align-items-start gap-2">
+                    <ShieldCheck size={16} className="text-primary flex-shrink-0 mt-0.5" />
+                    <div>
+                      <strong>Institutional Biometric Policy:</strong> To prevent proxy attendance and protect student identity, updating an enrolled biometric profile requires approval from either the Hostel Warden or Administrator.
+                    </div>
+                  </div>
+
+                  {faceRequestError && (
+                    <div className="alert alert-danger py-2 px-2.5 hg-text-xs mb-3">
+                      {faceRequestError}
+                    </div>
+                  )}
+
+                  <div className="mb-3">
+                    <label className="form-label hg-text-xs fw-semibold text-secondary">
+                      Reason for Update Request
+                    </label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={faceRequestReason}
+                      onChange={(e) => setFaceRequestReason(e.target.value)}
+                    >
+                      <option value="Change in facial appearance / haircut / spectacles">Change in facial appearance (beard, haircut, spectacles)</option>
+                      <option value="Poor initial enrollment lighting / low recognition accuracy">Poor initial enrollment lighting / camera quality</option>
+                      <option value="Recent facial injury / medical reason">Recent facial injury / medical recovery</option>
+                      <option value="Device camera upgrade / clarity improvement">Device camera upgrade / high clarity re-scan</option>
+                      <option value="Other">Other (specify below)</option>
+                    </select>
+                  </div>
+
+                  <div className="mb-2">
+                    <label className="form-label hg-text-xs fw-semibold text-secondary">
+                      Additional Details / Justification
+                    </label>
+                    <textarea
+                      className="form-control form-control-sm"
+                      rows={3}
+                      placeholder="Explain why your biometric profile needs to be re-enrolled..."
+                      value={faceRequestCustomNote}
+                      onChange={(e) => setFaceRequestCustomNote(e.target.value)}
+                      required={faceRequestReason === 'Other'}
+                    />
+                    <div className="form-text hg-text-xs text-muted">
+                      Once approved by the Warden or Admin, the "Update Face Profile" camera will unlock automatically.
+                    </div>
+                  </div>
+                </div>
+                <div className="modal-footer bg-light py-2 px-3 border-top">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-secondary"
+                    onClick={() => setShowFaceRequestModal(false)}
+                    disabled={faceRequestSubmitting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1.5"
+                    disabled={faceRequestSubmitting}
+                  >
+                    {faceRequestSubmitting ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm" role="status" />
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <Send size={14} />
+                        Submit Request to Warden/Admin
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>

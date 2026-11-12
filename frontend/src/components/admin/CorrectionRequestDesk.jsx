@@ -11,7 +11,8 @@ import {
   MessageSquare,
   Trash2,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ShieldCheck
 } from 'lucide-react';
 import { exportToExcel, exportToCsv } from '../../utils/exportUtils';
 import { formatDateTime12h, getTodayDateIST } from '../../utils/timeUtils';
@@ -33,9 +34,68 @@ export default function CorrectionRequestDesk() {
   const [reviewNotes, setReviewNotes] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
 
+  // Biometric Face Update Requests state
+  const [activeSubTab, setActiveSubTab] = useState('corrections'); // 'corrections' | 'face_updates'
+  const [faceRequests, setFaceRequests] = useState([]);
+  const [faceLoading, setFaceLoading] = useState(false);
+  const [faceSelectedStatus, setFaceSelectedStatus] = useState('PENDING'); // 'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'
+
+  // Face Review Modal state
+  const [showFaceReviewModal, setShowFaceReviewModal] = useState(false);
+  const [selectedFaceReq, setSelectedFaceReq] = useState(null);
+  const [faceReviewDecision, setFaceReviewDecision] = useState('APPROVED');
+  const [faceReviewNotes, setFaceReviewNotes] = useState('');
+  const [submittingFaceReview, setSubmittingFaceReview] = useState(false);
+
   useEffect(() => {
     fetchCorrections();
-  }, [selectedStatus]);
+    fetchFaceRequests();
+  }, [selectedStatus, faceSelectedStatus]);
+
+  const fetchFaceRequests = async () => {
+    setFaceLoading(true);
+    try {
+      const data = await api.admin.getFaceUpdateRequests(faceSelectedStatus === 'ALL' ? undefined : faceSelectedStatus);
+      setFaceRequests(data.requests || []);
+    } catch (err) {
+      console.warn('Failed to fetch face update requests:', err.message);
+    } finally {
+      setFaceLoading(false);
+    }
+  };
+
+  const openFaceReviewModal = (req, defaultDecision = 'APPROVED') => {
+    setSelectedFaceReq(req);
+    setFaceReviewDecision(defaultDecision);
+    setFaceReviewNotes('');
+    setShowFaceReviewModal(true);
+  };
+
+  const handleFaceReviewSubmit = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (faceReviewDecision === 'REJECTED' && !faceReviewNotes.trim()) {
+      setErrorMsg('Rejection reason is required when rejecting a face update request.');
+      return;
+    }
+
+    setSubmittingFaceReview(true);
+    setErrorMsg(null);
+    setStatusMsg(null);
+
+    try {
+      const res = await api.admin.reviewFaceUpdateRequest(selectedFaceReq.id, {
+        decision: faceReviewDecision,
+        rejection_reason: faceReviewNotes.trim()
+      });
+      setStatusMsg(res.message || `Face update request marked as ${faceReviewDecision}.`);
+      setShowFaceReviewModal(false);
+      fetchFaceRequests();
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to submit face request review');
+    } finally {
+      setSubmittingFaceReview(false);
+    }
+  };
 
   const fetchCorrections = async () => {
     setLoading(true);
@@ -250,7 +310,34 @@ export default function CorrectionRequestDesk() {
         </div>
       )}
 
-      {/* Filter Tabs */}
+      {/* Category Tabs: Attendance Corrections vs Biometric Face Update Requests */}
+      <div className="d-flex gap-2 mb-3">
+        <button
+          type="button"
+          className={`btn btn-sm ${activeSubTab === 'corrections' ? 'btn-primary' : 'btn-outline-secondary'} fw-medium d-inline-flex align-items-center gap-1.5`}
+          onClick={() => setActiveSubTab('corrections')}
+        >
+          <FileCheck2 size={15} />
+          <span>Attendance Appeals</span>
+          <span className="badge bg-secondary-subtle text-dark ms-1 hg-tabular">{corrections.length}</span>
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm ${activeSubTab === 'face_updates' ? 'btn-primary' : 'btn-outline-secondary'} fw-medium d-inline-flex align-items-center gap-1.5`}
+          onClick={() => {
+            setActiveSubTab('face_updates');
+            fetchFaceRequests();
+          }}
+        >
+          <ShieldCheck size={15} />
+          <span>Biometric Face Update Requests</span>
+          <span className="badge bg-secondary-subtle text-dark ms-1 hg-tabular">{faceRequests.length}</span>
+        </button>
+      </div>
+
+      {activeSubTab === 'corrections' && (
+        <>
+          {/* Filter Tabs */}
       <div className="card shadow-sm border-0 rounded-3 mb-4">
         <div className="card-body p-2">
           <div className="d-flex gap-2">
@@ -381,8 +468,145 @@ export default function CorrectionRequestDesk() {
           )}
         </div>
       </div>
+    </>
+  )}
 
-      {/* Review Modal */}
+  {activeSubTab === 'face_updates' && (
+    <>
+      {/* Face Updates Filter Tabs */}
+      <div className="card shadow-sm border-0 rounded-3 mb-4">
+        <div className="card-body p-2">
+          <div className="d-flex gap-2">
+            <button
+              className={`btn btn-sm ${faceSelectedStatus === 'PENDING' ? 'btn-primary' : 'btn-light'}`}
+              onClick={() => setFaceSelectedStatus('PENDING')}
+            >
+              Pending Review
+            </button>
+            <button
+              className={`btn btn-sm ${faceSelectedStatus === 'APPROVED' ? 'btn-primary' : 'btn-light'}`}
+              onClick={() => setFaceSelectedStatus('APPROVED')}
+            >
+              Approved
+            </button>
+            <button
+              className={`btn btn-sm ${faceSelectedStatus === 'REJECTED' ? 'btn-primary' : 'btn-light'}`}
+              onClick={() => setFaceSelectedStatus('REJECTED')}
+            >
+              Rejected
+            </button>
+            <button
+              className={`btn btn-sm ${faceSelectedStatus === 'ALL' ? 'btn-primary' : 'btn-light'}`}
+              onClick={() => setFaceSelectedStatus('ALL')}
+            >
+              All Requests
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Face Requests Table */}
+      <div className="card shadow-sm border-0 rounded-3">
+        <div className="card-header bg-white border-bottom py-3">
+          <h6 className="card-title mb-0 fw-semibold d-flex align-items-center gap-2">
+            <ShieldCheck size={16} className="text-primary" />
+            Biometric Face Re-enrollment Approvals ({faceRequests.length})
+          </h6>
+        </div>
+        <div className="card-body p-0">
+          {faceLoading ? (
+            <div className="text-center p-5">
+              <div className="spinner-border text-primary mb-2" role="status"></div>
+              <p className="text-muted small mb-0">Loading face update requests...</p>
+            </div>
+          ) : faceRequests.length === 0 ? (
+            <div className="text-center p-5 text-muted">
+              <ShieldCheck size={40} className="mb-2 text-muted opacity-50" />
+              <p className="mb-0">No face update requests found under this status filter.</p>
+            </div>
+          ) : (
+            <div className="table-responsive">
+              <table className="table table-hover align-middle mb-0">
+                <thead className="table-light">
+                  <tr className="small text-muted">
+                    <th className="ps-3">Student</th>
+                    <th>Hostel &amp; Room</th>
+                    <th>Justification Reason</th>
+                    <th>Submitted</th>
+                    <th>Status</th>
+                    <th className="text-end pe-3">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {faceRequests.map((req) => (
+                    <tr key={req.id}>
+                      <td className="ps-3">
+                        <div className="fw-medium text-dark">{req.full_name}</div>
+                        <code className="small">{req.roll_number}</code>
+                      </td>
+                      <td>
+                        <span className="badge bg-light text-dark">{req.hostel_block} - Rm {req.room_number || 'N/A'}</span>
+                      </td>
+                      <td style={{ maxWidth: '300px' }}>
+                        <div className="text-dark small text-truncate" title={req.reason}>
+                          {req.reason}
+                        </div>
+                        {req.rejection_reason && (
+                          <div className="text-danger small mt-1">
+                            Rejection Note: {req.rejection_reason}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <small className="text-muted">
+                          {req.created_at ? formatDateTime12h(req.created_at) : 'N/A'}
+                        </small>
+                      </td>
+                      <td>
+                        <span className={`badge ${req.status === 'APPROVED' ? 'bg-success-subtle text-success border border-success-subtle' : req.status === 'COMPLETED' ? 'bg-info-subtle text-info border border-info-subtle' : req.status === 'REJECTED' ? 'bg-danger-subtle text-danger border border-danger-subtle' : 'bg-warning-subtle text-warning border border-warning-subtle'}`}>
+                          {req.status}
+                        </span>
+                      </td>
+                      <td className="text-end pe-3">
+                        {req.status === 'PENDING' ? (
+                          <div className="d-flex justify-content-end align-items-center gap-1">
+                            <button
+                              className="btn btn-sm btn-outline-success py-0 px-2"
+                              style={{ fontSize: '12px' }}
+                              onClick={() => openFaceReviewModal(req, 'APPROVED')}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline-danger py-0 px-2"
+                              style={{ fontSize: '12px' }}
+                              onClick={() => openFaceReviewModal(req, 'REJECTED')}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            className="btn btn-sm btn-outline-secondary py-0 px-2"
+                            style={{ fontSize: '12px' }}
+                            onClick={() => openFaceReviewModal(req, req.status === 'REJECTED' ? 'REJECTED' : 'APPROVED')}
+                          >
+                            Re-evaluate
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  )}
+
+  {/* Review Modal */}
       {showReviewModal && selectedReq && (
         <div className="modal show d-block hg-modal-backdrop" tabIndex="-1">
           <div className="modal-dialog modal-dialog-centered">
@@ -498,6 +722,106 @@ export default function CorrectionRequestDesk() {
                   {clearingAll ? 'Clearing Records...' : 'Yes, Delete All'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Face Review Modal */}
+      {showFaceReviewModal && selectedFaceReq && (
+        <div className="modal show d-block hg-modal-backdrop" tabIndex="-1">
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content hg-card rounded-2 border-0 shadow">
+              <div className="modal-header border-bottom py-2.5 px-3">
+                <h6 className="modal-title fw-bold d-flex align-items-center gap-2 mb-0">
+                  <ShieldCheck size={16} className="text-primary" />
+                  Review Face Re-enrollment Authorization
+                </h6>
+                <button type="button" className="btn-close" onClick={() => setShowFaceReviewModal(false)}></button>
+              </div>
+              <form onSubmit={handleFaceReviewSubmit}>
+                <div className="modal-body p-4">
+                  <div className="mb-3">
+                    <label className="form-label small text-muted mb-0">Applicant Student</label>
+                    <div className="fw-semibold text-dark">{selectedFaceReq.full_name} ({selectedFaceReq.roll_number})</div>
+                    <div className="small text-muted">{selectedFaceReq.hostel_block} &bull; Room {selectedFaceReq.room_number || 'N/A'}</div>
+                  </div>
+
+                  <div className="mb-3 p-3 bg-light rounded-3">
+                    <label className="form-label small text-muted mb-1 d-flex align-items-center gap-1">
+                      <MessageSquare size={14} /> Student's Justification:
+                    </label>
+                    <div className="small text-dark">{selectedFaceReq.reason}</div>
+                  </div>
+
+                  <div className="mb-3">
+                    <label className="form-label small fw-semibold">Administrative Decision</label>
+                    <div className="d-flex gap-3">
+                      <div className="form-check">
+                        <input
+                          className="form-check-input"
+                          type="radio"
+                          name="faceDecision"
+                          id="faceApprove"
+                          value="APPROVED"
+                          checked={faceReviewDecision === 'APPROVED'}
+                          onChange={() => setFaceReviewDecision('APPROVED')}
+                        />
+                        <label className="form-check-label text-success fw-medium" htmlFor="faceApprove">
+                          Approve (Authorize One-Time Re-enrollment)
+                        </label>
+                      </div>
+                      <div className="form-check">
+                        <input
+                          className="form-check-input"
+                          type="radio"
+                          name="faceDecision"
+                          id="faceReject"
+                          value="REJECTED"
+                          checked={faceReviewDecision === 'REJECTED'}
+                          onChange={() => setFaceReviewDecision('REJECTED')}
+                        />
+                        <label className="form-check-label text-danger fw-medium" htmlFor="faceReject">
+                          Reject
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {faceReviewDecision === 'REJECTED' && (
+                    <div className="mb-3">
+                      <label className="form-label small fw-semibold">
+                        Rejection Reason <span className="text-danger">*</span>
+                      </label>
+                      <textarea
+                        className="form-control form-control-sm"
+                        rows="2"
+                        placeholder="State why the face update request is being denied..."
+                        value={faceReviewNotes}
+                        onChange={(e) => setFaceReviewNotes(e.target.value)}
+                        required
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="modal-footer border-top bg-light py-2">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-secondary"
+                    onClick={() => setShowFaceReviewModal(false)}
+                    disabled={submittingFaceReview}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className={`btn btn-sm ${faceReviewDecision === 'APPROVED' ? 'btn-success' : 'btn-danger'}`}
+                    disabled={submittingFaceReview}
+                  >
+                    {submittingFaceReview ? 'Submitting...' : `Confirm ${faceReviewDecision}`}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
