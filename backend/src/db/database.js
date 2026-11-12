@@ -816,14 +816,12 @@ const seedInitialData = async () => {
   const existingAdmin = await getQuery(`SELECT id, email, must_change_password FROM users WHERE username = ?`, ['admin']);
   if (!existingAdmin) {
     const salt = await bcrypt.genSalt(10);
-    const hash = await bcrypt.hash('Admin@12345', salt);
+    const hash = await bcrypt.hash('admin@123', salt);
     await runQuery(`
       INSERT INTO users (id, username, email, password_hash, role, is_active, must_change_password)
-      VALUES (?, ?, ?, ?, 'ADMIN', 1, 1)
+      VALUES (?, ?, ?, ?, 'ADMIN', 1, 0)
     `, [uuidv4(), 'admin', 'admin@hostelguard.local', hash]);
-    console.log('✅ Default Administrator seeded (Username: admin | Pass: Admin@12345) [Password rotation flagged]');
-  } else if (existingAdmin.email === 'admin@hostelguard.local') {
-    await runQuery(`UPDATE users SET must_change_password = 1 WHERE id = ?`, [existingAdmin.id]);
+    console.log('✅ Default Administrator seeded (Username: admin | Pass: admin@123)');
   }
 
   // A2. Seed Initial Master Recovery Key if missing

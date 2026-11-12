@@ -279,3 +279,4 @@ describe('HostelGuard Biometric Security: Dual-Authority Face Re-Enrollment Gate
     expect(updateRes.status).toBe(403);
   });
 });
+
