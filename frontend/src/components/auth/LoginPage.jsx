@@ -168,7 +168,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
             style={{ width: '46px', height: '46px', objectFit: 'cover' }}
           />
           <h5 className="fw-bold mb-0 text-white" style={{ fontSize: '16px' }}>HostelGuard Portal</h5>
-          <p className="text-muted small mb-0" style={{ fontSize: '11px' }}>
+          <p className="text-white-50 small mb-0" style={{ fontSize: '11px' }}>
             Biometric &amp; Geofenced Attendance Management
           </p>
         </div>

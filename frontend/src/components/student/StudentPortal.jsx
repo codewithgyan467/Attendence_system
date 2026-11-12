@@ -1275,14 +1275,20 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         <div className="card-body p-3">
           <div className="d-flex flex-wrap justify-content-between align-items-center gap-3">
             <div>
-              <div className="text-primary-subtle hg-text-xs fw-medium text-uppercase mb-1">
+              <div className="text-info fw-semibold hg-text-xs text-uppercase mb-1">
                 {formatDateIST(new Date())}
               </div>
               <h4 className="fw-bold mb-1 text-white">
                 {getGreeting(student.full_name || user?.username)}
               </h4>
-              <div className="text-muted hg-text-xs">
-                Roll No: <span className="text-light fw-medium hg-tabular">{student.roll_number || user?.username}</span> &bull; {student.hostel_block || 'Hostel'} &bull; Rm {student.room_number || 'N/A'} &bull; {student.course || 'Resident'}
+              <div className="hg-text-xs text-light opacity-90 mt-1 d-flex flex-wrap align-items-center gap-1.5">
+                <span>Roll No: <strong className="text-white fw-semibold hg-tabular">{student.roll_number || user?.username}</strong></span>
+                <span className="opacity-50">&bull;</span>
+                <span>{student.hostel_block || 'Hostel'}</span>
+                <span className="opacity-50">&bull;</span>
+                <span>Rm {student.room_number || 'N/A'}</span>
+                <span className="opacity-50">&bull;</span>
+                <span>{student.course || 'Resident'}</span>
               </div>
             </div>
 
@@ -1295,7 +1301,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     : 'bg-warning bg-opacity-10 border-warning text-warning'
                 }`}
               >
-                <div className="hg-text-xs fw-bold text-uppercase text-secondary mb-0.5">
+                <div className="hg-text-xs fw-bold text-uppercase text-white-50 mb-0.5">
                   Today's Status
                 </div>
                 <div className="fw-bold fs-6">

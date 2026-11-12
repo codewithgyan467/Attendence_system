@@ -118,7 +118,7 @@ export default function InitialAdminSetupModal({ isOpen, user, onSetupComplete }
                 <h5 className="modal-title fw-bold mb-0 text-white" style={{ fontSize: '16px' }}>
                   Mandatory Security Setup
                 </h5>
-                <span className="text-muted small" style={{ fontSize: '11.5px' }}>
+                <span className="text-white-50 small" style={{ fontSize: '11.5px' }}>
                   Default Administrator Credentials Detected
                 </span>
               </div>

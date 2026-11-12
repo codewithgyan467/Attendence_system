@@ -322,7 +322,7 @@ export default function ForgotPasswordModal({
                 <h5 className="fw-bold mb-0 text-white">
                   {recoveryMode === 'MASTER_KEY' ? 'Emergency Admin Recovery' : 'Account Password Recovery'}
                 </h5>
-                <span className="text-muted small">
+                <span className="text-white-50 small">
                   {recoveryMode === 'MASTER_KEY'
                     ? 'Cryptographic institutional override using Master Recovery Key'
                     : step === 1

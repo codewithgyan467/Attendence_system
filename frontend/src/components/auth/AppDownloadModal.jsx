@@ -110,7 +110,7 @@ export default function AppDownloadModal({ isOpen, onClose }) {
             />
             <div>
               <h6 className="fw-bold mb-0 text-white" style={{ fontSize: '13px' }}>HostelGuard Mobile App</h6>
-              <small className="text-secondary" style={{ fontSize: '10px' }}>
+              <small className="text-white-50" style={{ fontSize: '10px' }}>
                 Required for satellite GPS roll call check-in
               </small>
             </div>
