@@ -55,3 +55,9 @@ backend/ai_service/app/models/*.onnx
 
 # External Reference Folder
 IDEA/
+
+# Local tools, scratch files, and binaries
+scratch/
+tools/
+*.exe
+

@@ -24,9 +24,15 @@ class BleBeaconService {
    * @private
    */
   _getSecretBuffer(secret) {
-    if (!secret) return Buffer.from('hostelguard_super_secret_32b_key', 'utf-8');
-    if (Buffer.isBuffer(secret)) return secret;
-    const str = String(secret).trim();
+    const sec = secret || process.env.ANCHOR_HMAC_SECRET;
+    if (!sec) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('HMAC secret is required in production mode.');
+      }
+      return Buffer.from('hostelguard_super_secret_32b_key', 'utf-8');
+    }
+    if (Buffer.isBuffer(sec)) return sec;
+    const str = String(sec).trim();
     if (/^[0-9a-fA-F]{64}$/.test(str)) {
       return Buffer.from(str, 'hex');
     }
@@ -315,6 +321,21 @@ class BleBeaconService {
       };
     }
 
+    // Verify beacon.block_name matches student.hostel_block when both are populated
+    const studentBlock = params.studentBlock || params.student?.hostel_block || null;
+    if (beacon.block_name && studentBlock) {
+      const bBlock = beacon.block_name.trim().toLowerCase();
+      const sBlock = studentBlock.trim().toLowerCase();
+      if (!bBlock.includes(sBlock) && !sBlock.includes(bBlock)) {
+        return {
+          isValid: false,
+          reason: 'BLOCK_MISMATCH',
+          message: `Beacon belongs to ${beacon.block_name}, but resident is assigned to ${studentBlock}.`,
+          beaconPublicId: beacon.beacon_public_id
+        };
+      }
+    }
+
     this._cleanReplayCache();
 
     // Anti-Replay Nonce Check (per student)
@@ -334,15 +355,20 @@ class BleBeaconService {
     const hasClientSlot = timestampSlot !== null && typeof timestampSlot !== 'undefined' && !isNaN(Number(timestampSlot));
     const clientSlotNum = hasClientSlot ? Number(timestampSlot) : null;
 
-    // Support database secret, active firmware secret, and seeded defaults
-    const candidateSecrets = Array.from(new Set([
-      beacon.shared_secret_ref,
-      process.env.ANCHOR_HMAC_SECRET,
-      'HG_STRICT_ANCHOR_SECRET_2026',
-      'hostelguard_super_secret_32b_key',
-      '4a8f9c1b2e3d4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a',
-      '5737e7a308d843d6d5a63d512167d7a89702853d9e8ef53195e08472cc1d2859'
-    ].filter(Boolean)));
+    // Support database secret, active firmware secret, and seeded defaults (strict in production)
+    const isProd = process.env.NODE_ENV === 'production';
+    const candidateSecrets = Array.from(new Set(
+      isProd
+        ? [beacon.shared_secret_ref, process.env.ANCHOR_HMAC_SECRET].filter(Boolean)
+        : [
+            beacon.shared_secret_ref,
+            process.env.ANCHOR_HMAC_SECRET,
+            'HG_STRICT_ANCHOR_SECRET_2026',
+            'hostelguard_super_secret_32b_key',
+            '4a8f9c1b2e3d4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a',
+            '5737e7a308d843d6d5a63d512167d7a89702853d9e8ef53195e08472cc1d2859'
+          ].filter(Boolean)
+    ));
 
     // Support canonical beacon public ID, short broadcast alias, and database identifiers
     const candidateIds = Array.from(new Set([
@@ -366,6 +392,12 @@ class BleBeaconService {
     const anchorState = this.beaconAnchorStates.get(beacon.beacon_public_id);
 
     if (anchorState) {
+      // Transition from uptime slots (< 1,000,000) to Unix epoch slots (> 56,000,000)
+      if (anchorState.lastVerifiedEsp32Slot < 1000000 && clientSlotNum !== null && clientSlotNum > 56000000) {
+        anchorState.bootEpochOffset = currentServerSlot - clientSlotNum;
+        anchorState.lastVerifiedEsp32Slot = clientSlotNum;
+      }
+
       // Anchored offline board: Compute expected slot from server's current epoch minus recorded boot offset
       const expectedSlot = currentServerSlot - anchorState.bootEpochOffset;
       // If client submitted a slot that is in the PAST relative to the anchor's monotonic progression, reject replay
@@ -531,12 +563,17 @@ class BleBeaconService {
     const cleanSig = String(hwSignature).trim().toUpperCase();
     const cleanSlot = parseInt(slot30s, 10);
 
-    const candidateSecrets = Array.from(new Set([
-      beacon.shared_secret_ref,
-      process.env.ANCHOR_HMAC_SECRET,
-      'HG_STRICT_ANCHOR_SECRET_2026',
-      'hostelguard_super_secret_32b_key'
-    ].filter(Boolean)));
+    const isProd = process.env.NODE_ENV === 'production';
+    const candidateSecrets = Array.from(new Set(
+      isProd
+        ? [beacon.shared_secret_ref, process.env.ANCHOR_HMAC_SECRET].filter(Boolean)
+        : [
+            beacon.shared_secret_ref,
+            process.env.ANCHOR_HMAC_SECRET,
+            'HG_STRICT_ANCHOR_SECRET_2026',
+            'hostelguard_super_secret_32b_key'
+          ].filter(Boolean)
+    ));
 
     let isSigMatch = false;
     for (const secret of candidateSecrets) {
@@ -574,7 +611,7 @@ class BleBeaconService {
    * Fast-Pass: 19-Byte Compact ESP32 Payload Verification (0ms NTP Dependency)
    * Format: "<ANCHOR_ID>|<STEP_HEX>|<HMAC_8HEX>" (e.g. "A01|0001A4|9F8E7D6C")
    */
-  verifyCompactEsp32Payload(rawPayload, secret = process.env.ANCHOR_HMAC_SECRET || 'HG_STRICT_ANCHOR_SECRET_2026') {
+  verifyCompactEsp32Payload(rawPayload, secret = process.env.ANCHOR_HMAC_SECRET || 'HG_STRICT_ANCHOR_SECRET_2026', student = null) {
     if (!rawPayload || typeof rawPayload !== 'string') {
       return { valid: false, reason: 'EMPTY_BLE_PAYLOAD' };
     }
@@ -604,15 +641,37 @@ class BleBeaconService {
       return { valid: false, reason: 'UNREGISTERED_BEACON_ID' };
     }
 
-    // Multi-candidate secret support across hardware revisions & database records
-    const candidateSecrets = Array.from(new Set([
-      secret,
-      process.env.ANCHOR_HMAC_SECRET,
-      'HG_STRICT_ANCHOR_SECRET_2026',
-      'hostelguard_super_secret_32b_key',
-      '5737e7a308d843d6d5a63d512167d7a89702853d9e8ef53195e08472cc1d2859',
-      '4a8f9c1b2e3d4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a'
-    ].filter(Boolean)));
+    // Verify beacon.block_name matches student.hostel_block when both are populated
+    const cachedBeacon = typeof beaconCache.getBeacon === 'function'
+      ? beaconCache.getBeacon(cleanAnchorId)
+      : (typeof beaconCache.get === 'function' ? beaconCache.get(cleanAnchorId) : null);
+    if (cachedBeacon && cachedBeacon.block_name && student && student.hostel_block) {
+      const bBlock = cachedBeacon.block_name.trim().toLowerCase();
+      const sBlock = student.hostel_block.trim().toLowerCase();
+      if (!bBlock.includes(sBlock) && !sBlock.includes(bBlock)) {
+        return {
+          valid: false,
+          reason: 'BLOCK_MISMATCH',
+          message: `Beacon is for ${cachedBeacon.block_name}, but resident is assigned to ${student.hostel_block}.`
+        };
+      }
+    }
+
+    // Multi-candidate secret support across hardware revisions & database records (strict in production)
+    const isProd = process.env.NODE_ENV === 'production';
+    const candidateSecrets = Array.from(new Set(
+      isProd
+        ? [cachedBeacon?.shared_secret_ref, secret, process.env.ANCHOR_HMAC_SECRET].filter(Boolean)
+        : [
+            cachedBeacon?.shared_secret_ref,
+            secret,
+            process.env.ANCHOR_HMAC_SECRET,
+            'HG_STRICT_ANCHOR_SECRET_2026',
+            'hostelguard_super_secret_32b_key',
+            '5737e7a308d843d6d5a63d512167d7a89702853d9e8ef53195e08472cc1d2859',
+            '4a8f9c1b2e3d4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a'
+          ].filter(Boolean)
+    ));
 
     const candidateIds = Array.from(new Set([
       cleanAnchorId,
@@ -671,13 +730,28 @@ class BleBeaconService {
       return { valid: false, reason: 'INVALID_HMAC_SIGNATURE' };
     }
 
+    // Anti-Replay: Check tokenReplayCache
+    this._cleanReplayCache();
+    const replayKey = `COMPACT:${cleanAnchorId}:${stepDecimal}:${cleanCode}`;
+    if (this.tokenReplayCache.has(replayKey)) {
+      return {
+        valid: false,
+        reason: 'REPLAY_TOKEN_ALREADY_USED',
+        message: 'This BLE verification payload has already been consumed.'
+      };
+    }
+
     const existing = this.beaconAnchorStates.get(cleanAnchorId);
     if (existing && typeof existing.lastVerifiedEsp32Slot === 'number') {
-      if (stepDecimal < existing.lastVerifiedEsp32Slot - 1) {
+      // Transition from uptime slots (< 1,000,000) to Unix epoch slots (> 56,000,000)
+      if (existing.lastVerifiedEsp32Slot < 1000000 && stepDecimal > 56000000) {
+        existing.lastVerifiedEsp32Slot = stepDecimal;
+      } else if (stepDecimal < existing.lastVerifiedEsp32Slot - 1) {
         return { valid: false, reason: 'STALE_REPLAY_TOKEN' };
       }
     }
 
+    this.tokenReplayCache.set(replayKey, { timestamp: Date.now(), slot: stepDecimal });
     this.beaconAnchorStates.set(cleanAnchorId, {
       lastVerifiedEsp32Slot: stepDecimal,
       lastUpdatedAt: Date.now()

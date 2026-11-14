@@ -827,7 +827,7 @@ const seedInitialData = async () => {
   // A2. Seed Initial Master Recovery Key if missing
   try {
     const { createMasterRecoveryKey } = require('../services/recoveryService');
-    const existingKey = await getQuery(`SELECT id FROM system_recovery_keys WHERE is_active = 1 LIMIT 1`);
+    const existingKey = await getQuery(`SELECT key_hash FROM system_recovery_keys WHERE is_active = 1 LIMIT 1`);
     if (!existingKey) {
       const recoveryKey = await createMasterRecoveryKey();
       console.log(`========================================================================`);

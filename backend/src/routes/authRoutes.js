@@ -45,10 +45,7 @@ router.post('/login', authLimiter, async (req, res) => {
       return res.status(403).json({ success: false, error: 'Account has been deactivated. Please contact hostel administration.' });
     }
 
-    let isMatch = await bcrypt.compare(password, user.password_hash);
-    if (!isMatch && user.username === 'admin' && (password === 'admin@123' || password === 'Admin@123' || password === 'Admin@12345')) {
-      isMatch = true;
-    }
+    const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
       return res.status(401).json({ success: false, error: 'Invalid username or password.' });
     }
@@ -209,10 +206,7 @@ router.post('/change-password', requireAuth, async (req, res) => {
     }
 
     const user = await getQuery(`SELECT password_hash FROM users WHERE id = ?`, [req.user.id]);
-    let isMatch = await bcrypt.compare(current_password, user.password_hash);
-    if (!isMatch && (current_password === 'admin@123' || current_password === 'Admin@12345')) {
-      isMatch = true;
-    }
+    const isMatch = await bcrypt.compare(current_password, user.password_hash);
 
     if (!isMatch) {
       return res.status(400).json({ success: false, error: 'Incorrect current password.' });
@@ -265,10 +259,7 @@ router.post('/initial-admin-setup', requireAuth, async (req, res) => {
 
     // Verify current password
     const user = await getQuery(`SELECT password_hash FROM users WHERE id = ?`, [req.user.id]);
-    let isMatch = await bcrypt.compare(current_password, user.password_hash);
-    if (!isMatch && (current_password === 'admin@123' || current_password === 'Admin@12345')) {
-      isMatch = true;
-    }
+    const isMatch = await bcrypt.compare(current_password, user.password_hash);
     if (!isMatch) {
       return res.status(400).json({ success: false, error: 'Incorrect current password.' });
     }

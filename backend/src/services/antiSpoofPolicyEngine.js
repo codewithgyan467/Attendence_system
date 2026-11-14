@@ -617,7 +617,7 @@ class AntiSpoofPolicyEngine {
     // --- Layer 8: Step-Up Photometric Flash Verification ---
     let padPhotometricPass = 1;
     if (challenge.requires_step_up === 1) {
-      if (photometricData && photometricData.flash_verified === false) {
+      if (!photometricData || photometricData.flash_verified !== true) {
         padPhotometricPass = 0;
         unfairMeans.push('PHOTOMETRIC_FLASH_REJECTED');
         return {

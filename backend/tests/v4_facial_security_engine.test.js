@@ -87,13 +87,14 @@ describe('HostelGuard Enterprise v4.0 - Advanced Facial Security & Anti-Spoofing
     const token = locRes.body.challengeToken;
     const dummyPhoto = 'data:image/jpeg;base64,' + Buffer.from('fake-camera-frame').toString('base64');
 
-    // Attempt verification with OBS Virtual Camera
+    // Attempt verification with OBS Virtual Camera (with valid photometric proof)
     const res = await request(app)
       .post('/api/v1/attendance/verify-face')
       .set('x-test-virtual-cam', 'true')
       .send({
         session_token: token,
         live_photo: dummyPhoto,
+        photometric_data: { flash_verified: true, colors: locRes.body.stepUpColorSequence || ['#FFFFFF', '#3B82F6'] },
         device_info: {
           cameraLabel: 'OBS Virtual Camera Driver v29.1',
           isVirtualCamera: true
@@ -134,6 +135,7 @@ describe('HostelGuard Enterprise v4.0 - Advanced Facial Security & Anti-Spoofing
         session_token: token,
         live_photo: dummyPhoto,
         temporal_frames: dummyBurst,
+        photometric_data: { flash_verified: true, colors: locRes.body.stepUpColorSequence || ['#FFFFFF', '#3B82F6'] },
         device_info: {
           cameraLabel: 'Integrated Camera (04f2:b604)',
           isVirtualCamera: false

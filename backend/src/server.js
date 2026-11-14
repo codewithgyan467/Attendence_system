@@ -92,7 +92,11 @@ app.use(cors({
     if (isPrivateSubnetHostname(origin)) {
       return callback(null, true);
     }
-    return callback(null, true); // Safe fallback: allow all LAN & web clients
+    // Reject unknown origins in production mode; allow in dev/test for rapid LAN iteration
+    if (process.env.NODE_ENV === 'production') {
+      return callback(new Error('Not allowed by CORS'));
+    }
+    return callback(null, true); // Safe fallback for development & local testing environments
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -318,14 +322,21 @@ async function ensureAiServiceRunning() {
   const aiDir = path.join(__dirname, '../ai_service');
   console.log('🧠 Auto-launching Python AI Microservice (OpenCV YuNet & SFace)...');
 
-  // Resolve Python binary cleanly without shell: true to prevent DEP0190 warning
+  // Resolve Python binary in order: PYTHON_BIN, /opt/venv/bin/python, local ai_service/venv, then 'python'
   const venvPythonWin = path.join(aiDir, 'venv', 'Scripts', 'python.exe');
   const venvPythonUnix = path.join(aiDir, 'venv', 'bin', 'python');
   let pythonCmd = 'python';
-  if (process.platform === 'win32' && fs.existsSync(venvPythonWin)) {
+
+  if (process.env.PYTHON_BIN && fs.existsSync(process.env.PYTHON_BIN)) {
+    pythonCmd = process.env.PYTHON_BIN;
+  } else if (fs.existsSync('/opt/venv/bin/python')) {
+    pythonCmd = '/opt/venv/bin/python';
+  } else if (process.platform === 'win32' && fs.existsSync(venvPythonWin)) {
     pythonCmd = venvPythonWin;
   } else if (process.platform !== 'win32' && fs.existsSync(venvPythonUnix)) {
     pythonCmd = venvPythonUnix;
+  } else if (process.env.PYTHON_BIN) {
+    pythonCmd = process.env.PYTHON_BIN;
   }
 
   aiProcess = spawn(pythonCmd, ['run.py'], {
@@ -354,6 +365,7 @@ process.on('unhandledRejection', (reason) => {
 
 process.on('uncaughtException', (err) => {
   console.error('⚠️ [Process Uncaught Exception]:', err);
+  process.exit(1);
 });
 
 // Start Server

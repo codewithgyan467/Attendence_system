@@ -264,13 +264,14 @@ describe('HostelGuard v3.0 Zero-Trust Anti-Spoof & Unfair-Means Security Suite',
     expect(res.status).toBe(200);
     const token = res.body.challengeToken;
 
-    // First commit passes
+    // First commit passes with photometric step-up verification
     const commit1 = await request(app)
       .post('/api/v1/attendance/verify-face')
       .send({
         challenge_token: token,
         live_photo: 'data:image/jpeg;base64,mocklivephoto',
-        device_id: 'DEV-V3-PHONE-A'
+        device_id: 'DEV-V3-PHONE-A',
+        photometric_data: { flash_verified: true, colors: res.body.stepUpColorSequence || ['#FFFFFF', '#3B82F6'] }
       });
 
     expect(commit1.status).toBe(200);
@@ -282,7 +283,8 @@ describe('HostelGuard v3.0 Zero-Trust Anti-Spoof & Unfair-Means Security Suite',
       .send({
         challenge_token: token,
         live_photo: 'data:image/jpeg;base64,mocklivephoto',
-        device_id: 'DEV-V3-PHONE-A'
+        device_id: 'DEV-V3-PHONE-A',
+        photometric_data: { flash_verified: true, colors: res.body.stepUpColorSequence || ['#FFFFFF', '#3B82F6'] }
       });
 
     expect(commit2.status).toBe(403);

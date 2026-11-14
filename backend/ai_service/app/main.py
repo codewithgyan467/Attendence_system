@@ -23,6 +23,7 @@ logger = logging.getLogger("ai_service_v4")
 # Initialize models
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR = os.path.join(BASE_DIR, "models")
+DEFAULT_SIMILARITY_THRESHOLD = float(os.getenv("FACE_SIMILARITY_THRESHOLD", "0.54"))
 face_engine = FaceEngine(MODELS_DIR)
 liveness_detector = LivenessDetectorV4(MODELS_DIR)
 
@@ -245,39 +246,40 @@ async def _do_verify_live(req: VerifyLiveRequest):
                 # 2. Direct SFace / ArcFace embedding extraction (<10ms) offloaded to thread pool
                 live_vec, conf = await run_in_threadpool(face_engine.extract_from_pre_cropped, crop_112_bgr)
 
-                # 3. Fast Cosine Matching against enrolled templates (Calibrated to 0.58 for zero FAR)
-                threshold = float(req.similarity_threshold) if (req.similarity_threshold and 0.30 <= req.similarity_threshold <= 0.85) else 0.58
+                if live_vec is not None:
+                    # 3. Fast Cosine Matching against enrolled templates
+                    threshold = float(req.similarity_threshold) if (req.similarity_threshold and 0.30 <= req.similarity_threshold <= 0.85) else DEFAULT_SIMILARITY_THRESHOLD
 
-                def match_pre_cropped():
-                    best_sim = -1.0
-                    matched = False
-                    for stored_vec in req.stored_embeddings:
-                        sim = face_engine.compute_cosine_similarity(live_vec, stored_vec)
-                        if sim > best_sim:
-                            best_sim = sim
-                        if best_sim >= threshold:
-                            matched = True
-                            break
-                    return best_sim, bool(best_sim >= threshold)
+                    def match_pre_cropped():
+                        best_sim = -1.0
+                        matched = False
+                        for stored_vec in req.stored_embeddings:
+                            sim = face_engine.compute_cosine_similarity(live_vec, stored_vec)
+                            if sim > best_sim:
+                                best_sim = sim
+                            if best_sim >= threshold:
+                                matched = True
+                                break
+                        return best_sim, bool(best_sim >= threshold)
 
-                best_similarity, is_match = await run_in_threadpool(match_pre_cropped)
-                if is_match:
-                    return VerifyLiveResponse(
-                        is_match=True,
-                        is_live=True,
-                        similarity_score=round(best_similarity, 4),
-                        liveness_score=pad_eval.get("live_prob", 0.95),
-                        confidence_passed=True,
-                        status="AUTHENTICATED",
-                        details={
-                            "message": "Facial recognition verified successfully (Fast-Path Pre-Crop).",
-                            "best_similarity": round(best_similarity, 4),
-                            "threshold_used": threshold,
-                            "face_confidence": round(conf, 3),
-                            "pad_evaluation": pad_eval,
-                            "fast_path": True
-                        }
-                    )
+                    best_similarity, is_match = await run_in_threadpool(match_pre_cropped)
+                    if is_match:
+                        return VerifyLiveResponse(
+                            is_match=True,
+                            is_live=True,
+                            similarity_score=round(best_similarity, 4),
+                            liveness_score=pad_eval.get("live_prob", 0.95),
+                            confidence_passed=True,
+                            status="AUTHENTICATED",
+                            details={
+                                "message": "Facial recognition verified successfully (Fast-Path Pre-Crop).",
+                                "best_similarity": round(best_similarity, 4),
+                                "threshold_used": threshold,
+                                "face_confidence": round(conf, 3),
+                                "pad_evaluation": pad_eval,
+                                "fast_path": True
+                            }
+                        )
             
             # If fast-path is inconclusive (e.g. client pre-crop had sensor noise, low contrast, or aspect offset),
             # fall back to full-frame YuNet detection on req.live_image_base64
@@ -405,8 +407,7 @@ async def _do_verify_live(req: VerifyLiveRequest):
         eval_details = {"is_live": True, "reason": "Simulation mode"}
 
     # 4. Identity Matching via Cosine Similarity across Burst Frames & Multi-Pose Enrolled Templates
-    # Calibrate SFace/ArcFace cosine similarity threshold to 0.58 for zero FAR & low FRR
-    threshold = float(req.similarity_threshold) if (req.similarity_threshold and 0.30 <= req.similarity_threshold <= 0.85) else 0.58
+    threshold = float(req.similarity_threshold) if (req.similarity_threshold and 0.30 <= req.similarity_threshold <= 0.85) else DEFAULT_SIMILARITY_THRESHOLD
 
     def match_burst_candidates():
         best_sim = -1.0

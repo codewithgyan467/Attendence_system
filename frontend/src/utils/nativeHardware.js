@@ -798,6 +798,25 @@ export async function scanHostelBleBeacon(options = {}) {
     const isSecure = typeof window !== 'undefined' ? window.isSecureContext : false;
     const isHttp = typeof window !== 'undefined' && window.location.protocol === 'http:';
 
+    // Graceful Fallback: Peer-Relay QR token or Wi-Fi Cluster Handshake on non-BLE / iOS Safari browsers
+    if (options.peerRelayToken || options.peerRelayProof) {
+      return {
+        success: true,
+        peerRelayToken: options.peerRelayToken,
+        peerRelayProof: options.peerRelayProof,
+        method: 'PEER_RELAY_VERIFICATION',
+        timestamp: Date.now()
+      };
+    }
+    if (options.lanWifiTicket || options.ticket) {
+      return {
+        success: true,
+        lanWifiTicket: options.lanWifiTicket || options.ticket,
+        method: 'LAN_WIFI_CLUSTER_VERIFIED',
+        timestamp: Date.now()
+      };
+    }
+
     // Multi-Router Strict Lock: Probe floor router LAN handshake endpoints
     if (Array.isArray(clusterEndpoints) && clusterEndpoints.length > 0) {
       const lanProbeResult = await probeLanWifiClusterEndpoints(clusterEndpoints, onProgress);

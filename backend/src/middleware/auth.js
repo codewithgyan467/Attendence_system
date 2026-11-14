@@ -3,6 +3,12 @@ const jwt = require('jsonwebtoken');
 const { getQuery, runQuery } = require('../db/database');
 const { v4: uuidv4 } = require('uuid');
 
+if (process.env.NODE_ENV === 'production') {
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+    throw new Error('FATAL: JWT_SECRET environment variable must be set and at least 32 characters long in production mode.');
+  }
+}
+
 const JWT_SECRET = process.env.JWT_SECRET || 'hostelguard-enterprise-jwt-key-9f82d1c7';
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || '15m';
 const REFRESH_TOKEN_DAYS = parseInt(process.env.REFRESH_TOKEN_DAYS || '7', 10);

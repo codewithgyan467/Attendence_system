@@ -16,6 +16,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
 import androidx.annotation.NonNull;
 import com.getcapacitor.JSArray;
@@ -261,6 +262,13 @@ public class AntiSpoofBridgePlugin extends Plugin {
             Location best = lastGps != null ? lastGps : lastNet;
 
             if (best != null) {
+                // Reject locations older than 15 seconds
+                long ageNanos = SystemClock.elapsedRealtimeNanos() - best.getElapsedRealtimeNanos();
+                if (ageNanos > 15_000_000_000L) {
+                    call.reject("Location fix is older than 15 seconds. Please acquire a fresh GPS lock.");
+                    return;
+                }
+
                 if (isLocationMocked(best)) {
                     isMock = true;
                     reasons.add("HARDWARE_LOCATION_IS_MOCK");

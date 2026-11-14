@@ -13,24 +13,34 @@ const authLimiter = rateLimit({
   }
 });
 
-// Attendance verification limiter: relaxed for active floor check-in testing
+// Attendance verification limiter: keyed per student/device to prevent shared hostel Wi-Fi NAT IP throttling
 const attendanceLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 200,
+  max: process.env.NODE_ENV === 'test' ? 5000 : 60,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { keyGeneratorIpFallback: false },
+  keyGenerator: (req) => {
+    return req.user?.id || req.body?.student_id || req.headers['x-device-id'] || req.ip;
+  },
+  skip: () => process.env.NODE_ENV === 'test',
   message: {
     success: false,
     error: 'Attendance verification rate limit reached. Please wait a moment before trying again.'
   }
 });
 
-// General API limiter: relaxed for high-cadence testing & telemetry polling
+// General API limiter: keyed per user/device to avoid shared hostel Wi-Fi NAT throttling
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 3000,
+  max: process.env.NODE_ENV === 'test' ? 100000 : 5000,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { keyGeneratorIpFallback: false },
+  keyGenerator: (req) => {
+    return req.user?.id || req.headers['x-device-id'] || req.ip;
+  },
+  skip: () => process.env.NODE_ENV === 'test',
   message: {
     success: false,
     error: 'Too many API requests from this client. Please slow down.'

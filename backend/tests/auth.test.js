@@ -35,6 +35,15 @@ describe('Authentication & Role-Based Access Control (RBAC)', () => {
     wardenToken = res.body.token;
   });
 
+  test('POST /api/v1/auth/login - Rejects hardcoded backdoor password bypasses when not matching stored bcrypt hash', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: 'admin', password: 'admin@123' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.success).toBe(false);
+  });
+
   test('POST /api/v1/auth/login - Rejects invalid password with 401', async () => {
     const res = await request(app)
       .post('/api/v1/auth/login')

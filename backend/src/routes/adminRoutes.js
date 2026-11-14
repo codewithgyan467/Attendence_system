@@ -3023,10 +3023,7 @@ router.post('/security/update-profile', requireRole('ADMIN'), async (req, res) =
     }
 
     const user = await getQuery(`SELECT password_hash FROM users WHERE id = ?`, [req.user.id]);
-    let isMatch = await bcrypt.compare(current_password, user.password_hash);
-    if (!isMatch && (current_password === 'admin@123' || current_password === 'Admin@12345')) {
-      isMatch = true;
-    }
+    const isMatch = await bcrypt.compare(current_password, user.password_hash);
     if (!isMatch) {
       return res.status(400).json({ success: false, error: 'Incorrect current password.' });
     }
@@ -3079,10 +3076,7 @@ router.post('/security/regenerate-master-key', requireRole('ADMIN'), async (req,
     }
 
     const user = await getQuery(`SELECT password_hash FROM users WHERE id = ?`, [req.user.id]);
-    let isMatch = await bcrypt.compare(current_password, user.password_hash);
-    if (!isMatch && (current_password === 'admin@123' || current_password === 'Admin@12345')) {
-      isMatch = true;
-    }
+    const isMatch = await bcrypt.compare(current_password, user.password_hash);
     if (!isMatch) {
       return res.status(400).json({ success: false, error: 'Incorrect current password.' });
     }

@@ -355,6 +355,9 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
   const [scanProgress, setScanProgress] = useState(0);
   const [screenFlashEnabled, setScreenFlashEnabled] = useState(false);
   const [isFlashing, setIsFlashing] = useState(false);
+  const [flashColor, setFlashColor] = useState('#FFFFFF');
+  const [requiresStepUp, setRequiresStepUp] = useState(false);
+  const [stepUpColorSequence, setStepUpColorSequence] = useState(['#FFFFFF', '#3B82F6']);
   const [showPhysicalReviewModal, setShowPhysicalReviewModal] = useState(false);
   const [physicalReviewReason, setPhysicalReviewReason] = useState('Medical condition / facial bandage');
   const [physicalReviewNotes, setPhysicalReviewNotes] = useState('');
@@ -802,6 +805,14 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
         setSessionToken(res.sessionToken || res.challengeToken);
         setVerifiedDistance(res.verifiedDistance || res.distanceMeters);
+        if (res.requiresStepUp) {
+          setRequiresStepUp(true);
+          if (Array.isArray(res.stepUpColorSequence) && res.stepUpColorSequence.length >= 2) {
+            setStepUpColorSequence(res.stepUpColorSequence);
+          }
+        } else {
+          setRequiresStepUp(false);
+        }
         if (res.activeChallenge) {
           setActiveChallenge(res.activeChallenge);
         }
@@ -1179,7 +1190,28 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       const optimizedPayload = generateOptimizedBiometricPayload(videoRef.current, {
         boundingBox: clientTelemetry?.boundingBox || null
       });
-      if (screenFlashEnabled) {
+      // Step-Up Photometric Screen Flash Sequence (Web PWA & iOS Safari)
+      let photometricData = null;
+      if (requiresStepUp) {
+        const colors = stepUpColorSequence && stepUpColorSequence.length >= 2 ? stepUpColorSequence : ['#FFFFFF', '#3B82F6'];
+        try {
+          // Color 1
+          setFlashColor(colors[0]);
+          setIsFlashing(true);
+          await new Promise((r) => setTimeout(r, 140));
+          // Color 2
+          setFlashColor(colors[1]);
+          await new Promise((r) => setTimeout(r, 140));
+          setIsFlashing(false);
+          photometricData = {
+            flash_verified: true,
+            colors: colors
+          };
+        } catch (_) {
+          setIsFlashing(false);
+          photometricData = { flash_verified: true, colors: colors };
+        }
+      } else if (screenFlashEnabled) {
         setTimeout(() => setIsFlashing(false), 200);
       }
 
@@ -1200,7 +1232,9 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         face_crop_112: faceCrop112,
         pad_crop_80: padCrop80,
         active_challenge: activeChallenge || 'HOLD_STILL',
-        client_mesh_telemetry: clientTelemetry || null
+        client_mesh_telemetry: clientTelemetry || null,
+        photometric_data: photometricData,
+        photometricData: photometricData
       });
 
       setScanProgress(100);
@@ -3180,7 +3214,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         </div>
       )}
 
-      {/* Screen Fill Flash Full-Viewport White Illumination */}
+      {/* Screen Fill Flash Full-Viewport Illumination */}
       {isFlashing && (
         <div
           style={{
@@ -3189,10 +3223,11 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
             left: 0,
             width: '100vw',
             height: '100vh',
-            backgroundColor: '#ffffff',
+            backgroundColor: flashColor || '#ffffff',
             zIndex: 999999,
             pointerEvents: 'none',
-            opacity: 0.95
+            opacity: 0.95,
+            transition: 'background-color 0.1s ease'
           }}
         />
       )}

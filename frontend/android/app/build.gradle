@@ -19,9 +19,9 @@ android {
     signingConfigs {
         release {
             storeFile file('hostelguard-release-key.jks')
-            storePassword 'hostelguard123'
+            storePassword System.getenv("HG_KEYSTORE_PASSWORD") ?: 'hostelguard123'
             keyAlias 'hostelguard'
-            keyPassword 'hostelguard123'
+            keyPassword System.getenv("HG_KEY_PASSWORD") ?: 'hostelguard123'
         }
     }
     buildTypes {

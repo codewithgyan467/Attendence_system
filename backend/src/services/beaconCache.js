@@ -37,6 +37,16 @@ class BeaconCache {
   }
 
   /**
+   * Retrieves a beacon by either public ID or UUID
+   * @param {string} idOrPublicId
+   * @returns {Object|null}
+   */
+  getBeacon(idOrPublicId) {
+    if (!idOrPublicId) return null;
+    return this.get(idOrPublicId) || this.getById(idOrPublicId);
+  }
+
+  /**
    * Retrieves a beacon by its public identifier (e.g. 'FLR_0', 'Ground Floor')
    * @param {string} publicId
    * @returns {Object|null}

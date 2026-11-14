@@ -1,7 +1,10 @@
 node_modules
 coverage
+biometric_benchmark
+data/*.db*
+data/*.sqlite*
+data/ota/*.apk
 .git
 .env
 tests
 *.log
-

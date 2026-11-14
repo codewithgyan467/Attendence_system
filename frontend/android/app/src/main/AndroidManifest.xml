@@ -4,13 +4,19 @@
     <!-- Package Visibility for Android 11+ (API 30+) Anti-Spoof Detection -->
     <queries>
         <package android:name="com.lexa.fakegps" />
+        <package android:name="com.incorporateapps.fakegps" />
+        <package android:name="com.incorporateapps.fakegps_route" />
         <package android:name="com.rosteam.gpsemulator" />
-        <package android:name="com.incorporateapps.fakegps.fre" />
-        <package android:name="com.app.fakelocation" />
         <package android:name="com.fakegps.mock" />
+        <package android:name="com.location.mock" />
         <package android:name="com.gsmartstudio.fakegps" />
-        <package android:name="com.marlon.floating.fake.location" />
-        <package android:name="com.usefullapps.fakegpslocation" />
+        <package android:name="com.theappninjas.fakegpsjoystick" />
+        <package android:name="com.fly.gps" />
+        <package android:name="org.hola.gpslocation" />
+        <package android:name="com.msl.locationchanger" />
+        <package android:name="com.ninja.gps" />
+        <package android:name="com.marlove.mockgps" />
+        <package android:name="ru.gavrikov.mocklocations" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
         </intent>

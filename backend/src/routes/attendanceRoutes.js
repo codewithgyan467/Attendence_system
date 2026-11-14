@@ -17,6 +17,7 @@ const { getIstTime12h, getIstDateString } = require('../utils/istTime');
 const localVaultDb = require('../config/localVaultDb');
 const { strictLanGuard } = require('../middleware/strictLanGuard');
 const authorizedWifiService = require('../services/authorizedWifiService');
+const FACE_SIMILARITY_THRESHOLD = parseFloat(process.env.FACE_SIMILARITY_THRESHOLD || '0.54');
 
 // Lightweight FIFO Semaphore Queue for Low-Spec Warden Laptop (Prevents CPU/RAM spikes)
 class FifoSemaphore {
@@ -52,80 +53,6 @@ function getTodayDateString() {
 
 // Attach optional JWT authentication to attendance router
 router.use(optionalAuth);
-
-function verifyCompactEsp32Payload(rawPayload, secret = process.env.ANCHOR_HMAC_SECRET || 'HG_STRICT_ANCHOR_SECRET_2026') {
-  if (!rawPayload || typeof rawPayload !== 'string') {
-    return { valid: false, reason: 'EMPTY_BLE_PAYLOAD' };
-  }
-
-  // Matches "A01|0001A4|9F8E7D6C" (19-byte compact format)
-  const parts = rawPayload.trim().split('|');
-  if (parts.length !== 3) {
-    return { valid: false, reason: 'MALFORMED_BLE_FRAME' };
-  }
-
-  const [anchorId, stepHex, receivedHmac] = parts;
-  const stepDecimal = parseInt(stepHex.trim(), 16);
-  if (Number.isNaN(stepDecimal)) {
-    return { valid: false, reason: 'INVALID_STEP_COUNTER' };
-  }
-
-  const cleanAnchorId = anchorId.trim();
-  const cleanCode = receivedHmac.trim().toUpperCase();
-
-  // Multi-candidate secret support across hardware revisions
-  const candidateSecrets = Array.from(new Set([
-    secret,
-    process.env.ANCHOR_HMAC_SECRET,
-    'HG_STRICT_ANCHOR_SECRET_2026',
-    'hostelguard_super_secret_32b_key',
-    '4a8f9c1b2e3d4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a',
-    '5737e7a308d843d6d5a63d512167d7a89702853d9e8ef53195e08472cc1d2859'
-  ].filter(Boolean)));
-
-  const candidateIds = Array.from(new Set([
-    cleanAnchorId,
-    cleanAnchorId.startsWith('HG-') ? cleanAnchorId : `HG-${cleanAnchorId}`,
-    cleanAnchorId.replace(/^HG-/, ''),
-    'A01',
-    'HG-BEACON-BLKA-01',
-    'A02',
-    'HG-BEACON-BLKA-02'
-  ].filter(Boolean)));
-
-  let isHmacValid = false;
-  for (const s of candidateSecrets) {
-    for (const cid of candidateIds) {
-      const message = `${cid}:${stepDecimal}`;
-      const expectedHmac = crypto
-        .createHmac('sha256', s)
-        .update(message)
-        .digest('hex')
-        .substring(0, 8)
-        .toUpperCase();
-      if (expectedHmac === cleanCode) {
-        isHmacValid = true;
-        break;
-      }
-    }
-    if (isHmacValid) break;
-  }
-
-  if (!isHmacValid) {
-    return { valid: false, reason: 'INVALID_HMAC_SIGNATURE' };
-  }
-
-  // Time window validity: accept steps within +/- 5 windows (150s) of epoch/30 OR valid uptime steps (< 1000000)
-  const currentEpochSlot = Math.floor(Date.now() / 1000 / 30) & 0xFFFFFF;
-  const isEpochStepValid = Math.abs(stepDecimal - currentEpochSlot) <= 5;
-  const isUptimeStepValid = stepDecimal < 1000000 && stepDecimal >= 0;
-
-  if (!isEpochStepValid && !isUptimeStepValid) {
-    return { valid: false, reason: 'STEP_WINDOW_EXPIRED' };
-  }
-
-  return { valid: true, anchorId: cleanAnchorId, step: stepDecimal };
-}
 
 // Public / Authenticated Live Attendance Schedule Status
 router.get(['/schedule', '/status'], async (req, res) => {
@@ -248,7 +175,12 @@ const verifyLocationHandler = async (req, res) => {
         (typeof effectiveBle.rawPayload === 'string' && effectiveBle.rawPayload.trim().length >= 10) ||
         effectiveBle.rollingCode ||
         effectiveBle.signature ||
-        effectiveBle.code
+        effectiveBle.code ||
+        effectiveBle.peerRelayToken ||
+        effectiveBle.peerRelayProof ||
+        effectiveBle.lanWifiTicket ||
+        effectiveBle.lan_wifi_ticket ||
+        effectiveBle.ticket
       )
     );
     const maxAccuracy = hasBleSignal ? 150 : 120;
@@ -321,7 +253,12 @@ const verifyLocationHandler = async (req, res) => {
           (typeof effectiveBleProof.rawPayload === 'string' && effectiveBleProof.rawPayload.trim().length >= 10) ||
           effectiveBleProof.rollingCode ||
           effectiveBleProof.signature ||
-          effectiveBleProof.code
+          effectiveBleProof.code ||
+          effectiveBleProof.peerRelayToken ||
+          effectiveBleProof.peerRelayProof ||
+          effectiveBleProof.lanWifiTicket ||
+          effectiveBleProof.lan_wifi_ticket ||
+          effectiveBleProof.ticket
         )
       );
 
@@ -344,7 +281,7 @@ const verifyLocationHandler = async (req, res) => {
 
     // Optional Fast-Pass: 19-Byte Compact ESP32 Payload Verification (0ms NTP Dependency)
     if (ble_proof && typeof ble_proof.rawPayload === 'string') {
-      const compactRes = verifyCompactEsp32Payload(ble_proof.rawPayload);
+      const compactRes = bleBeaconService.verifyCompactEsp32Payload(ble_proof.rawPayload, undefined, student);
       if (compactRes.valid) {
         ble_proof.compactVerified = true;
         ble_proof.slot = compactRes.step;
@@ -512,7 +449,7 @@ const verifyLocationHandler = async (req, res) => {
       ? ['TURN_LEFT', 'TURN_RIGHT', 'NOD_DOWN'][Math.floor(Math.random() * 3)]
       : 'HOLD_STILL';
 
-    const detectedBeaconId = ble_proof?.rawAnchorId || ble_proof?.beaconPublicId || (ble_proof?.compactVerified ? ble_proof.rawAnchorId : null) || 'A01';
+    const detectedBeaconId = ble_proof?.rawAnchorId || ble_proof?.beaconPublicId || (ble_proof?.compactVerified ? ble_proof.rawAnchorId : null) || null;
     const detectedBleToken = typeof ble_proof?.rawPayload === 'string' ? ble_proof.rawPayload : (ble_proof?.token || ble_proof?.rollingCode || null);
 
     await runQuery(`
@@ -757,7 +694,7 @@ const verifyFaceHandler = async (req, res) => {
       const padCrop80 = req.body.pad_crop_80 || req.body.padCrop80 || null;
 
       aiResult = await aiInferenceQueue.run(() =>
-        aiServiceClient.verifyLiveFace(live_photo, storedEmbeddings, 0.38, null, {
+        aiServiceClient.verifyLiveFace(live_photo, storedEmbeddings, FACE_SIMILARITY_THRESHOLD, null, {
           frames: burstFrames,
           client_mesh_telemetry: clientMeshTelemetry,
           face_crop_112: faceCrop112,
@@ -908,7 +845,7 @@ const verifyFaceHandler = async (req, res) => {
       console.warn('[StrictVault] Failed to record local attendance mirror:', vaultErr.message);
     }
 
-    const floorAnchorId = challenge.ble_beacon_id || req.body.bleToken || 'A01';
+    const floorAnchorId = challenge.ble_beacon_id || req.body.bleToken || null;
     console.log(`[Attendance Mark] 200 OK: Marked for ${student.roll_number} (${student.full_name}) at Floor Anchor ${floorAnchorId}`);
 
     res.json({
@@ -1062,7 +999,7 @@ const offlineSyncHandler = async (req, res) => {
     let aiResult = { is_live: true, is_match: true, similarity_score: 0.88, liveness_score: 0.95 };
     try {
       const temporalFrames = req.body.temporal_frames || req.body.temporalFrames || null;
-      const aiResp = await aiServiceClient.verifyLiveFace(live_photo, embeddings, 0.65, null, {
+      const aiResp = await aiServiceClient.verifyLiveFace(live_photo, embeddings, FACE_SIMILARITY_THRESHOLD, null, {
         temporal_frames: temporalFrames,
         active_challenge: 'HOLD_STILL'
       });
