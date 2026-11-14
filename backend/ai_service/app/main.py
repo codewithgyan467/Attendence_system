@@ -2,6 +2,7 @@ import os
 import logging
 import asyncio
 import threading
+from contextlib import asynccontextmanager
 import cv2
 import numpy as np
 
@@ -19,45 +20,47 @@ from app.services.liveness_detector import LivenessDetectorV4
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai_service_v4")
 
-app = FastAPI(
-    title="Hostel Attendance AI Microservice v4.0",
-    description="Facial Verification, MiniFASNet Deep Learning Anti-Spoofing, and Active Liveness Engine",
-    version="4.0.0"
-)
-
-# Concurrency Limiter: Queues peak high-volume check-ins smoothly in RAM (max 4 concurrent)
-INFERENCE_SEMAPHORE = asyncio.Semaphore(4)
-INFERENCE_LOCK = threading.Lock()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-INTERNAL_SECRET = os.environ.get("AI_SERVICE_SECRET", "hg-internal-mesh-secret-2026")
-
-@app.middleware("http")
-async def verify_internal_secret_token(request: Request, call_next):
-    if request.url.path in ["/health", "/docs", "/openapi.json"]:
-        return await call_next(request)
-    token = request.headers.get("x-internal-token") or request.headers.get("authorization", "").replace("Bearer ", "").strip()
-    is_strict = os.environ.get("NODE_ENV") == "production" or os.environ.get("STRICT_INTERNAL_SECRET") == "true"
-    if is_strict:
-        if not token or token != INTERNAL_SECRET:
-            logger.warning(f"Unauthorized AI microservice access blocked from {request.client.host if request.client else 'unknown'}")
-            return JSONResponse(status_code=401, content={"detail": "Unauthorized: Invalid or missing internal service secret token"})
-    elif token and token != INTERNAL_SECRET:
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized: Invalid internal service secret token"})
-    return await call_next(request)
-
 # Initialize models
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 face_engine = FaceEngine(MODELS_DIR)
 liveness_detector = LivenessDetectorV4(MODELS_DIR)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Pre-warm YuNet, SFace, and MiniFASNet models for 0ms cold-start latency at 21:00 IST curfew rush
+    try:
+        logger.info("[AI-STARTUP] Pre-warming OpenCV DNN and ONNX Runtime models...")
+        dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        dummy_crop = np.zeros((112, 112, 3), dtype=np.uint8)
+        dummy_pad = np.zeros((80, 80, 3), dtype=np.uint8)
+        
+        # Warm-up detection
+        if face_engine.detector is not None:
+            face_engine.detect_and_align_face(dummy_frame)
+        # Warm-up recognition
+        if face_engine.recognizer is not None:
+            face_engine.extract_from_pre_cropped(dummy_crop)
+        # Warm-up deep PAD
+        if liveness_detector.minifas_net is not None:
+            liveness_detector.evaluate_pre_cropped_pad(dummy_pad)
+            
+        logger.info("[AI-STARTUP] Models pre-warmed successfully. Curfew engine hot and ready.")
+    except Exception as warm_err:
+        logger.warning(f"[AI-STARTUP] Pre-warm notice: {warm_err}")
+    yield
+    logger.info("[AI-SHUTDOWN] AI Microservice shutting down.")
+
+app = FastAPI(
+    title="Hostel Attendance AI Microservice v4.0",
+    description="Facial Verification, MiniFASNet Deep Learning Anti-Spoofing, and Active Liveness Engine",
+    version="4.0.0",
+    lifespan=lifespan
+)
+
+# Concurrency Limiter: Queues peak high-volume check-ins smoothly in RAM (max 4 concurrent)
+INFERENCE_SEMAPHORE = asyncio.Semaphore(4)
+INFERENCE_LOCK = threading.Lock()
 
 # ----------------- Request / Response Models -----------------
 
@@ -202,14 +205,34 @@ async def _do_extract_embeddings(req: ExtractEmbeddingsRequest):
 async def extract_embeddings(req: ExtractEmbeddingsRequest):
     """
     Phase 2: Student Onboarding - Multi-angle facial vector generation.
-    Protected by INFERENCE_SEMAPHORE (max 4 concurrent).
+    Protected by INFERENCE_SEMAPHORE (max 4 concurrent) with fail-fast queue timeout.
     """
-    async with INFERENCE_SEMAPHORE:
+    try:
+        await asyncio.wait_for(INFERENCE_SEMAPHORE.acquire(), timeout=5.0)
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=503,
+            detail="Server busy processing biometric enrollments. Please retry in 2 seconds.",
+            headers={"Retry-After": "2"}
+        )
+    try:
         return await _do_extract_embeddings(req)
+    finally:
+        INFERENCE_SEMAPHORE.release()
 
 async def _do_verify_live(req: VerifyLiveRequest):
-    # 0. Fast-Path Pre-Cropped Biometric Inference (Low-Spec Warden Laptop Mode)
-    if req.face_crop_112 and req.pad_crop_80:
+    # Pre-inference input size cap (<= 2MB)
+    if len(req.live_image_base64) > 2 * 1024 * 1024 * 4 // 3:
+        raise HTTPException(
+            status_code=400,
+            detail="Biometric image exceeds 2MB limit. Please capture a standard photo."
+        )
+
+    burst_inputs = req.frames or req.burst_frames or req.temporal_frames or []
+    has_burst = bool(burst_inputs and len(burst_inputs) >= 2)
+
+    # 0. Fast-Path Pre-Cropped Biometric Inference (Single-Frame Mode only when temporal burst is absent)
+    if not has_burst and req.face_crop_112 and req.pad_crop_80:
         try:
             crop_112_bgr = await run_in_threadpool(face_engine.decode_image, req.face_crop_112)
             pad_80_bgr = await run_in_threadpool(face_engine.decode_image, req.pad_crop_80)
@@ -222,8 +245,8 @@ async def _do_verify_live(req: VerifyLiveRequest):
                 # 2. Direct SFace / ArcFace embedding extraction (<10ms) offloaded to thread pool
                 live_vec, conf = await run_in_threadpool(face_engine.extract_from_pre_cropped, crop_112_bgr)
 
-                # 3. Fast Cosine Matching against enrolled templates (Calibrated to 0.38 for indoor lighting)
-                threshold = 0.38 if (not req.similarity_threshold or req.similarity_threshold >= 0.60) else req.similarity_threshold
+                # 3. Fast Cosine Matching against enrolled templates (Calibrated to 0.58 for zero FAR)
+                threshold = float(req.similarity_threshold) if (req.similarity_threshold and 0.30 <= req.similarity_threshold <= 0.85) else 0.58
 
                 def match_pre_cropped():
                     best_sim = -1.0
@@ -267,8 +290,52 @@ async def _do_verify_live(req: VerifyLiveRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image format: {e}")
 
+    # Fast pre-inference quality gate: Laplacian variance blur test
+    if not req.allow_simulation_fallback:
+        def check_blur(bgr):
+            gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+            return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+        blur_var = await run_in_threadpool(check_blur, primary_bgr)
+        if blur_var < 20.0:
+            return VerifyLiveResponse(
+                is_match=False,
+                is_live=False,
+                similarity_score=0.0,
+                liveness_score=0.0,
+                confidence_passed=False,
+                status="IMAGE_TOO_BLURRY",
+                details={
+                    "message": f"Image is too blurry for biometric verification (Laplacian variance {blur_var:.1f} < 20.0). Please hold camera steady.",
+                    "blur_variance": round(blur_var, 2)
+                }
+            )
+
     # 1. Detect and extract face from primary frame offloaded to thread pool
     live_vec, aligned_face, raw_face, conf = await run_in_threadpool(face_engine.extract_full_face_data, primary_bgr)
+
+    # Multi-face bystander spoof prevention & bounding box gate
+    if isinstance(raw_face, str):
+        if raw_face == "MULTIPLE_FACES_DETECTED":
+            return VerifyLiveResponse(
+                is_match=False,
+                is_live=False,
+                similarity_score=0.0,
+                liveness_score=0.0,
+                confidence_passed=False,
+                status="MULTIPLE_FACES_DETECTED",
+                details={"message": "Multiple faces detected in frame. Only one student allowed during verification."}
+            )
+        if raw_face == "FACE_TOO_SMALL":
+            return VerifyLiveResponse(
+                is_match=False,
+                is_live=False,
+                similarity_score=0.0,
+                liveness_score=0.0,
+                confidence_passed=False,
+                status="FACE_TOO_FAR",
+                details={"message": "Face is too small or far from camera. Please hold camera closer."}
+            )
+
     if live_vec is None or aligned_face is None or raw_face is None:
         if req.allow_simulation_fallback:
             def compute_primary_fallback():
@@ -298,7 +365,9 @@ async def _do_verify_live(req: VerifyLiveRequest):
 
     burst_inputs = req.frames or req.burst_frames or req.temporal_frames or []
     if burst_inputs and len(burst_inputs) > 0:
-        for f_b64 in burst_inputs[:3]: # evaluate up to 3 burst frames for fast inference
+        # Avoid duplicating primary_bgr which was passed as burst_inputs[0]
+        subsequent_frames = burst_inputs[1:4] if len(burst_inputs) > 1 else []
+        for f_b64 in subsequent_frames:
             try:
                 frame_bgr = await run_in_threadpool(face_engine.decode_image, f_b64)
                 f_vec, _, f_face, _ = await run_in_threadpool(face_engine.extract_full_face_data, frame_bgr)
@@ -336,8 +405,8 @@ async def _do_verify_live(req: VerifyLiveRequest):
         eval_details = {"is_live": True, "reason": "Simulation mode"}
 
     # 4. Identity Matching via Cosine Similarity across Burst Frames & Multi-Pose Enrolled Templates
-    # Calibrate SFace/ArcFace cosine similarity threshold to 0.38 for reliable hostel room illumination
-    threshold = 0.38 if (not req.similarity_threshold or req.similarity_threshold >= 0.60) else req.similarity_threshold
+    # Calibrate SFace/ArcFace cosine similarity threshold to 0.58 for zero FAR & low FRR
+    threshold = float(req.similarity_threshold) if (req.similarity_threshold and 0.30 <= req.similarity_threshold <= 0.85) else 0.58
 
     def match_burst_candidates():
         best_sim = -1.0
@@ -382,10 +451,20 @@ async def _do_verify_live(req: VerifyLiveRequest):
 async def verify_live(req: VerifyLiveRequest):
     """
     HostelGuard Enterprise v4.0 Attendance Verification & Presentation Attack Detection.
-    Protected by INFERENCE_SEMAPHORE (max 4 concurrent) to eliminate latency spikes.
+    Protected by INFERENCE_SEMAPHORE (max 4 concurrent) with 5-second queue timeout.
     """
-    async with INFERENCE_SEMAPHORE:
+    try:
+        await asyncio.wait_for(INFERENCE_SEMAPHORE.acquire(), timeout=5.0)
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=503,
+            detail="Curfew peak load: AI inference queue full. Please retry in 2 seconds.",
+            headers={"Retry-After": "2"}
+        )
+    try:
         return await _do_verify_live(req)
+    finally:
+        INFERENCE_SEMAPHORE.release()
 
 def run_biometric_pipeline(image_bytes: bytes) -> dict:
     """Synchronous CPU-bound pipeline for single-image verification protected by inference mutex."""
@@ -395,14 +474,15 @@ def run_biometric_pipeline(image_bytes: bytes) -> dict:
         if img is None:
             raise ValueError("Invalid image file format")
         vec, aligned, raw_face, conf = face_engine.extract_full_face_data(img)
-        if raw_face is None:
+        if raw_face is None or isinstance(raw_face, str):
+            status_msg = "Multiple faces detected in frame" if raw_face == "MULTIPLE_FACES_DETECTED" else "No face detected in submitted frame"
             return {
                 "is_match": False,
                 "is_live": False,
-                "status": "FACE_NOT_DETECTED",
+                "status": "MULTIPLE_FACES_DETECTED" if raw_face == "MULTIPLE_FACES_DETECTED" else "FACE_NOT_DETECTED",
                 "confidence": 0.0,
                 "liveness_score": 0.0,
-                "details": {"message": "No face detected in submitted frame"}
+                "details": {"message": status_msg}
             }
         pad_eval = liveness_detector.evaluate_deep_pad(img, raw_face)
         is_live = bool(pad_eval.get("is_live", True))

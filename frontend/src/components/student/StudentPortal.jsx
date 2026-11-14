@@ -573,8 +573,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
 
     const isStrict = enforcementMode === 'STRICT' || bleMode === 'STRICT_REQUIRED' || bleMode === 'STRICT_LOCK' || bleMode === 'STRICT';
 
-    // 1. Immediately launch Bluetooth scanner on user click tick to preserve WebKit transient user gesture
-    const bleScanPromise = isStrict && !lanWifiTicket
+    // 1. Check if we already have an active, freshly verified BLE beacon proof within the last 3 minutes
+    const cachedBeacon = verifiedBeaconInfo;
+    const isCacheFresh = cachedBeacon && cachedBeacon.timestamp && (Date.now() - cachedBeacon.timestamp < 180000);
+
+    // Only launch Bluetooth scanner if we don't already have a fresh verified anchor proof
+    const bleScanPromise = (isStrict && !lanWifiTicket && !isCacheFresh)
       ? scanHostelBleBeacon({
         onProgress: (p) => setBleScanningStatus(p.message),
         timeSyncPacket: dashboard?.ble_time_sync_packet || dashboard?.schedule?.ble_time_sync_packet,
@@ -587,8 +591,10 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     setCheckinError(null);
     setGpsLiveAccuracy(null);
     setBleScanningStatus(null);
-    setVerifiedBeaconInfo(null);
-    setVerifiedWifiAnchor(null);
+    if (!isCacheFresh) {
+      setVerifiedBeaconInfo(null);
+      setVerifiedWifiAnchor(null);
+    }
 
     try {
       // 2. Concurrently acquire Physical Device GPS Location
@@ -662,13 +668,15 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         setCheckinStep('verifying_ble');
         setBleScanningStatus('Layer 2 Check: Mandatory ESP32 Hardware Beacon Scan (~15m line-of-sight)...');
 
-        // Await the BLE scan result (MUST be powered ON, no Wi-Fi bypass allowed in STRICT mode)
-        const bleRes = bleScanPromise ? await bleScanPromise : await scanHostelBleBeacon({
-          onProgress: (p) => setBleScanningStatus(p.message),
-          timeSyncPacket: dashboard?.ble_time_sync_packet || dashboard?.schedule?.ble_time_sync_packet,
-          localHttpsAnchorUrl: dashboard?.geofence?.local_https_anchor_url || null,
-          clusterEndpoints: dashboard?.wifi_cluster_endpoints || []
-        });
+        // Await the BLE scan result (or reuse cached verification within 3-minute window)
+        const bleRes = isCacheFresh
+          ? cachedBeacon
+          : (bleScanPromise ? await bleScanPromise : await scanHostelBleBeacon({
+            onProgress: (p) => setBleScanningStatus(p.message),
+            timeSyncPacket: dashboard?.ble_time_sync_packet || dashboard?.schedule?.ble_time_sync_packet,
+            localHttpsAnchorUrl: dashboard?.geofence?.local_https_anchor_url || null,
+            clusterEndpoints: dashboard?.wifi_cluster_endpoints || []
+          }));
 
         const hasValidBle = Boolean(
           bleRes &&
@@ -1546,6 +1554,39 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   </div>
                 ) : (
                   <>
+                    {/* iOS Safari Guidance Banner: 1-Tap Bluefy Transition */}
+                    {isSafariOnIOS && (
+                      <div className="card border-primary bg-primary bg-opacity-10 p-3 rounded-3 mb-3 text-start shadow-xs w-100">
+                        <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                          <div className="d-flex align-items-center gap-2">
+                            <span className="fs-4">🍎</span>
+                            <div>
+                              <div className="fw-bold text-dark small">iPhone / iPad Detected — Web Bluetooth Restricted</div>
+                              <div className="text-muted" style={{ fontSize: '11.5px' }}>
+                                Apple blocks Bluetooth in Safari. Open directly in <strong>Bluefy Browser</strong> to connect to your floor ESP32 anchor in 1 click!
+                              </div>
+                            </div>
+                          </div>
+                          <div className="d-flex align-items-center gap-2">
+                            <a
+                              href={`bluefy://open?url=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+                              className="btn btn-primary btn-sm fw-semibold d-inline-flex align-items-center gap-1.5 shadow-sm"
+                            >
+                              <ExternalLink size={14} /> Open in Bluefy
+                            </a>
+                            <a
+                              href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn btn-outline-secondary btn-sm fw-semibold d-inline-flex align-items-center gap-1"
+                            >
+                              Install Bluefy
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Clear 4-Step Attendance Workflow (Section 7) */}
                     <div className="d-flex align-items-center justify-content-center gap-2 mb-4 px-2 flex-wrap">
                       <div className={`d-flex align-items-center gap-1.5 px-3 py-1.5 rounded-pill small fw-semibold ${checkinStep === 'idle' || checkinStep === 'verifying_gps' ? 'bg-primary text-white shadow-sm' : 'bg-light text-muted'}`}>
@@ -2123,6 +2164,26 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                               >
                                 <LifeBuoy size={16} /> Submit Strike Appeal to Warden
                               </button>
+                            ) : sessionToken ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary px-4 py-2.5 fw-bold d-inline-flex align-items-center justify-content-center gap-2 shadow-sm rounded-3 w-100"
+                                  onClick={() => {
+                                    setCheckinError(null);
+                                    startCamera();
+                                  }}
+                                >
+                                  <Camera size={18} /> 📷 Retry Camera Face Capture
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline-primary px-4 py-2 fw-semibold d-inline-flex align-items-center justify-content-center gap-2 shadow-sm rounded-3 w-100 mt-1"
+                                  onClick={handleVerifyLocation}
+                                >
+                                  <RefreshCw size={15} /> Re-verify Location & Beacon
+                                </button>
+                              </>
                             ) : (
                               <button
                                 type="button"

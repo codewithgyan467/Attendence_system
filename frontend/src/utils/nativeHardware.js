@@ -599,6 +599,9 @@ export async function scanHostelBleBeacon(options = {}) {
       if (onProgress) onProgress({ status: 'SCANNING', message: 'Scanning for floor ESP32 anchor...' });
 
       let foundDevice = null;
+      let lastRssi = null;
+      let broadcastPayload = null;
+
       await BleClient.requestLEScan(
         {
           scanMode: 1, // SCAN_MODE_LOW_LATENCY
@@ -607,9 +610,32 @@ export async function scanHostelBleBeacon(options = {}) {
         (result) => {
           if (result && result.device) {
             const dev = result.device;
-            const name = (dev.name || result.localName || '').trim();
             const uuids = (result.uuids || dev.uuids || []).map(u => String(u).toLowerCase());
             const devName = (dev.name || result.localName || '').trim().toUpperCase();
+            if (result.rssi !== undefined && result.rssi !== null) {
+              lastRssi = result.rssi;
+            }
+
+            // Dual Broadcast: Check if compact rolling token is embedded directly in advertisement Manufacturer Data
+            if (result.manufacturerData) {
+              try {
+                for (const mfgKey of Object.keys(result.manufacturerData)) {
+                  const mfgVal = result.manufacturerData[mfgKey];
+                  const mfgStr = typeof mfgVal === 'string' ? mfgVal : dataViewToText(mfgVal);
+                  if (mfgStr && mfgStr.includes('|')) {
+                    const cleanMfg = mfgStr.replace(/^[^\w]*/, '').trim();
+                    const parts = cleanMfg.split('|');
+                    if (parts.length >= 3 && parts[1].length === 6 && parts[2].length === 8) {
+                      broadcastPayload = cleanMfg;
+                      foundDevice = dev;
+                      BleClient.stopLEScan().catch(() => {});
+                      return;
+                    }
+                  }
+                }
+              } catch (_) {}
+            }
+
             if (
               devName.startsWith('HG') ||
               devName.includes('BEACON') ||
@@ -632,6 +658,26 @@ export async function scanHostelBleBeacon(options = {}) {
       }
       try { await BleClient.stopLEScan(); } catch (_) {}
 
+      // Fast-Pass: If dual broadcast manufacturer data delivered the token without GATT connection
+      if (broadcastPayload) {
+        const parts = broadcastPayload.split('|');
+        const anchorId = parts[0].trim();
+        const stepHex = parts[1].trim();
+        const stepNum = /^[0-9a-fA-F]+$/.test(stepHex) ? parseInt(stepHex, 16) : parseInt(stepHex, 10);
+        return {
+          success: true,
+          beaconPublicId: anchorId.startsWith('HG-') ? anchorId : `HG-${anchorId}`,
+          rawAnchorId: anchorId,
+          rollingCode: parts[2].trim(),
+          slot: stepNum,
+          deviceName: foundDevice?.name || anchorId,
+          rawPayload: broadcastPayload,
+          rssi: lastRssi,
+          source: 'BLE_BROADCAST_MANUFACTURER_DATA',
+          timestamp: Date.now()
+        };
+      }
+
       // Fallback: requestDevice with filter if passive LE scan didn't capture advertisement
       if (!foundDevice) {
         try {
@@ -643,76 +689,91 @@ export async function scanHostelBleBeacon(options = {}) {
 
       if (foundDevice) {
         if (onProgress) onProgress({ status: 'CONNECTING', message: `Connecting to ${foundDevice.name || 'ESP32'}...` });
-        await BleClient.connect(foundDevice.deviceId);
-
-        // Write current Unix epoch seconds immediately before reading to calibrate ESP32 clock
-        const currentEpochSec = Math.floor(Date.now() / 1000).toString();
-        const syncPayload = timeSyncPacket ? String(timeSyncPacket) : currentEpochSec;
+        let connected = false;
         try {
-          await BleClient.write(
-            foundDevice.deviceId,
-            HOSTEL_SERVICE_UUID,
-            TIME_SYNC_CHAR_UUID,
-            numbersToDataView(new TextEncoder().encode(syncPayload))
-          );
-        } catch (_) {}
-
-        const dataView = await BleClient.read(foundDevice.deviceId, HOSTEL_SERVICE_UUID, ROLLING_CHAR_UUID);
-        const rawPayload = dataViewToText(dataView);
-
-        // Fast release to avoid slot starvation
-        setTimeout(async () => {
-          try { await BleClient.disconnect(foundDevice.deviceId); } catch (_) {}
-        }, 150);
-
-        let parsed = null;
-        try {
-          parsed = JSON.parse(rawPayload);
-        } catch (_) {
-          if (rawPayload.includes('|')) {
-            const parts = rawPayload.split('|');
-            if (parts.length >= 3) {
-              const anchorId = parts[0].trim();
-              const stepHex = parts[1].trim();
-              const stepNum = /^[0-9a-fA-F]+$/.test(stepHex) ? parseInt(stepHex, 16) : parseInt(stepHex, 10);
-              parsed = {
-                id: anchorId.startsWith('HG-') ? anchorId : `HG-${anchorId}`,
-                rawId: anchorId,
-                slot: stepNum,
-                code: parts[2].trim()
-              };
+          // Bounded connection retry with jittered backoff
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              await BleClient.connect(foundDevice.deviceId);
+              connected = true;
+              break;
+            } catch (connErr) {
+              if (attempt === 3) throw connErr;
+              const jitter = Math.floor(Math.random() * 150) + 100 * attempt;
+              await new Promise(r => setTimeout(r, jitter));
             }
-          } else if (rawPayload.includes(':')) {
-            const parts = rawPayload.split(':');
-            if (parts.length >= 3) {
-              if (/^\d+$/.test(parts[1])) {
+          }
+
+          // Write current Unix epoch seconds immediately before reading to calibrate ESP32 clock
+          const currentEpochSec = Math.floor(Date.now() / 1000).toString();
+          const syncPayload = timeSyncPacket ? String(timeSyncPacket) : currentEpochSec;
+          try {
+            await BleClient.write(
+              foundDevice.deviceId,
+              HOSTEL_SERVICE_UUID,
+              TIME_SYNC_CHAR_UUID,
+              numbersToDataView(new TextEncoder().encode(syncPayload))
+            );
+          } catch (_) {}
+
+          const dataView = await BleClient.read(foundDevice.deviceId, HOSTEL_SERVICE_UUID, ROLLING_CHAR_UUID);
+          const rawPayload = dataViewToText(dataView);
+
+          let parsed = null;
+          try {
+            parsed = JSON.parse(rawPayload);
+          } catch (_) {
+            if (rawPayload.includes('|')) {
+              const parts = rawPayload.split('|');
+              if (parts.length >= 3) {
+                const anchorId = parts[0].trim();
+                const stepHex = parts[1].trim();
+                const stepNum = /^[0-9a-fA-F]+$/.test(stepHex) ? parseInt(stepHex, 16) : parseInt(stepHex, 10);
                 parsed = {
-                  id: parts[0],
-                  slot: parseInt(parts[1], 10),
-                  code: parts[2]
+                  id: anchorId.startsWith('HG-') ? anchorId : `HG-${anchorId}`,
+                  rawId: anchorId,
+                  slot: stepNum,
+                  code: parts[2].trim()
                 };
-              } else {
-                parsed = {
-                  id: parts[0],
-                  code: parts[1],
-                  slot: parseInt(parts[2], 10)
-                };
+              }
+            } else if (rawPayload.includes(':')) {
+              const parts = rawPayload.split(':');
+              if (parts.length >= 3) {
+                if (/^\d+$/.test(parts[1])) {
+                  parsed = {
+                    id: parts[0],
+                    slot: parseInt(parts[1], 10),
+                    code: parts[2]
+                  };
+                } else {
+                  parsed = {
+                    id: parts[0],
+                    code: parts[1],
+                    slot: parseInt(parts[2], 10)
+                  };
+                }
               }
             }
           }
-        }
 
-        if (parsed && parsed.id && parsed.code) {
-          return {
-            success: true,
-            beaconPublicId: parsed.id,
-            rawAnchorId: parsed.rawId || parsed.id,
-            rollingCode: parsed.code,
-            slot: (parsed.slot !== undefined && parsed.slot !== null) ? parsed.slot : Math.floor(Date.now() / 30000),
-            deviceName: foundDevice.name || parsed.id,
-            rawPayload,
-            timestamp: Date.now()
-          };
+          if (parsed && parsed.id && parsed.code) {
+            return {
+              success: true,
+              beaconPublicId: parsed.id,
+              rawAnchorId: parsed.rawId || parsed.id,
+              rollingCode: parsed.code,
+              slot: (parsed.slot !== undefined && parsed.slot !== null) ? parsed.slot : Math.floor(Date.now() / 30000),
+              deviceName: foundDevice.name || parsed.id,
+              rawPayload,
+              rssi: lastRssi,
+              timestamp: Date.now()
+            };
+          }
+        } finally {
+          // Guaranteed GATT disconnection in finally block ensures ESP32 slots are never starved
+          if (connected) {
+            try { await BleClient.disconnect(foundDevice.deviceId); } catch (_) {}
+          }
         }
       }
 
@@ -801,13 +862,22 @@ export async function scanHostelBleBeacon(options = {}) {
     try {
       if (onProgress) onProgress({ status: 'CONNECTING', message: `Connecting to ${targetDevice.name || 'ESP32 Beacon'}...` });
 
-      let lastDiscoveryErr = null;
+      let dataView = null;
       let service = null;
-      let characteristic = null;
+      let lastErr = null;
 
-      // 2-attempt retry loop if GATT disconnects mid-discovery
-      for (let attempt = 1; attempt <= 2; attempt++) {
+      // Robust connection loop with bounded retry and jittered exponential backoff
+      for (let attempt = 1; attempt <= 3; attempt++) {
         try {
+          // If a previous attempt failed or GATT is still connected from prior attempt, cleanly disconnect first
+          if (attempt > 1 && targetDevice.gatt?.connected) {
+            try {
+              targetDevice.gatt.disconnect();
+            } catch (_) {}
+            const jitter = Math.floor(Math.random() * 150) + 100 * attempt;
+            await new Promise(r => setTimeout(r, jitter));
+          }
+
           if (targetDevice.gatt && targetDevice.gatt.connected) {
             server = targetDevice.gatt;
           } else {
@@ -818,51 +888,61 @@ export async function scanHostelBleBeacon(options = {}) {
             server = await Promise.race([connectPromise, timeoutPromise]);
           }
 
-          // 150ms stabilization delay before service & characteristic discovery
-          await new Promise(r => setTimeout(r, 150));
+          // Adaptive 350ms stabilization for Windows Chrome / Android BLE MTU and LL_PARAM handshake
+          await new Promise(r => setTimeout(r, 350));
 
-          service = await server.getPrimaryService(HOSTEL_SERVICE_UUID);
-          characteristic = await service.getCharacteristic(ROLLING_CHAR_UUID);
-          if (characteristic) break;
-        } catch (discErr) {
-          lastDiscoveryErr = discErr;
-          if (attempt < 2) {
+          if (!server || !server.connected) {
+            server = await targetDevice.gatt.connect();
             await new Promise(r => setTimeout(r, 200));
           }
-        }
-      }
 
-      if (!characteristic) {
-        throw lastDiscoveryErr || new Error('Could not resolve ESP32 GATT service / characteristic');
-      }
+          service = await server.getPrimaryService(HOSTEL_SERVICE_UUID);
+          const characteristic = await service.getCharacteristic(ROLLING_CHAR_UUID);
 
-      // Time-Sync Write: Syncs ESP32 internal clock to phone Unix epoch without needing Wi-Fi
-      try {
-        const timeSyncChar = await service.getCharacteristic(TIME_SYNC_CHAR_UUID);
-        if (timeSyncChar) {
-          const currentEpochSec = Math.floor(Date.now() / 1000);
-          const syncValue = timeSyncPacket || String(currentEpochSec);
-          await timeSyncChar.writeValue(new TextEncoder().encode(String(syncValue)));
-        }
-      } catch (_) {}
+          if (onProgress) onProgress({ status: 'READING_TOKEN', message: 'Reading 30-second rolling token...' });
 
-      if (onProgress) onProgress({ status: 'READING_TOKEN', message: 'Reading 30-second rolling token...' });
+          try {
+            dataView = await characteristic.readValue();
+          } catch (readErr) {
+            // If GATT server disconnected right before/during readValue, re-establish and retry once with cooldown
+            if (/disconnect/i.test(readErr.message) && targetDevice.gatt) {
+              console.warn('[BLE] GATT disconnected during readValue, re-connecting...');
+              await new Promise(r => setTimeout(r, 350));
+              server = await targetDevice.gatt.connect();
+              await new Promise(r => setTimeout(r, 250));
+              service = await server.getPrimaryService(HOSTEL_SERVICE_UUID);
+              const retryChar = await service.getCharacteristic(ROLLING_CHAR_UUID);
+              dataView = await retryChar.readValue();
+            } else {
+              throw readErr;
+            }
+          }
 
-      let dataView = null;
-      let lastErr = null;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          dataView = await characteristic.readValue();
-          if (dataView) break;
+          if (dataView && dataView.byteLength > 0) {
+            break;
+          }
         } catch (e) {
           lastErr = e;
-          await new Promise(r => setTimeout(r, 150));
+          // Short backoff before next reconnect attempt
+          await new Promise(r => setTimeout(r, 200));
         }
       }
 
       if (!dataView) {
         throw lastErr || new Error('Could not read rolling code from beacon characteristic');
       }
+
+      // Time-Sync Write: Executed AFTER token read so it never interrupts the critical read operation
+      try {
+        if (targetDevice.gatt?.connected && service) {
+          const timeSyncChar = await service.getCharacteristic(TIME_SYNC_CHAR_UUID).catch(() => null);
+          if (timeSyncChar) {
+            const currentEpochSec = Math.floor(Date.now() / 1000);
+            const syncValue = timeSyncPacket || String(currentEpochSec);
+            await timeSyncChar.writeValue(new TextEncoder().encode(String(syncValue))).catch(() => {});
+          }
+        }
+      } catch (_) {}
 
       const bytes = new Uint8Array(dataView.buffer, dataView.byteOffset, dataView.byteLength);
       rawPayload = new TextDecoder('utf-8').decode(bytes).trim();
@@ -936,8 +1016,33 @@ export async function scanHostelBleBeacon(options = {}) {
     }
   };
 
-  // 2. Interactive device picker: Must be invoked directly on user click tick without preceding awaits
-  // to prevent iOS WebKit from invalidating the transient user gesture
+  // 2. Check for previously granted / paired devices (Zero-Click Background Reconnect)
+  // If the student has paired the hostel beacon once, auto-connect in the background without showing any picker dialog!
+  if (typeof navigator !== 'undefined' && navigator.bluetooth?.getDevices) {
+    try {
+      const knownDevices = await navigator.bluetooth.getDevices().catch(() => []);
+      const matchedDevice = knownDevices.find((d) => {
+        const name = (d.name || '').toUpperCase();
+        return name.startsWith('HG-') || name.includes('BEACON') || name.includes('HOSTEL');
+      }) || (knownDevices.length === 1 ? knownDevices[0] : null);
+
+      if (matchedDevice) {
+        if (onProgress) onProgress({ status: 'AUTO_CONNECTING', message: `Fast-connect to ${matchedDevice.name || 'floor beacon'}...` });
+        try {
+          const autoRes = await readTokenFromGatt(matchedDevice, 5000);
+          if (autoRes && autoRes.success) {
+            autoRes.autoReconnected = true;
+            return autoRes;
+          }
+        } catch (autoErr) {
+          console.warn('[BLE] Background auto-reconnect failed, falling back to picker:', autoErr?.message || autoErr);
+          // If silent auto-reconnect failed (e.g. out of range or stale handle), fall through to interactive picker
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 3. Interactive device picker: Fallback when device has never been paired or background reconnect failed
   let device = null;
   try {
     if (onProgress) onProgress({ status: 'REQUESTING_DEVICE', message: 'Scanning for nearby hostel ESP32 beacons...' });

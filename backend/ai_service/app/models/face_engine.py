@@ -153,9 +153,12 @@ class FaceEngine:
 
         best_face = None
         if faces[1] is not None and len(faces[1]) > 0:
-            candidate = max(faces[1], key=lambda f: f[-1])
-            if float(candidate[-1]) >= 0.60:
-                best_face = candidate
+            valid_faces = [f for f in faces[1] if float(f[-1]) >= 0.55]
+            if len(valid_faces) > 1:
+                logger.warning(f"[Zero-FAR Guard] Multiple faces detected ({len(valid_faces)} faces). Rejecting bystander attack.")
+                return None, None, "MULTIPLE_FACES_DETECTED"
+            if len(valid_faces) == 1:
+                best_face = valid_faces[0]
 
         # Pass 2: Multi-Scale & Padded Fallback Detection
         # When face fills >= 75% of frame (close-up mobile selfie), YuNet often misses boundary points.
@@ -198,6 +201,11 @@ class FaceEngine:
                 return face_crop, np.array([x, y, fw, fh]), None
             return None, None, None
 
+        fw, fh = int(best_face[2]), int(best_face[3])
+        if fw < 50 or fh < 50:
+            logger.warning(f"[Quality Gate] Face bounding box too small ({fw}x{fh} < 50x50).")
+            return None, None, "FACE_TOO_SMALL"
+
         aligned_face = self.recognizer.alignCrop(enhanced_img, best_face)
         bbox = best_face[:4].astype(int)
         return aligned_face, bbox, best_face
@@ -234,6 +242,8 @@ class FaceEngine:
         Supports both InsightFace ArcFace 512D and OpenCV SFace 128D.
         """
         aligned_face, bbox, raw_face = self.detect_and_align_face(bgr_img)
+        if isinstance(raw_face, str):
+            return None, None, raw_face, 0.0
         if aligned_face is None or raw_face is None:
             return None, None, None, 0.0
 
@@ -268,27 +278,33 @@ class FaceEngine:
 
         enhanced_crop = self.apply_clahe_lab(crop_112_bgr)
         aligned_112 = cv2.resize(enhanced_crop, (112, 112))
-        if self.arcface_net is not None:
-            feat = self.extract_arcface_512d(aligned_112)
-            if feat is not None:
-                return feat, 0.98
 
-        if self.recognizer is not None:
+        # Precision 5-point landmark alignment if detector is loaded
+        if self.detector is not None and self.recognizer is not None:
             try:
-                feat = self.recognizer.feature(aligned_112)
-                feat_norm = feat.flatten()
-                norm = np.linalg.norm(feat_norm)
-                if norm > 0:
-                    feat_norm = feat_norm / norm
-                return feat_norm.tolist(), 0.98
-            except Exception:
-                pass
+                ch, cw = enhanced_crop.shape[:2]
+                self.detector.setInputSize((cw, ch))
+                self.detector.setScoreThreshold(0.40)
+                faces = self.detector.detect(enhanced_crop)
+                if faces[1] is not None and len(faces[1]) > 0:
+                    best_f = max(faces[1], key=lambda f: f[-1])
+                    aligned_crop = self.recognizer.alignCrop(enhanced_crop, best_f)
+                    if self.arcface_net is not None:
+                        feat = self.extract_arcface_512d(aligned_crop)
+                        if feat is not None:
+                            return feat, float(best_f[-1])
+                    feat = self.recognizer.feature(aligned_crop)
+                    feat_norm = feat.flatten()
+                    norm = np.linalg.norm(feat_norm)
+                    if norm > 0:
+                        feat_norm = feat_norm / norm
+                    return feat_norm.tolist(), float(best_f[-1])
+            except Exception as e:
+                logger.warning(f"Pre-crop 5-point alignment notice: {e}")
 
-        gray = cv2.cvtColor(aligned_112, cv2.COLOR_BGR2GRAY)
-        resized = cv2.resize(gray, (64, 64))
-        hist = cv2.calcHist([resized], [0], None, [128], [0, 256]).flatten()
-        hist = (hist / (np.linalg.norm(hist) + 1e-8)).tolist()
-        return hist, 0.90
+        # Strict Zero-FAR Protection: If 5-point landmarks could not be reliably aligned on tight crop,
+        # return None so the pipeline falls back to full-frame YuNet detection for zero feature distortion.
+        return None, 0.0
 
     def extract_embedding(self, bgr_img: np.ndarray) -> tuple[list[float] | None, np.ndarray | None, float]:
         """

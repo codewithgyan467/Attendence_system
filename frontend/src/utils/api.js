@@ -149,10 +149,11 @@ export const probeLocalWardenIp = async (manualIp = null) => {
 
   // 3. Step B: Cloud Discovery Sync (Query cloud registry for latest Warden laptop LAN IP)
   try {
-    const cloudEndpoints = [
-      'https://hostelguard-backend-oimp.onrender.com/api/v1/lan-discovery',
-      'https://hostelguard-backend-oimp.onrender.com/api/v1/attendance/time-window'
-    ];
+    const cloudApiBase = import.meta.env?.VITE_API_BASE_URL ? import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, '') : '';
+    const cloudEndpoints = cloudApiBase ? [
+      `${cloudApiBase}/lan-discovery`,
+      `${cloudApiBase}/attendance/time-window`
+    ] : [];
 
     for (const endpoint of cloudEndpoints) {
       try {
@@ -262,11 +263,11 @@ export const getApiBaseUrl = () => {
       const cleanWarden = localWarden.replace(/\/+$/, '');
       return cleanWarden.endsWith('/api/v1') ? cleanWarden : `${cleanWarden}/api/v1`;
     }
-    return 'https://hostelguard-backend-oimp.onrender.com/api/v1';
+    return import.meta.env?.VITE_API_BASE_URL ? import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, '') : '/api/v1';
   }
 
   if (typeof window !== 'undefined' && window.location.hostname.endsWith('onrender.com')) {
-    return 'https://hostelguard-backend-oimp.onrender.com/api/v1';
+    return import.meta.env?.VITE_API_BASE_URL ? import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, '') : '/api/v1';
   }
 
   return '/api/v1';
@@ -352,7 +353,9 @@ async function request(endpoint, options = {}, isRetry = false) {
     }
   };
 
-  const cloudBase = 'https://hostelguard-backend-oimp.onrender.com/api/v1';
+  const cloudBase = import.meta.env?.VITE_API_BASE_URL
+    ? import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, '')
+    : (primaryUrl || '/api/v1');
 
   // For authentication endpoints:
   // - Direct browser access on LAN (e.g. http://172.20.10.2:5000): Authenticate directly with local server (100% offline support)

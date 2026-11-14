@@ -137,11 +137,11 @@ class LivenessDetectorV4:
             p_screen = float(probs[2])
             p_spoof = float(p_print + p_screen)
             
-            # Calibrated Adaptive Decision: Dim indoor rooms calibrate threshold to prevent false screen-replay flags
+            # Calibrated Adaptive Decision: Require live probability to dominate attack classes
             if is_dim:
-                is_live = bool(p_live >= 0.35 and p_print < 0.75)
+                is_live = bool(p_live >= 0.45 and p_live > p_screen and p_print < 0.45)
             else:
-                is_live = bool(p_live >= 0.40 and p_print < 0.70)
+                is_live = bool(p_live >= 0.50 and p_live > p_screen and p_print < 0.40)
             
             pred_class = "LIVE" if is_live else ("SCREEN_REPLAY" if p_screen >= p_print else "PRINT_ATTACK")
             
@@ -212,7 +212,10 @@ class LivenessDetectorV4:
             p_screen = float(probs[2])
             p_spoof = float(p_print + p_screen)
 
-            is_live = bool(p_live >= 0.35 and p_print < 0.75)
+            if mean_brightness < 60.0:
+                is_live = bool(p_live >= 0.45 and p_live > p_screen and p_print < 0.45)
+            else:
+                is_live = bool(p_live >= 0.50 and p_live > p_screen and p_print < 0.40)
             pred_class = "LIVE" if is_live else ("SCREEN_REPLAY" if p_screen >= p_print else "PRINT_ATTACK")
 
             return {
@@ -489,8 +492,9 @@ class LivenessDetectorV4:
                 logger.warning(f"Optical flow calculation notice: {e}")
 
         mean_flow = float(np.mean(flows)) if flows else 0.0
-        has_micromotion = bool(0.06 <= mean_flow <= 35.0)
-        is_frozen = bool(mean_flow < 0.06)
+        # Calibrated for live humans holding steady: natural resting micro-motion is >= 0.015 px
+        has_micromotion = bool(0.015 <= mean_flow <= 40.0)
+        is_frozen = bool(mean_flow < 0.015)
 
         return {
             "has_micromotion": has_micromotion,
@@ -571,8 +575,10 @@ class LivenessDetectorV4:
         optical_res = self.compute_optical_flow_micromotion([vf[0] for vf in valid_frames])
         optical_pass = bool(optical_res["has_micromotion"])
 
-        # Adaptive threshold: In dim rooms with micro-motion or active challenge, accept p_live >= 0.30
-        deep_pad_pass = bool(mean_live_prob >= (0.30 if (optical_pass or active_challenge_pass) else 0.38))
+        # Strict Anti-Replay Gate: require bona fide live probability to dominate screen replay and print attacks
+        mean_screen_prob = float(np.mean([p.get("screen_prob", 0.0) for p in pad_results]))
+        mean_print_prob = float(np.mean([p.get("print_prob", 0.0) for p in pad_results]))
+        deep_pad_pass = bool(mean_live_prob >= 0.45 and mean_live_prob > mean_screen_prob and mean_print_prob < 0.45)
 
         # Final Liveness Decision:
         is_live = bool(deep_pad_pass and active_challenge_pass and (temporal_pass or optical_pass))
