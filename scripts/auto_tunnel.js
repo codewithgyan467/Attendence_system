@@ -11,7 +11,13 @@ const fs = require('fs');
 const os = require('os');
 
 const rootDir = path.resolve(__dirname, '..');
-const cloudflaredBin = path.join(rootDir, 'cloudflared.exe');
+const toolsCloudflaredDir = path.join(rootDir, 'tools', 'cloudflared');
+if (!fs.existsSync(toolsCloudflaredDir)) {
+  fs.mkdirSync(toolsCloudflaredDir, { recursive: true });
+}
+const cloudflaredBin = fs.existsSync(path.join(toolsCloudflaredDir, 'cloudflared.exe'))
+  ? path.join(toolsCloudflaredDir, 'cloudflared.exe')
+  : (fs.existsSync(path.join(rootDir, 'cloudflared.exe')) ? path.join(rootDir, 'cloudflared.exe') : path.join(toolsCloudflaredDir, 'cloudflared.exe'));
 const tunnelUrlFile = path.join(rootDir, 'tunnel_url.txt');
 
 // Load environment variables if available

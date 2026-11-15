@@ -107,11 +107,12 @@ Snapshots:   0 total
 
 ## 📚 Certified Release Documentation & Architecture
 
-* **v4.0 PAD Architecture**: [HOSTELGUARD_PAD_V4_ARCHITECTURE.md](HOSTELGUARD_PAD_V4_ARCHITECTURE.md) *(also in [docs/reports/](docs/reports/HOSTELGUARD_PAD_V4_ARCHITECTURE.md))*
-* **Attack Validation Matrix**: [HOSTELGUARD_ATTACK_VALIDATION_MATRIX.md](HOSTELGUARD_ATTACK_VALIDATION_MATRIX.md) *(also in [docs/reports/](docs/reports/HOSTELGUARD_ATTACK_VALIDATION_MATRIX.md))*
-* **Biometric Model Benchmark**: [HOSTELGUARD_MODEL_COMPARISON.md](HOSTELGUARD_MODEL_COMPARISON.md) & [HOSTELGUARD_PERFORMANCE_BENCHMARK.md](HOSTELGUARD_PERFORMANCE_BENCHMARK.md)
-* **Camera Integrity & Virtual Defenses**: [HOSTELGUARD_CAMERA_INTEGRITY_REPORT.md](HOSTELGUARD_CAMERA_INTEGRITY_REPORT.md)
-* **System Known Limitations**: [HOSTELGUARD_KNOWN_LIMITATIONS.md](HOSTELGUARD_KNOWN_LIMITATIONS.md)
+* **v4.0 PAD Architecture**: [docs/reports/HOSTELGUARD_PAD_V4_ARCHITECTURE.md](docs/reports/HOSTELGUARD_PAD_V4_ARCHITECTURE.md)
+* **Attack Validation Matrix**: [docs/reports/HOSTELGUARD_ATTACK_VALIDATION_MATRIX.md](docs/reports/HOSTELGUARD_ATTACK_VALIDATION_MATRIX.md)
+* **Biometric Model Benchmark**: [docs/reports/HOSTELGUARD_MODEL_COMPARISON.md](docs/reports/HOSTELGUARD_MODEL_COMPARISON.md) & [docs/reports/HOSTELGUARD_PERFORMANCE_BENCHMARK.md](docs/reports/HOSTELGUARD_PERFORMANCE_BENCHMARK.md)
+* **Camera Integrity & Virtual Defenses**: [docs/reports/HOSTELGUARD_CAMERA_INTEGRITY_REPORT.md](docs/reports/HOSTELGUARD_CAMERA_INTEGRITY_REPORT.md)
+* **System Known Limitations**: [docs/reports/HOSTELGUARD_KNOWN_LIMITATIONS.md](docs/reports/HOSTELGUARD_KNOWN_LIMITATIONS.md)
+* **Multi-Router Wi-Fi Roaming Manual**: [docs/guides/WIFI_SWITCHING_MANUAL.md](docs/guides/WIFI_SWITCHING_MANUAL.md)
 * **System Architecture**: [docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md](docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md)
 * **21 BCNF Database Schema**: [docs/architecture/DATABASE_SCHEMA.md](docs/architecture/DATABASE_SCHEMA.md)
 * **Master Presentation & Engineering Report**: [docs/reports/hostelguard_presentation_and_engineering_report.md](docs/reports/hostelguard_presentation_and_engineering_report.md)

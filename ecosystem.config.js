@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'hostelguard-backend',
+      name: 'attendra-backend',
       script: './src/server.js',
       cwd: './backend',
       instances: 1,
@@ -16,7 +16,7 @@ module.exports = {
       }
     },
     {
-      name: 'hostelguard-ai-service',
+      name: 'attendra-ai-service',
       script: 'python',
       args: '-m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2',
       cwd: './backend/ai_service',

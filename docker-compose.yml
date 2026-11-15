@@ -6,7 +6,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: hostel_backend
+    container_name: attendra_backend
     ports:
       - "5000:5000"
     environment:
@@ -24,7 +24,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: hostel_frontend
+    container_name: attendra_frontend
     ports:
       - "3000:3000"
     depends_on:

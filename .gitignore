@@ -58,8 +58,10 @@ IDEA/
 
 # Local tools, scratch files, and binaries
 scratch/
-tools/
 *.exe
+tools/**/*.exe
+!tools/**/README.md
+!tools/README.md
 
 # Native APK binaries and OTA binary drops
 *.apk
