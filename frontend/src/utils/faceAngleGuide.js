@@ -1,7 +1,7 @@
 /**
  * faceAngleGuide.js
  * Hands-Free Facial Angle Tracking, Head Pose Guidance & Web Audio Chimes
- * Designed for HostelGuard Enterprise Mobile Biometrics
+ * Designed for ATTENDRA Enterprise Mobile Biometrics
  */
 
 // -------------------------------------------------------------

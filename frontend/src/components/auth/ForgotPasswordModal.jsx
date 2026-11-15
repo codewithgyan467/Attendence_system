@@ -258,7 +258,7 @@ export default function ForgotPasswordModal({
       return;
     }
 
-    if (masterEmail && masterEmail.trim().toLowerCase().endsWith('@hostelguard.local')) {
+    if (masterEmail && (masterEmail.trim().toLowerCase().endsWith('@hostelguard.local') || masterEmail.trim().toLowerCase().endsWith('@attendra.local'))) {
       setErrorMsg('Please specify a valid institutional or personal email, not a placeholder.');
       return;
     }
@@ -942,7 +942,7 @@ export default function ForgotPasswordModal({
                 </div>
                 <h5 className="fw-bold text-dark mb-1">Password Reset Successful!</h5>
                 <p className="text-muted small mb-4">
-                  Your account password for <strong className="font-mono text-primary">{resolvedUsername || identifier}</strong> has been updated. You can now log into HostelGuard with your new password.
+                  Your account password for <strong className="font-mono text-primary">{resolvedUsername || identifier}</strong> has been updated. You can now log into ATTENDRA with your new password.
                 </p>
 
                 <button

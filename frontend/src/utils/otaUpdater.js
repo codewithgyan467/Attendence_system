@@ -34,10 +34,14 @@ export async function initOtaUpdater() {
         console.log(`[OTA Live Update] Found newer web bundle: v${res.version} (current: v${currentVersion})`);
         
         // 3. Download the zipped web assets in the background
-        const bundle = await CapacitorUpdater.download({
+        const downloadOptions = {
           url: res.downloadUrl,
           version: res.version
-        });
+        };
+        if (res.checksum) {
+          downloadOptions.checksum = res.checksum;
+        }
+        const bundle = await CapacitorUpdater.download(downloadOptions);
 
         console.log(`[OTA Live Update] v${res.version} downloaded. Staging update for next launch...`);
 
@@ -78,10 +82,14 @@ export async function checkForOtaUpdateManual() {
       return { success: true, message: `Already up to date (v${res.version}).` };
     }
 
-    const bundle = await CapacitorUpdater.download({
+    const downloadOptions = {
       url: res.downloadUrl,
       version: res.version
-    });
+    };
+    if (res.checksum) {
+      downloadOptions.checksum = res.checksum;
+    }
+    const bundle = await CapacitorUpdater.download(downloadOptions);
     await CapacitorUpdater.set(bundle);
 
     return {

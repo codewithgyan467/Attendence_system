@@ -630,21 +630,18 @@ class BleBeaconService {
     const cleanAnchorId = anchorId.trim();
     const cleanCode = receivedHmac.trim().toUpperCase();
 
-    // Validate anchorId against registered allowlist
-    const allowedAnchors = new Set([
-      'HG-BEACON-BLKA-01', 'A01',
-      'HG-BEACON-BLKA-02', 'A02',
-      'HG-A01', 'HG-A02'
-    ]);
-    const isRegisteredAnchor = allowedAnchors.has(cleanAnchorId) || cleanAnchorId.startsWith('HG-');
+    // Validate anchorId against registered cache, standard floor/block regex (A01-D99, FLR-01..), or HG- prefix
+    const cachedBeacon = typeof beaconCache.getBeacon === 'function'
+      ? beaconCache.getBeacon(cleanAnchorId)
+      : (typeof beaconCache.get === 'function' ? beaconCache.get(cleanAnchorId) : null);
+
+    const anchorRegex = /^([A-D]\d{2}|FLR-\d{2}|FLR_\d{1,2}|HG-[A-Z0-9_-]{2,24})$/i;
+    const isRegisteredAnchor = Boolean(cachedBeacon || anchorRegex.test(cleanAnchorId) || cleanAnchorId.startsWith('HG-'));
     if (!isRegisteredAnchor) {
       return { valid: false, reason: 'UNREGISTERED_BEACON_ID' };
     }
 
     // Verify beacon.block_name matches student.hostel_block when both are populated
-    const cachedBeacon = typeof beaconCache.getBeacon === 'function'
-      ? beaconCache.getBeacon(cleanAnchorId)
-      : (typeof beaconCache.get === 'function' ? beaconCache.get(cleanAnchorId) : null);
     if (cachedBeacon && cachedBeacon.block_name && student && student.hostel_block) {
       const bBlock = cachedBeacon.block_name.trim().toLowerCase();
       const sBlock = student.hostel_block.trim().toLowerCase();

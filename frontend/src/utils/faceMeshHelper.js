@@ -1,7 +1,7 @@
 /**
  * faceMeshHelper.js
  * Real-Time 3D Pose-Aware Face Tracking, Framing Gatekeeper & Multi-Frame Burst Engine
- * Designed for HostelGuard Enterprise Biometrics
+ * Designed for ATTENDRA Enterprise Biometrics
  */
 
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';

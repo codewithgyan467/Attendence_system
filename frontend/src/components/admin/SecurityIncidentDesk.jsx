@@ -218,7 +218,7 @@ export default function SecurityIncidentDesk() {
       details: item.details || `Strikes: ${item.strike_count || 0}`
     }));
     exportToCsv({
-      filename: `hostelguard_security_incidents_${getTodayDateIST()}`,
+      filename: `attendra_security_incidents_${getTodayDateIST()}`,
       headers,
       data
     });
@@ -240,7 +240,7 @@ export default function SecurityIncidentDesk() {
       details: item.details || `Strikes: ${item.strike_count || 0}`
     }));
     exportToExcel({
-      filename: `hostelguard_security_incidents_${getTodayDateIST()}`,
+      filename: `attendra_security_incidents_${getTodayDateIST()}`,
       sheetName: 'Security Incidents',
       headers,
       data
@@ -424,7 +424,7 @@ export default function SecurityIncidentDesk() {
       details: item.details || `Strikes: ${item.strike_count || 0}`
     }));
     exportToCsv({
-      filename: `hostelguard_security_incidents_${getTodayDateIST()}`,
+      filename: `attendra_security_incidents_${getTodayDateIST()}`,
       headers,
       data
     });
@@ -446,7 +446,7 @@ export default function SecurityIncidentDesk() {
       details: item.details || `Strikes: ${item.strike_count || 0}`
     }));
     exportToExcel({
-      filename: `hostelguard_security_incidents_${getTodayDateIST()}`,
+      filename: `attendra_security_incidents_${getTodayDateIST()}`,
       sheetName: 'Security Incidents',
       headers,
       data
@@ -612,7 +612,7 @@ export default function SecurityIncidentDesk() {
       details: item.details || `Strikes: ${item.strike_count || 0}`
     }));
     exportToCsv({
-      filename: `hostelguard_security_incidents_${getTodayDateIST()}`,
+      filename: `attendra_security_incidents_${getTodayDateIST()}`,
       headers,
       data
     });
@@ -634,7 +634,7 @@ export default function SecurityIncidentDesk() {
       details: item.details || `Strikes: ${item.strike_count || 0}`
     }));
     exportToExcel({
-      filename: `hostelguard_security_incidents_${getTodayDateIST()}`,
+      filename: `attendra_security_incidents_${getTodayDateIST()}`,
       sheetName: 'Security Incidents',
       headers,
       data

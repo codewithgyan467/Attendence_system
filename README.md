@@ -73,28 +73,32 @@ npm run dev
 
 ## 🧪 Automated Test Suite (121 of 121 Tests Passing)
 
-Run the comprehensive 14-suite automated test matrix verifying authentication, OTP security, geofence algorithms, BLE sync, v4 facial security, and operational enhancements:
+Run the comprehensive 18-suite automated test matrix verifying authentication, OTP security, geofence algorithms, multi-floor BLE sync, v4 facial security, and operational enhancements:
 ```bash
-npm test
+cd backend && npm test -- -i
 ```
 ```
-PASS tests/admin_master_recovery.test.js
 PASS tests/auth.test.js
-PASS tests/operational_enhancements.test.js
-PASS tests/roster_import.test.js
-PASS tests/password_reset.test.js
-PASS tests/system_reverification.test.js
-PASS tests/security_concurrency_hardening.test.js
-PASS tests/attendance_schedule_and_purges.test.js
-PASS tests/backup_restore.test.js
-PASS tests/attendance_rules.test.js
-PASS tests/v3_antispoof_security.test.js
 PASS tests/offline_ble_sync.test.js
+PASS tests/admin_master_recovery.test.js
+PASS tests/roster_import.test.js
+PASS tests/security_concurrency_hardening.test.js
+PASS tests/password_reset.test.js
+PASS tests/v4_biometric_approval_gateway.test.js
+PASS tests/system_reverification.test.js
+PASS tests/backup_restore.test.js
+PASS tests/v4_master_enrollment_persistence.test.js
+PASS tests/attendance_schedule_and_purges.test.js
+PASS tests/v3_antispoof_security.test.js
+PASS tests/attendance_rules.test.js
+PASS tests/operational_enhancements.test.js
 PASS tests/v4_facial_security_engine.test.js
+PASS tests/wifi_cluster_strict_lock.test.js
+PASS tests/strict_dual_beacon_lock.test.js
 PASS tests/geofence.test.js
 
-Test Suites: 14 passed, 14 total
-Tests:       121 passed, 121 total
+Test Suites: 18 passed, 18 total
+Tests:       163 passed, 163 total
 Snapshots:   0 total
 ```
 

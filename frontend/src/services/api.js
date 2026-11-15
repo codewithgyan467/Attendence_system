@@ -1,5 +1,5 @@
 /**
- * HostelGuard Services API Re-Export Module
+ * ATTENDRA Services API Re-Export Module
  * Provides dynamic endpoint switching, Capacitor native integration, and standard API client.
  */
 export * from '../utils/api';

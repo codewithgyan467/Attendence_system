@@ -2,12 +2,46 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 // Path to locally stored OTA release manifest and zip bundle
 const OTA_DIR = path.join(__dirname, '../../data/ota');
 const MANIFEST_PATH = path.join(OTA_DIR, 'manifest.json');
 const BUNDLE_PATH = path.join(OTA_DIR, 'bundle.zip');
+
+// In-memory cache for OTA bundle checksum and metadata to avoid disk I/O blocking
+let bundleCache = {
+  mtimeMs: 0,
+  checksum: null,
+  sizeBytes: 0
+};
+
+function getBundleMetadata() {
+  if (!fs.existsSync(BUNDLE_PATH)) {
+    return { exists: false, checksum: null, sizeBytes: 0 };
+  }
+  try {
+    const stat = fs.statSync(BUNDLE_PATH);
+    if (bundleCache.mtimeMs !== stat.mtimeMs || !bundleCache.checksum) {
+      const fileBuffer = fs.readFileSync(BUNDLE_PATH);
+      const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+      bundleCache = {
+        mtimeMs: stat.mtimeMs,
+        checksum: hash,
+        sizeBytes: stat.size
+      };
+    }
+    return {
+      exists: true,
+      checksum: bundleCache.checksum,
+      sizeBytes: bundleCache.sizeBytes
+    };
+  } catch (err) {
+    console.error('Failed to read bundle metadata:', err);
+    return { exists: false, checksum: null, sizeBytes: 0 };
+  }
+}
 
 // Ensure storage directory exists
 if (!fs.existsSync(OTA_DIR)) {
@@ -40,16 +74,18 @@ router.get('/latest', (req, res) => {
     const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
     const host = req.get('host');
     const protocol = req.protocol;
-    const hasBundle = fs.existsSync(BUNDLE_PATH);
+    const meta = getBundleMetadata();
 
     res.json({
       success: true,
-      available: hasBundle,
+      available: meta.exists,
       version: manifest.version,
       mandatory: manifest.mandatory || false,
       releaseDate: manifest.releaseDate,
       releaseNotes: manifest.releaseNotes,
-      downloadUrl: hasBundle ? `${protocol}://${host}/api/v1/ota/bundle.zip` : null
+      downloadUrl: meta.exists ? `${protocol}://${host}/api/v1/ota/bundle.zip` : null,
+      checksum: meta.checksum,
+      sizeBytes: meta.sizeBytes
     });
   } catch (err) {
     console.error('OTA latest check error:', err);
@@ -74,18 +110,20 @@ router.get('/bundle.zip', (req, res) => {
 /**
  * GET /api/v1/ota/download-apk
  * Direct 1-click APK download endpoint for students.
- * Streams local APK if available in data/ota/HostelGuard.apk,
- * or immediately redirects to the raw GitHub release binary asset.
+ * Streams local APK if available in data/ota/Attendra.apk (or legacy HostelGuard.apk),
+ * or immediately redirects to the direct website binary asset.
  */
-const APK_PATH = path.join(OTA_DIR, 'HostelGuard.apk');
+const ATTENDRA_APK_PATH = path.join(OTA_DIR, 'Attendra.apk');
+const LEGACY_APK_PATH = path.join(OTA_DIR, 'HostelGuard.apk');
 const PRODUCTION_FRONTEND_URL = process.env.FRONTEND_URL || 'https://hostelguard-frontend.onrender.com';
-const WEBSITE_DIRECT_APK_URL = `${PRODUCTION_FRONTEND_URL}/downloads/hostelguard.apk`;
+const WEBSITE_DIRECT_APK_URL = `${PRODUCTION_FRONTEND_URL}/downloads/attendra.apk`;
 
 router.get('/download-apk', (req, res) => {
-  if (fs.existsSync(APK_PATH)) {
+  const targetApk = fs.existsSync(ATTENDRA_APK_PATH) ? ATTENDRA_APK_PATH : (fs.existsSync(LEGACY_APK_PATH) ? LEGACY_APK_PATH : null);
+  if (targetApk) {
     res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-    res.setHeader('Content-Disposition', 'attachment; filename="HostelGuard.apk"');
-    return fs.createReadStream(APK_PATH).pipe(res);
+    res.setHeader('Content-Disposition', 'attachment; filename="Attendra.apk"');
+    return fs.createReadStream(targetApk).pipe(res);
   }
   // Seamlessly redirect to the direct website CDN binary download
   res.redirect(WEBSITE_DIRECT_APK_URL);

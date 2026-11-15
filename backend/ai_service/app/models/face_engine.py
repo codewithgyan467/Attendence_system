@@ -188,14 +188,20 @@ class FaceEngine:
                     return aligned_face, bbox, unpadded
 
         if best_face is None:
-            # Fallback using standard Haar cascade
-            cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-            gray = cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2GRAY)
-            faces = cascade.detectMultiScale(gray, 1.15, 3)
-            if len(faces) > 0:
-                (x, y, fw, fh) = faces[0]
-                face_crop = enhanced_img[y:y+fh, x:x+fw]
-                return face_crop, np.array([x, y, fw, fh]), None
+            # Fallback using standard Haar cascade if available
+            if hasattr(cv2, 'CascadeClassifier') and hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
+                try:
+                    cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+                    if os.path.exists(cascade_path):
+                        cascade = cv2.CascadeClassifier(cascade_path)
+                        gray = cv2.cvtColor(enhanced_img, cv2.COLOR_BGR2GRAY)
+                        faces = cascade.detectMultiScale(gray, 1.15, 3)
+                        if len(faces) > 0:
+                            (x, y, fw, fh) = faces[0]
+                            face_crop = enhanced_img[y:y+fh, x:x+fw]
+                            return cv2.resize(face_crop, (112, 112)), np.array([x, y, fw, fh]), None
+                except Exception:
+                    pass
             return None, None, None
 
         aligned_face = self.recognizer.alignCrop(enhanced_img, best_face)

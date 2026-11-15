@@ -27,12 +27,12 @@ export default function Navbar({ onToggleSidebar }) {
         <div className="d-flex align-items-center gap-2">
           <img
             src="/icon-192.png"
-            alt="HostelGuard Mascot"
+            alt="ATTENDRA Logo"
             className="rounded-2 shadow-sm"
             style={{ width: '32px', height: '32px', objectFit: 'cover' }}
           />
           <span className="fw-bold d-none d-sm-inline" style={{ fontSize: '16px', color: 'var(--hg-text-main)' }}>
-            HostelGuard <span className="text-primary">Enterprise</span>
+            ATTENDRA <span className="text-primary">Enterprise</span>
           </span>
         </div>
       </div>

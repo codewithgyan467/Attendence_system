@@ -785,7 +785,7 @@ const scheduleMaintenance = (intervalMs = 24 * 60 * 60 * 1000) => {
   maintenanceTimer = setInterval(async () => {
     const res = await performMaintenanceCheckpoint();
     if (res.ok) {
-      console.log('🧹 [HostelGuard Maintenance] Scheduled SQLite WAL checkpoint completed.');
+      console.log('🧹 [ATTENDRA Maintenance] Scheduled SQLite WAL checkpoint completed.');
     }
   }, intervalMs);
   if (maintenanceTimer.unref) maintenanceTimer.unref();
@@ -831,7 +831,7 @@ const seedInitialData = async () => {
     if (!existingKey) {
       const recoveryKey = await createMasterRecoveryKey();
       console.log(`========================================================================`);
-      console.log(`🔑 [HOSTELGUARD RECOVERY] INITIAL MASTER RECOVERY KEY GENERATED:`);
+      console.log(`🔑 [ATTENDRA RECOVERY] INITIAL MASTER RECOVERY KEY GENERATED:`);
       console.log(`>>> ${recoveryKey} <<<`);
       console.log(`⚠️ STORE THIS MASTER KEY SAFELY! Used for admin handover and disaster recovery.`);
       console.log(`========================================================================`);

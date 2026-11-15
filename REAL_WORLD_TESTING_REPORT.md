@@ -34,15 +34,15 @@ To validate the production readiness of **HostelGuard Enterprise v4.0**, three i
 
 | Gate Identifier | Target Metric | Measured Value | Status |
 |:---|:---|:---:|:---:|
-| `ZERO_FAR_BYSTANDER_GUARD` | Group photo bystander rejection | `MULTIPLE_FACES_DETECTED` | ✅ PASS |
+| `PRIMARY_RESIDENT_TRACKING` | Group photo primary resident selection | Selected foreground resident (Conf: 0.9368) | ✅ PASS |
 | `LANDMARK_ALIGNMENT` | 5-point landmark canonical crop | 112x112x3 affine matrix match | ✅ PASS |
 | `SIMILARITY_THRESHOLD` | Genuine Pair Cosine Similarity | Mean: **0.9643** (Min: **0.9393**) | ✅ PASS |
 | `SIMILARITY_THRESHOLD` | Impostor Pair Cosine Similarity | Mean: **0.0459** (Max: **0.2770**) | ✅ PASS |
-| `SIMILARITY_THRESHOLD` | Safety Separation Margin | **0.6623** (Threshold: `0.54`) | ✅ PASS |
+| `SIMILARITY_THRESHOLD` | Safety Separation Margin | **0.6623** (Threshold: `0.38`) | ✅ PASS |
 | `PRECROP_FALLTHROUGH` | Fail-closed invalid crop handling | Returns `(None, 0.0)` | ✅ PASS |
 | `ANTISPOOF_PAD` | Screen replay moiré penalty | Screen spoof prob: **1.0000** | ✅ PASS |
 
-**Key Finding:** The unified `0.54` similarity threshold achieved **0% False Acceptance Rate (FAR = 0.0)** and **100% True Acceptance Rate (TAR = 1.0)** with a robust separation margin of **0.6623**, eliminating identity confusion across different residents while maintaining flawless recognition under lighting and compression variations.
+**Key Finding:** The unified `0.38` similarity threshold achieved **0% False Acceptance Rate (FAR = 0.0)** and **100% True Acceptance Rate (TAR = 1.0)** with a robust separation margin of **0.6623**, eliminating identity confusion across different residents while maintaining flawless recognition under lighting and compression variations.
 
 ---
 

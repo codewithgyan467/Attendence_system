@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
 import { api, setActiveBleMode, setLocalWardenUrl } from '../../utils/api';
+import { enqueueOfflineAttendance, flushOfflineQueue } from '../../utils/offlineQueue';
 import { useAuth } from '../../context/AuthContext';
 import { getNativeOrBrowserLocation, isNativeMobile, scanHostelBleBeacon, verifyGenuineIOSDevice, checkDeviceMockSecurity, openSpoofAppSettings } from '../../utils/nativeHardware';
 import { Line } from 'react-chartjs-2';
@@ -136,12 +137,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       return {
         title: 'Google Chrome Bluetooth Blocked',
         badge: 'Browser Restriction',
-        fix: 'Google Chrome blocks Bluetooth on web links. The signed HostelGuard app connects directly to the floor ESP32 without any browser restrictions!',
+        fix: 'Google Chrome blocks Bluetooth on web links. The signed ATTENDRA app connects directly to the floor ESP32 without any browser restrictions!',
         bullets: [
-          'Tap "Download HostelGuard App" below to install the official mobile app.',
+          'Tap "Download ATTENDRA App" below to install the official mobile app.',
           'Or open chrome://flags/#unsafely-treat-insecure-origin-as-secure in Chrome and add your hostel server address.'
         ],
-        voice: 'Google Chrome blocks Bluetooth on web links. Please install the HostelGuard app.'
+        voice: 'Google Chrome blocks Bluetooth on web links. Please install the ATTENDRA app.'
       };
     }
 
@@ -153,11 +154,11 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       return {
         title: 'Nearby Devices Permission Required',
         badge: 'Android Permission',
-        fix: 'HostelGuard needs "Nearby devices" permission to communicate with your floor ESP32 beacon.',
+        fix: 'ATTENDRA needs "Nearby devices" permission to communicate with your floor ESP32 beacon.',
         bullets: [
-          'Open your phone Settings -> Apps -> HostelGuard -> Permissions.',
+          'Open your phone Settings -> Apps -> ATTENDRA -> Permissions.',
           'Set "Nearby devices" (and "Location") to Allowed.',
-          'Return to HostelGuard and tap Try Again.'
+          'Return to ATTENDRA and tap Try Again.'
         ],
         voice: 'Please allow Nearby devices permission in phone settings and tap Try Again.'
       };
@@ -180,11 +181,11 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         badge: 'Step 2: Bluetooth',
         fix: isInsideBoundary
           ? `Your GPS position is confirmed inside the hostel${distInfo}. Step 2 now requires connecting to your floor's ESP32 Bluetooth anchor to verify physical presence.`
-          : 'We could not detect the HostelGuard ESP32 box for your floor.',
+          : 'We could not detect the ATTENDRA ESP32 box for your floor.',
         bullets: [
           'Ensure your floor\'s ESP32 beacon is powered ON (purple/red LED glowing).',
           !isNativeMobile()
-            ? 'Web browsers block Bluetooth on HTTP. Please install the HostelGuard Mobile App or use Bluefy on iOS.'
+            ? 'Web browsers block Bluetooth on HTTP. Please install the ATTENDRA Mobile App or use Bluefy on iOS.'
             : 'Turn ON your phone\'s Bluetooth and Location in your swipe-down settings shade.',
           'Stand within 15 meters of your floor\'s ESP32 anchor board and tap Try Again.'
         ],
@@ -561,6 +562,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       setErrorMsg(err.message || 'Failed to load student data');
     } finally {
       setLoading(false);
+      flushOfflineQueue().catch(() => {});
     }
   };
 
@@ -695,7 +697,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
           let errorMsg = bleRes?.message;
           if (!errorMsg || bleRes?.reason === 'BLUETOOTH_API_UNSUPPORTED') {
             if (typeof window !== 'undefined' && window.location.protocol === 'http:' && !isNativeMobile()) {
-              errorMsg = 'Google Chrome blocks Bluetooth on http:// web pages. Please tap "Download HostelGuard App" below to install the native app on your phone, which connects directly to the ESP32!';
+              errorMsg = 'Google Chrome blocks Bluetooth on http:// web pages. Please tap "Download ATTENDRA App" below to install the native app on your phone, which connects directly to the ESP32!';
             } else {
               errorMsg = 'STRICT LOCK BLOCKED: No ESP32 Hardware Beacon signal detected. Please turn on Bluetooth and stand within 15m of your floor\'s powered ESP32 anchor.';
             }
@@ -1171,9 +1173,12 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
     setCheckinError(null);
     setScanProgress(15);
 
+    let frames = null;
+    let livePhotoBase64 = null;
+
     try {
       // Capture 3-frame burst if not already captured
-      let frames = Array.isArray(burstFrames) && burstFrames.length > 0 ? burstFrames : null;
+      frames = Array.isArray(burstFrames) && burstFrames.length > 0 ? burstFrames : null;
       if (!frames || frames.length === 0) {
         try {
           frames = await captureBurstFrames(videoRef.current, 3, 100);
@@ -1182,7 +1187,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
         }
       }
 
-      let livePhotoBase64 = frames && frames.length > 0 ? frames[0] : null;
+      livePhotoBase64 = frames && frames.length > 0 ? frames[0] : null;
       if (!livePhotoBase64) {
         livePhotoBase64 = captureCleanFrame(videoRef.current, 640);
       }
@@ -1249,6 +1254,36 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       }
     } catch (err) {
       stopCamera();
+
+      // Check if network / connectivity drop occurred
+      const isNetworkError = !navigator.onLine || 
+        err.message?.includes('Failed to fetch') || 
+        err.message?.includes('NetworkError') || 
+        err.message?.includes('Network request failed') ||
+        err.message?.includes('Unable to reach') ||
+        err.status === 0;
+
+      const fallbackFrame = livePhotoBase64 || (frames && frames[0]);
+      if (isNetworkError && fallbackFrame) {
+        try {
+          await enqueueOfflineAttendance({
+            studentId: student?.id || user?.studentId || user?.id,
+            rollNumber: student?.roll_number || user?.username,
+            frameBase64: fallbackFrame,
+            beaconId: verifiedBeaconInfo?.beaconPublicId || verifiedBeaconInfo?.id || 'HG-BEACON-BLKA-01',
+            slot30s: verifiedBeaconInfo?.slot,
+            hwSignature: verifiedBeaconInfo?.rollingCode || verifiedBeaconInfo?.code || verifiedBeaconInfo?.rawPayload || 'OFFLINE_FALLBACK_SIG',
+            rawPayload: verifiedBeaconInfo?.rawPayload,
+            gpsCoords: verifiedDistance !== null ? { distance: verifiedDistance } : null
+          });
+          setCheckinStep('success');
+          setStatusMsg('Attendance stored offline in secure local vault. Will auto-sync when online.');
+          return;
+        } catch (queueErr) {
+          console.error('Failed to enqueue offline attendance:', queueErr);
+        }
+      }
+
       setCheckinError(err.message || 'Facial verification failed.');
       setCheckinStep('failed');
     }
@@ -2266,11 +2301,11 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                                   The native Android app connects directly to the floor ESP32 without any browser restrictions.
                                 </div>
                                 <a
-                                  href="/downloads/hostelguard.apk"
-                                  download="hostelguard.apk"
+                                  href="/downloads/attendra.apk"
+                                  download="attendra.apk"
                                   className="btn btn-dark btn-sm fw-bold py-2 shadow-sm d-flex align-items-center justify-content-center gap-2 w-100 mb-2"
                                 >
-                                  <Download size={14} /> Download HostelGuard App (Signed APK)
+                                  <Download size={14} /> Download ATTENDRA App (Signed APK)
                                 </a>
                                 <details className="text-muted small">
                                   <summary className="fw-semibold text-primary cursor-pointer" style={{ fontSize: '11.5px' }}>
@@ -3333,7 +3368,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                     Fake GPS or Location Spoofer Active
                   </div>
                   <div className="text-dark hg-text-xs">
-                    HostelGuard strict biometric security requires authentic hardware GPS coordinates and live Bluetooth beacon proximity. To complete attendance roll call, you must disable mock location providers and uninstall spoofing applications.
+                    ATTENDRA strict biometric security requires authentic hardware GPS coordinates and live Bluetooth beacon proximity. To complete attendance roll call, you must disable mock location providers and uninstall spoofing applications.
                   </div>
                 </div>
 
@@ -3381,7 +3416,7 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
                   <ol className="mb-0 ps-3 hg-text-xs text-muted">
                     <li className="mb-0.5">Uninstall the mock GPS applications listed above.</li>
                     <li className="mb-0.5">Go to <b>Settings &rarr; Developer Options</b> and set <b>Select mock location app</b> to <b>None</b>.</li>
-                    <li>Return to HostelGuard and tap <b>Re-check Location</b>.</li>
+                    <li>Return to ATTENDRA and tap <b>Re-check Location</b>.</li>
                   </ol>
                 </div>
 

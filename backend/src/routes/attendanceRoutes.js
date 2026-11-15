@@ -892,12 +892,12 @@ const verifyFaceHandler = async (req, res) => {
  */
 const offlineSyncHandler = async (req, res) => {
   try {
+    const live_photo = req.body.live_photo || req.body.frame_base64;
     const {
       student_id,
       studentId = student_id,
       roll_number,
-      frame_base64,
-      live_photo = frame_base64,
+      frame_base64 = live_photo,
       image_hash,
       beacon_id,
       beacon_public_id = beacon_id,
@@ -955,21 +955,37 @@ const offlineSyncHandler = async (req, res) => {
       return res.status(mapped.status).json({ success: false, error: mapped.msg, reason: sigResult.reason });
     }
 
-    // 3. Prevent Replay Attack & Duplicate Attendance Check
+    // 3. Prevent Replay Attack & Duplicate Attendance Check / Reconcile Unverified Absences
     const existingAttendance = await getQuery(
-      `SELECT id FROM attendance_records WHERE student_id = ? AND date = ?`,
+      `SELECT id, status, time_marked FROM attendance_records WHERE student_id = ? AND date = ?`,
       [student.id, effectiveDate]
     );
+
+    let isReconcilingAbsence = false;
+    let reconciledRecordId = null;
+
     if (existingAttendance) {
-      return res.status(409).json({
-        success: false,
-        error: 'Attendance already recorded for this date (replay attack prevented).'
-      });
+      if (existingAttendance.status === 'ABSENT') {
+        isReconcilingAbsence = true;
+        reconciledRecordId = existingAttendance.id;
+      } else {
+        return res.status(409).json({
+          success: false,
+          error: 'Attendance already recorded for this date (replay attack prevented).'
+        });
+      }
     }
 
-    // 4. Curfew Schedule Window Verification
-    const windowStatus = await getAttendanceWindowStatus();
-    if (windowStatus.enforced && !windowStatus.isOpen && process.env.NODE_ENV !== 'test' && req.headers['x-test-enforce-schedule'] === 'true') {
+    // 4. Curfew Schedule Window Verification (Bound to slot timestamp in IST)
+    const slotDate = new Date(originalTimestampMs);
+    const slotTime24 = slotDate.toLocaleTimeString('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    const windowStatus = await getAttendanceWindowStatus(effectiveDate, slotTime24);
+    if (windowStatus.enforced && !windowStatus.isOpen && (process.env.NODE_ENV !== 'test' || req.headers['x-test-enforce-schedule'] === 'true')) {
       return res.status(403).json({
         success: false,
         error: 'Offline check-in was captured outside the authorized hostel curfew attendance window.'
@@ -1042,21 +1058,41 @@ const offlineSyncHandler = async (req, res) => {
         image_hash
       ]);
 
-      await runQuery(`
-        INSERT INTO attendance_records (
-          id, student_id, roll_number, full_name, date, time_marked, status,
-          verified_distance, similarity_score, liveness_score, assurance_tier, risk_score
-        ) VALUES (?, ?, ?, ?, ?, ?, 'PRESENT', 0.0, ?, ?, 'NATIVE_HIGH', 0)
-      `, [
-        recordId,
-        student.id,
-        student.roll_number,
-        student.full_name,
-        effectiveDate,
-        timeMarked,
-        aiResult.similarity_score || 0.88,
-        aiResult.liveness_score || 0.95
-      ]);
+      if (isReconcilingAbsence && reconciledRecordId) {
+        await runQuery(`
+          UPDATE attendance_records
+          SET status = 'PRESENT',
+              time_marked = ?,
+              similarity_score = ?,
+              liveness_score = ?,
+              assurance_tier = 'NATIVE_HIGH',
+              risk_score = 0,
+              is_override = 1,
+              override_reason = 'OFFLINE_HARDWARE_SYNC_RECONCILED'
+          WHERE id = ?
+        `, [
+          timeMarked,
+          aiResult.similarity_score || 0.88,
+          aiResult.liveness_score || 0.95,
+          reconciledRecordId
+        ]);
+      } else {
+        await runQuery(`
+          INSERT INTO attendance_records (
+            id, student_id, roll_number, full_name, date, time_marked, status,
+            verified_distance, similarity_score, liveness_score, assurance_tier, risk_score
+          ) VALUES (?, ?, ?, ?, ?, ?, 'PRESENT', 0.0, ?, ?, 'NATIVE_HIGH', 0)
+        `, [
+          recordId,
+          student.id,
+          student.roll_number,
+          student.full_name,
+          effectiveDate,
+          timeMarked,
+          aiResult.similarity_score || 0.88,
+          aiResult.liveness_score || 0.95
+        ]);
+      }
 
       await runQuery(`
         INSERT INTO attendance_evidence (
@@ -1071,13 +1107,15 @@ const offlineSyncHandler = async (req, res) => {
       success: true,
       status: 'PRESENT',
       offlineVerified: true,
+      isReconciled: isReconcilingAbsence,
       record: {
-        id: recordId,
+        id: isReconcilingAbsence ? reconciledRecordId : recordId,
         rollNumber: student.roll_number,
         fullName: student.full_name,
         date: effectiveDate,
         timeMarked,
         status: 'PRESENT',
+        isReconciled: isReconcilingAbsence,
         beaconId: sigResult.beacon.beacon_public_id,
         blockName: sigResult.beacon.block_name
       }

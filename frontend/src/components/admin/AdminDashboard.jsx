@@ -669,7 +669,7 @@ export default function AdminDashboard({ onNavigate }) {
       return;
     }
     const dateStr = formatDateIST(new Date());
-    let msg = `📋 *HostelGuard Attendance Report - ${dateStr}*\n`;
+    let msg = `📋 *ATTENDRA Attendance Report - ${dateStr}*\n`;
     msg += `❌ *Total Absent Students:* ${absents.length}\n\n`;
     absents.forEach((st, idx) => {
       const name = st.full_name || st.name || 'Student';
@@ -678,7 +678,7 @@ export default function AdminDashboard({ onNavigate }) {
       const block = st.hostel_block || '';
       msg += `${idx + 1}. *${name}* (${roll}) - Room: ${room}${block ? ' (' + block + ')' : ''}\n`;
     });
-    msg += `\n_Generated automatically via HostelGuard System_`;
+    msg += `\n_Generated automatically via ATTENDRA System_`;
 
     try {
       if (navigator.clipboard) {

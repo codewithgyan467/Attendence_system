@@ -1,5 +1,5 @@
 /**
- * HostelGuard Standard Indian Standard Time (IST, UTC+05:30) & 12-Hour (AM/PM) Utilities
+ * ATTENDRA Standard Indian Standard Time (IST, UTC+05:30) & 12-Hour (AM/PM) Utilities
  * Enforces uniform 12-hour time representation across the entire platform
  */
 

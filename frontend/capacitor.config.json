@@ -1,6 +1,6 @@
 {
   "appId": "com.hostel.attendance",
-  "appName": "HostelGuard",
+  "appName": "ATTENDRA",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "server": {

@@ -66,7 +66,7 @@ function AppContent() {
         <div className="spinner-border text-primary mb-3" style={{ width: '3rem', height: '3rem' }} role="status">
           <span className="visually-hidden">Loading...</span>
         </div>
-        <div className="fw-semibold text-dark fs-5">Initializing HostelGuard Portal...</div>
+        <div className="fw-semibold text-dark fs-5">Initializing ATTENDRA Portal...</div>
         {loadingSeconds < 3 ? (
           <div className="text-muted small mt-1">Connecting to secure server...</div>
         ) : loadingSeconds < 10 ? (
@@ -203,7 +203,7 @@ function AppContent() {
           className="text-center py-3 px-4 border-top bg-white d-flex align-items-center justify-content-between flex-wrap gap-2"
           style={{ fontSize: '12px', color: '#64748b', borderColor: '#e2e8f0' }}
         >
-          <div>&copy; 2026 HostelGuard &bull; Institutional Attendance &amp; Safety Platform</div>
+          <div>&copy; 2026 ATTENDRA &bull; Presence Powered by Intelligence.</div>
           <div className="d-flex align-items-center gap-3">
             <span>Help &amp; Support</span>
             <span>&bull;</span>
@@ -216,7 +216,7 @@ function AppContent() {
 
       {/* Mandatory Admin Initial Setup Modal (triggers on default credentials or must_change_password) */}
       <InitialAdminSetupModal
-        isOpen={Boolean(user && user.role === 'ADMIN' && (user.mustChangePassword || user.email === 'admin@hostelguard.local'))}
+        isOpen={Boolean(user && user.role === 'ADMIN' && (user.mustChangePassword || user.email === 'admin@hostelguard.local' || user.email === 'admin@attendra.local'))}
         user={user}
         onSetupComplete={() => window.location.reload()}
       />

@@ -147,7 +147,7 @@ class WifiRoamingWatcher extends EventEmitter {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'User-Agent': 'HostelGuard-Warden-Roaming-Watcher/1.0',
+          'User-Agent': 'ATTENDRA-Warden-Roaming-Watcher/1.0',
           'x-lan-sync-key': process.env.LAN_SYNC_KEY || 'hostelguard-internal-sync'
         },
         body: JSON.stringify(payload),

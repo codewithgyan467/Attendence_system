@@ -253,7 +253,7 @@ router.post('/initial-admin-setup', requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: 'New password cannot be the default Admin@12345 password.' });
     }
 
-    if (new_email.trim().toLowerCase().endsWith('@hostelguard.local')) {
+    if (new_email.trim().toLowerCase().endsWith('@hostelguard.local') || new_email.trim().toLowerCase().endsWith('@attendra.local')) {
       return res.status(400).json({ success: false, error: 'Please enter a valid official email address.' });
     }
 

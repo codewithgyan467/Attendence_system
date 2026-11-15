@@ -119,7 +119,7 @@ export default function AuditLogViewer() {
       ip_address: l.ip_address || '127.0.0.1'
     }));
     exportToCsv({
-      filename: `hostelguard_audit_trail_${getTodayDateIST()}`,
+      filename: `attendra_audit_trail_${getTodayDateIST()}`,
       headers,
       data
     });
@@ -144,7 +144,7 @@ export default function AuditLogViewer() {
       ip_address: l.ip_address || '127.0.0.1'
     }));
     exportToExcel({
-      filename: `hostelguard_audit_trail_${getTodayDateIST()}`,
+      filename: `attendra_audit_trail_${getTodayDateIST()}`,
       sheetName: 'Audit Log Trail',
       headers,
       data

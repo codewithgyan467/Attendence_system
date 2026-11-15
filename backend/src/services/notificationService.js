@@ -114,7 +114,7 @@ async function sendEmailOtp({
   const htmlContent = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 540px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
       <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 24px; text-align: center; color: #ffffff;">
-        <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.5px;">HostelGuard Security</h2>
+        <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.5px;">ATTENDRA Security</h2>
         <p style="margin: 6px 0 0 0; font-size: 13px; color: #94a3b8;">Biometric & Geofenced Attendance Management</p>
       </div>
 
@@ -153,7 +153,7 @@ async function sendEmailOtp({
       </div>
 
       <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 24px; font-size: 11px; color: #94a3b8; text-align: center;">
-        HostelGuard Enterprise System &bull; Open-Source Dual Email Authentication Model
+        ATTENDRA Enterprise System &bull; Presence Powered by Intelligence
       </div>
     </div>
   `;
@@ -161,9 +161,9 @@ async function sendEmailOtp({
   if (transporter) {
     try {
       const info = await transporter.sendMail({
-        from: process.env.SMTP_FROM || '"HostelGuard Security" <security@hostelguard.local>',
+        from: process.env.SMTP_FROM || '"ATTENDRA Security" <security@attendra.local>',
         to: email,
-        subject: `[HostelGuard] ${otpCode} is your Password Reset Verification Code`,
+        subject: `[ATTENDRA] ${otpCode} is your Password Reset Verification Code`,
         html: htmlContent
       });
 
@@ -183,7 +183,7 @@ async function sendEmailOtp({
   // Developer / Local Evaluation Log (Disabled in production to protect secret tokens)
   if (process.env.NODE_ENV !== 'production') {
     console.log('\n=============================================================');
-    console.log('📧 [HOSTELGUARD EMAIL AUTHENTICATION]');
+    console.log('📧 [ATTENDRA EMAIL AUTHENTICATION]');
     console.log(`To: ${email} (${studentName} - ${rollNumber})`);
     console.log(`Subject: Password Reset Verification OTP & Magic Link`);
     console.log(`🔐 OTP Code: >>> ${otpCode} <<<`);
@@ -275,7 +275,7 @@ async function verifyPhoneEmailJsonUrl(userJsonUrl) {
  */
 async function sendSmsOtp({ phone, otpCode, studentName = 'Student', rollNumber = '' }) {
   const masked = maskPhone(phone);
-  const smsBody = `[HostelGuard] Hello ${studentName}, your password reset verification code is: ${otpCode}. Valid for 10 minutes.`;
+  const smsBody = `[ATTENDRA] Hello ${studentName}, your password reset verification code is: ${otpCode}. Valid for 10 minutes.`;
 
   if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) {
     try {
@@ -296,7 +296,7 @@ async function sendSmsOtp({ phone, otpCode, studentName = 'Student', rollNumber 
   // Developer / Local Evaluation Log (Disabled in production to protect secret tokens)
   if (process.env.NODE_ENV !== 'production') {
     console.log('\n=============================================================');
-    console.log('📱 [HOSTELGUARD SMS NOTIFICATION]');
+    console.log('📱 [ATTENDRA SMS NOTIFICATION]');
     console.log(`To: ${phone} (${studentName} - ${rollNumber})`);
     console.log(`Message: ${smsBody}`);
     console.log(`🔐 OTP Verification Code: >>> ${otpCode} <<<`);

@@ -163,14 +163,17 @@ export default function LoginPage({ onNavigateOnboarding }) {
         <div className="px-3 py-2.5 text-center text-white bg-dark border-bottom border-secondary">
           <img
             src="/icon-192.png"
-            alt="HostelGuard Security Mascot"
+            alt="ATTENDRA Logo"
             className="rounded-circle shadow mb-1.5 border border-2 border-primary border-opacity-50"
-            style={{ width: '46px', height: '46px', objectFit: 'cover' }}
+            style={{ width: '48px', height: '48px', objectFit: 'cover' }}
           />
-          <h5 className="fw-bold mb-0 text-white" style={{ fontSize: '16px' }}>HostelGuard Portal</h5>
-          <p className="text-white-50 small mb-0" style={{ fontSize: '11px' }}>
-            Biometric &amp; Geofenced Attendance Management
+          <h5 className="fw-bold mb-0 text-white" style={{ fontSize: '18px', letterSpacing: '0.5px' }}>ATTENDRA</h5>
+          <p className="text-info small mb-0 fw-semibold" style={{ fontSize: '11px', letterSpacing: '0.2px' }}>
+            Presence Powered by Intelligence.
           </p>
+          <div className="text-white-50" style={{ fontSize: '9.5px', marginTop: '2px', letterSpacing: '0.8px' }}>
+            GPS &bull; BLE &bull; SMART ATTENDANCE
+          </div>
         </div>
 
         {/* Card Body */}
@@ -179,7 +182,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
           <div className="d-flex align-items-center justify-content-between px-2.5 py-1.5 mb-2.5 rounded-3 bg-light border small">
             <div className="d-flex align-items-center gap-1.5 text-truncate" style={{ fontSize: '11px' }}>
               <span className={`badge rounded-pill p-1 ${currentWardenUrl ? 'bg-success' : 'bg-primary'}`}> </span>
-              <span className="text-muted">Hostel Server:</span>
+              <span className="text-muted">Attendance Server:</span>
               <span className="fw-semibold text-dark text-truncate">
                 {currentWardenUrl ? `Wi-Fi (${currentWardenUrl.replace('http://', '').replace('/api/v1', '')})` : 'Cloud / Auto'}
               </span>

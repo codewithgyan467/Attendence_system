@@ -47,7 +47,7 @@ export default function InitialAdminSetupModal({ isOpen, user, onSetupComplete }
       return;
     }
 
-    if (email.trim().toLowerCase().endsWith('@hostelguard.local')) {
+    if (email.trim().toLowerCase().endsWith('@hostelguard.local') || email.trim().toLowerCase().endsWith('@attendra.local')) {
       setErrorMsg('Please provide a real institution or personal email, not the default placeholder.');
       return;
     }

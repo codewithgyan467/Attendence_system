@@ -42,6 +42,12 @@ jobs:
         with:
           build-root-directory: frontend/android
 
+      - name: 🧪 Run Backend Automated Security & Unit Tests
+        run: |
+          cd backend
+          npm ci || npm install
+          npm test -- -i
+
       - name: 📦 Install Frontend Dependencies & Build Web Assets
         run: |
           cd frontend
@@ -54,16 +60,43 @@ jobs:
           sed -i 's/\r$//' frontend/android/gradlew
           chmod +x frontend/android/gradlew
 
+      - name: 🔑 Configure Release Signing Key (If Configured)
+        id: sign_check
+        run: |
+          if [ -n "${{ secrets.HG_RELEASE_KEYSTORE_BASE64 }}" ]; then
+            echo "Decoding release keystore..."
+            echo "${{ secrets.HG_RELEASE_KEYSTORE_BASE64 }}" | base64 -d > frontend/android/app/hostelguard-release-key.jks
+            echo "has_release_key=true" >> $GITHUB_OUTPUT
+          else
+            echo "No release keystore secret configured; falling back to assembleDebug."
+            echo "has_release_key=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: 🔨 Compile Android APK with Gradle
+        env:
+          HG_KEYSTORE_PASSWORD: ${{ secrets.HG_KEYSTORE_PASSWORD }}
+          HG_KEY_PASSWORD: ${{ secrets.HG_KEY_PASSWORD }}
+          HG_KEY_ALIAS: ${{ secrets.HG_KEY_ALIAS }}
         run: |
           cd frontend/android
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          if [ "${{ steps.sign_check.outputs.has_release_key }}" = "true" ]; then
+            echo "Compiling signed production release APK..."
+            ./gradlew assembleRelease --no-daemon --stacktrace
+          else
+            echo "Compiling development debug APK..."
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          fi
 
       - name: 📋 Prepare APK & OTA Bundle Artifacts
         run: |
           mkdir -p release-output
-          cp frontend/android/app/build/outputs/apk/debug/app-debug.apk release-output/app-release.apk
-          cp frontend/android/app/build/outputs/apk/debug/app-debug.apk release-output/HostelGuard.apk
+          if [ -f "frontend/android/app/build/outputs/apk/release/app-release.apk" ]; then
+            cp frontend/android/app/build/outputs/apk/release/app-release.apk release-output/app-release.apk
+            cp frontend/android/app/build/outputs/apk/release/app-release.apk release-output/HostelGuard.apk
+          elif [ -f "frontend/android/app/build/outputs/apk/debug/app-debug.apk" ]; then
+            cp frontend/android/app/build/outputs/apk/debug/app-debug.apk release-output/app-debug.apk
+            cp frontend/android/app/build/outputs/apk/debug/app-debug.apk release-output/HostelGuard-debug.apk
+          fi
           cd frontend/dist && zip -r ../../release-output/ota-bundle.zip . && cd ../..
 
       - name: 📤 Upload Artifacts
@@ -97,9 +130,7 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            release-output/app-release.apk
-            release-output/HostelGuard.apk
-            release-output/ota-bundle.zip
+            release-output/*
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

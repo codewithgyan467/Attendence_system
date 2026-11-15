@@ -45,7 +45,7 @@ export default function AppDownloadModal({ isOpen, onClose }) {
   const webAppUrl = getWebAppUrl();
 
   // Direct APK binary download URL served directly from website CDN (bypasses private GitHub restrictions)
-  const directApkUrl = `${webAppUrl}/downloads/hostelguard.apk`;
+  const directApkUrl = `${webAppUrl}/downloads/attendra.apk`;
 
   useEffect(() => {
     if (isOpen && canvasRef.current) {
@@ -104,14 +104,14 @@ export default function AppDownloadModal({ isOpen, onClose }) {
           <div className="d-flex align-items-center gap-2">
             <img
               src="/icon-192.png"
-              alt="HostelGuard Officer Mascot"
+              alt="ATTENDRA Logo"
               className="rounded-circle border border-white border-opacity-25 shadow-sm flex-shrink-0"
               style={{ width: '28px', height: '28px', objectFit: 'cover' }}
             />
             <div>
-              <h6 className="fw-bold mb-0 text-white" style={{ fontSize: '13px' }}>HostelGuard Mobile App</h6>
+              <h6 className="fw-bold mb-0 text-white" style={{ fontSize: '13px' }}>ATTENDRA Mobile App</h6>
               <small className="text-white-50" style={{ fontSize: '10px' }}>
-                Required for satellite GPS roll call check-in
+                Presence Powered by Intelligence
               </small>
             </div>
           </div>
@@ -220,7 +220,7 @@ export default function AppDownloadModal({ isOpen, onClose }) {
                 <div className="text-center text-sm-start">
                   <span className="text-muted small d-inline-flex align-items-center gap-1" style={{ fontSize: '10px' }}>
                     <ShieldCheck size={11} className="text-success" />
-                    <span>Official HostelGuard Production Build</span>
+                    <span>Official ATTENDRA Production Build</span>
                   </span>
                 </div>
               </div>

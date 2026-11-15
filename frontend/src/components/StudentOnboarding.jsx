@@ -871,7 +871,7 @@ export default function StudentOnboarding({ onComplete }) {
               Identity Verified & Portal Credentials Issued!
             </h3>
             <p style={{ fontSize: '13.5px', color: '#64748b', marginBottom: '24px' }}>
-              Please take note of your official HostelGuard login credentials below. You will use these to sign in.
+              Please take note of your official ATTENDRA login credentials below. You will use these to sign in.
             </p>
 
             {/* Official Credentials Card */}

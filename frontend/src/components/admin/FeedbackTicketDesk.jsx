@@ -138,7 +138,7 @@ export default function FeedbackTicketDesk() {
       created_at: t.created_at ? formatDateTime12h(t.created_at) : 'N/A'
     }));
     exportToCsv({
-      filename: `hostelguard_feedback_${getTodayDateIST()}`,
+      filename: `attendra_feedback_${getTodayDateIST()}`,
       headers,
       data
     });
@@ -165,7 +165,7 @@ export default function FeedbackTicketDesk() {
       created_at: t.created_at ? formatDateTime12h(t.created_at) : 'N/A'
     }));
     exportToExcel({
-      filename: `hostelguard_feedback_${getTodayDateIST()}`,
+      filename: `attendra_feedback_${getTodayDateIST()}`,
       sheetName: 'Feedback Tickets',
       headers,
       data

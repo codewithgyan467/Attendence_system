@@ -312,5 +312,76 @@ describe('HostelGuard Enterprise v3.2 - Multi-Floor BLE & Offline Store-and-Forw
     await runQuery(`DELETE FROM students WHERE id = ?`, [cleanStudentId]);
     await runQuery(`DELETE FROM users WHERE id = ?`, [uId]);
   });
+
+  test('Step 5: Offline sync successfully reconciles an unverified ABSENT record to PRESENT', async () => {
+    const targetBeacon = FLOOR_BEACONS[0];
+    const slot30s = Math.floor(Date.now() / 30000);
+    const originalTimestampMs = slot30s * 30000;
+    const testDate = new Date(originalTimestampMs).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+    // Ensure clean state for this student and date before testing reconciliation
+    await runQuery(`DELETE FROM attendance_records WHERE student_id = ? AND date = ?`, [TEST_STUDENT_ID, testDate]);
+
+    // Pre-seed an unverified ABSENT record (e.g. created by automated midnight curfew job)
+    const absentRecordId = uuidv4();
+    await runQuery(`
+      INSERT INTO attendance_records (
+        id, student_id, roll_number, full_name, date, time_marked, status,
+        verified_distance, similarity_score, liveness_score, assurance_tier, risk_score
+      ) VALUES (?, ?, ?, 'Offline Test Student', ?, '10:00 PM', 'ABSENT', 0.0, 0.0, 0.0, 'SYSTEM_UNVERIFIED', 0)
+    `, [absentRecordId, TEST_STUDENT_ID, TEST_ROLL, testDate]);
+
+    // Check it is indeed ABSENT
+    const preCheck = await getQuery(`SELECT status FROM attendance_records WHERE id = ?`, [absentRecordId]);
+    expect(preCheck.status).toBe('ABSENT');
+
+    // Student phone connects and syncs cryptographically signed offline proof
+    const mockPhoto = 'data:image/jpeg;base64,RECONCILE_ABSENT_FRAME';
+    const imageHash = crypto.createHash('sha256').update(TEST_STUDENT_ID + mockPhoto).digest('hex');
+    const hwSignature = bleBeaconService.computeOfflineSignature(
+      targetBeacon.shared_secret_ref,
+      imageHash,
+      targetBeacon.beacon_public_id,
+      slot30s
+    );
+
+    const res = await request(app)
+      .post('/api/v1/attendance/offline-sync')
+      .send({
+        student_id: TEST_STUDENT_ID,
+        frame_base64: mockPhoto,
+        image_hash: imageHash,
+        beacon_id: targetBeacon.beacon_public_id,
+        slot_30s: slot30s,
+        hw_signature: hwSignature
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.status).toBe('PRESENT');
+    expect(res.body.isReconciled).toBe(true);
+    expect(res.body.record.id).toBe(absentRecordId);
+
+    // Verify in database that status was updated to PRESENT with override flag
+    const postCheck = await getQuery(`SELECT * FROM attendance_records WHERE id = ?`, [absentRecordId]);
+    expect(postCheck.status).toBe('PRESENT');
+    expect(postCheck.is_override).toBe(1);
+    expect(postCheck.override_reason).toBe('OFFLINE_HARDWARE_SYNC_RECONCILED');
+
+    // Attempting a duplicate sync should now return 409 Conflict
+    const dupRes = await request(app)
+      .post('/api/v1/attendance/offline-sync')
+      .send({
+        student_id: TEST_STUDENT_ID,
+        frame_base64: mockPhoto,
+        image_hash: imageHash,
+        beacon_id: targetBeacon.beacon_public_id,
+        slot_30s: slot30s,
+        hw_signature: hwSignature
+      });
+
+    expect(dupRes.status).toBe(409);
+    expect(dupRes.body.success).toBe(false);
+  });
 });
 

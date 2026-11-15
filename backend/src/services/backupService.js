@@ -20,7 +20,7 @@ async function createBackup(customBackupPath = null) {
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const backupFileName = `hostelguard_backup_${timestamp}.sqlite`;
+  const backupFileName = `attendra_backup_${timestamp}.sqlite`;
   const targetPath = customBackupPath || path.join(BACKUP_DIR, backupFileName);
 
   // 1. Flush SQLite Write-Ahead Log (WAL) to main DB file

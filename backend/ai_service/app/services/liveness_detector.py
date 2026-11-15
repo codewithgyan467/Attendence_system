@@ -61,7 +61,7 @@ class LivenessDetectorV4:
                 logger.error(f"Failed to auto-download MiniFASNetV2: {dl_err}")
                 self.minifas_net = None
 
-    def crop_expanded_patch(self, img: np.ndarray, bbox: np.ndarray, scale: float = 1.5) -> np.ndarray:
+    def crop_expanded_patch(self, img: np.ndarray, bbox: np.ndarray, scale: float = 2.7) -> np.ndarray:
         """
         Crops an expanded region around the detected face bounding box using a 2.7x scale multiplier.
         This provides contextual clues (screen borders, paper edges, ambient reflections)
@@ -102,7 +102,7 @@ class LivenessDetectorV4:
             }
 
         try:
-            patch = self.crop_expanded_patch(bgr_img, raw_face, scale=1.5)
+            patch = self.crop_expanded_patch(bgr_img, raw_face, scale=2.7)
 
             # Brightness & Illumination Normalization for Dim Hostel Rooms
             patch_gray = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
@@ -609,3 +609,20 @@ class LivenessDetectorV4:
             "optical_micromotion": optical_res,
             "reason": final_reason
         }
+
+    def evaluate_liveness(self, bgr_face: np.ndarray) -> dict:
+        """
+        Single-image evaluation helper for biometric benchmarks and calibration harnesses.
+        """
+        if bgr_face is None:
+            return {"is_live": False, "liveness_score": 0.0, "reason": "No face provided"}
+        pad_res = self.evaluate_pre_cropped_pad(bgr_face)
+        return {
+            "is_live": pad_res.get("is_live", False),
+            "liveness_score": pad_res.get("live_prob", 0.0),
+            "deep_pad": pad_res,
+            "reason": pad_res.get("reason", "Deep PAD evaluation")
+        }
+
+# Backward compatibility alias for benchmark harnesses and legacy callers
+LivenessDetector = LivenessDetectorV4

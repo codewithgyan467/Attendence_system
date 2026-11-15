@@ -780,7 +780,7 @@ export async function scanHostelBleBeacon(options = {}) {
       return {
         success: false,
         reason: 'NATIVE_BEACON_NOT_FOUND',
-        message: 'No authorized HostelGuard ESP32 beacon was detected in Bluetooth range (~15m). Please stand near the floor beacon and ensure the red LED is lit.'
+        message: 'No authorized ATTENDRA ESP32 beacon was detected in Bluetooth range (~15m). Please stand near the floor beacon and ensure the red LED is lit.'
       };
     } catch (nativeBleErr) {
       console.warn('Native BLE scanner exception:', nativeBleErr);
@@ -860,7 +860,7 @@ export async function scanHostelBleBeacon(options = {}) {
     if (isIOS) {
       unsupportedMsg = 'Apple Safari blocks Bluetooth scanning. You must use Bluefy Browser to connect to the hostel ESP32 beacon and mark attendance.';
     } else if (!isSecure && isHttp) {
-      unsupportedMsg = 'Web Bluetooth requires a Secure HTTPS connection. Google Chrome disables Bluetooth on http:// URLs. Please switch your address bar from http:// to https:// or install the signed HostelGuard APK.';
+      unsupportedMsg = 'Web Bluetooth requires a Secure HTTPS connection. Google Chrome disables Bluetooth on http:// URLs. Please switch your address bar from http:// to https:// or install the signed ATTENDRA APK.';
     }
 
     return {
@@ -1067,6 +1067,8 @@ export async function scanHostelBleBeacon(options = {}) {
     if (onProgress) onProgress({ status: 'REQUESTING_DEVICE', message: 'Scanning for nearby hostel ESP32 beacons...' });
     device = await navigator.bluetooth.requestDevice({
       filters: [
+        { namePrefix: 'ATTENDRA' },
+        { namePrefix: 'AT-' },
         { namePrefix: 'HG-A' },
         { namePrefix: 'HG-' },
         { namePrefix: 'HG-BEACON' },
@@ -1105,7 +1107,7 @@ export async function scanHostelBleBeacon(options = {}) {
     return {
       success: false,
       reason: 'NO_DEVICE_SELECTED',
-      message: 'No authorized HostelGuard Bluetooth beacon selected.'
+      message: 'No authorized ATTENDRA Bluetooth beacon selected.'
     };
   }
 

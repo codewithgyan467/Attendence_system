@@ -18,7 +18,7 @@ export default class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     this.setState({ errorInfo });
-    console.error('[HostelGuard Fault Isolation] Error caught by boundary:', error, errorInfo);
+    console.error('[ATTENDRA Fault Isolation] Error caught by boundary:', error, errorInfo);
   }
 
   handleReset = () => {
@@ -58,7 +58,7 @@ export default class ErrorBoundary extends React.Component {
               </div>
               <h4 className="fw-bold mb-1">Module Encountered an Issue</h4>
               <p className="small mb-0 text-white-50">
-                HostelGuard shielded the application from crashing. Your data is safe.
+                ATTENDRA shielded the application from crashing. Your data is safe.
               </p>
             </div>
             <div className="card-body p-4 text-start">
@@ -119,7 +119,7 @@ export default class ErrorBoundary extends React.Component {
               )}
             </div>
             <div className="card-footer bg-light py-2 text-center text-muted border-top" style={{ fontSize: '11px' }}>
-              HostelGuard Fault Isolation Architecture &bull; Auto-Recovery
+              ATTENDRA Fault Isolation Architecture &bull; Auto-Recovery
             </div>
           </div>
         </div>

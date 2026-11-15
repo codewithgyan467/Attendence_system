@@ -49,7 +49,7 @@ Zero Mixed-Content blocks        Auto-evicts stale IP in 1.5s     Pulls fresh fl
    - Cloud Discovery Registry (`/api/v1/lan-discovery`)
    - Parallel Subnet Sweep across standard gateway IPs (`172.20.10.x`, `192.168.137.1`, `192.168.43.1`, etc.)
 4. **Permanent Windows Firewall Access:**
-   Inbound rules for TCP ports `5000` (Backend) and `8000` (OpenCV AI engine) are automatically enforced across `profile=any` (Public, Private, and Domain networks).
+   Inbound rule for TCP port `5000` (Backend Gateway) is automatically enforced across `profile=any` (Public, Private, and Domain networks). The internal Python AI engine (`8000`) is strictly bound to local loopback (`127.0.0.1`), eliminating unauthorized network probing.
 
 ---
 
@@ -58,7 +58,7 @@ Zero Mixed-Content blocks        Auto-evicts stale IP in 1.5s     Pulls fresh fl
 ### Step 1: Booting the Server
 1. Double-click **`Start_Warden_Server.bat`** on the Warden laptop.
 2. The terminal automatically:
-   - Sets Windows Firewall rules for port `5000` and `8000`.
+   - Sets Windows Firewall rule for port `5000` (Backend Gateway).
    - Detects all active Wi-Fi adapters.
    - Launches the Python AI engine and Node.js server.
    - Displays the initial Student Check-In URL: `http://<PRIMARY_IP>:5000`.
@@ -140,7 +140,32 @@ When testing without institutional Wi-Fi routers using a smartphone's Personal H
 
 ---
 
-## 5. Troubleshooting Matrix
+## 5. Multi-Floor & Multi-Block ESP32 Hardware Provisioning Table
+
+To prevent through-ceiling radio spillover while guaranteeing instant roll-call proximity validation, Seeed Studio XIAO ESP32-C6 / ESP32-WROOM boards are deployed according to this standardized campus topology:
+
+| Block | Floor | Anchor Identifier | Standard BLE Local Name | Service UUID | RSSI Cutoff | Typical Placement |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---|
+| **Block A** | Ground Floor | `A01` | `HG-A01` | `0000a010-0000-1000-8000-00805f9b34fb` | -78 dBm | Central corridor pillar / Warden office |
+| **Block A** | 1st Floor | `A02` | `HG-A02` | `0000a020-0000-1000-8000-00805f9b34fb` | -78 dBm | Floor 1 study lounge entrance |
+| **Block A** | 2nd Floor | `A03` | `HG-A03` | `0000a030-0000-1000-8000-00805f9b34fb` | -78 dBm | Floor 2 wing corridor junction |
+| **Block A** | 3rd Floor | `A04` | `HG-A04` | `0000a040-0000-1000-8000-00805f9b34fb` | -78 dBm | Floor 3 elevator / stairwell lobby |
+| **Block B** | Ground Floor | `B01` | `HG-B01` | `0000b010-0000-1000-8000-00805f9b34fb` | -78 dBm | Block B reception / main portal |
+| **Block B** | 1st Floor | `B02` | `HG-B02` | `0000b020-0000-1000-8000-00805f9b34fb` | -78 dBm | Block B Floor 1 common area |
+| **Block B** | 2nd Floor | `B03` | `HG-B03` | `0000b030-0000-1000-8000-00805f9b34fb` | -78 dBm | Block B Floor 2 corridor center |
+| **Block B** | 3rd Floor | `B04` | `HG-B04` | `0000b040-0000-1000-8000-00805f9b34fb` | -78 dBm | Block B Floor 3 terrace lobby |
+| **Block C** | Floors 1–4 | `C01`–`C04` | `HG-C01`..`C04` | `0000c010-0000-1000-8000-00805f9b34fb` | -78 dBm | Block C central stairwell anchors |
+| **Block D** | Floors 1–4 | `D01`–`D04` | `HG-D01`..`D04` | `0000d010-0000-1000-8000-00805f9b34fb` | -78 dBm | Block D residential wing portals |
+
+### Technical Specifications:
+- **Anchor Regex Pattern:** `^([A-D]\d{2}|FLR-\d{2}|FLR_\d{1,2}|HG-[A-Z0-9_-]{2,24})$`
+- **Advertisement Frame:** 19-byte compact manufacturer data `<ANCHOR_ID>|<STEP_HEX>|<HMAC_8HEX>` (e.g. `A01|90d8f4|8EA5CC3F`).
+- **Clock Drift Window:** 3-slot rolling window (-1, 0, +1 30-second steps = 90-second total valid tolerance).
+- **Floor Isolation:** Received signals weaker than `-78 dBm` are rejected by the mobile scanner to prevent a resident on Floor 2 from verifying against a Floor 1 beacon.
+
+---
+
+## 6. Troubleshooting Matrix
 
 | Symptom | Cause | Solution |
 |---|---|---|

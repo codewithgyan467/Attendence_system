@@ -38,7 +38,9 @@ const defaultOrigins = [
   'http://localhost',
   'capacitor://localhost',
   'http://10.0.2.2:5000',
-  'https://hostelguard-frontend.onrender.com'
+  'https://hostelguard-frontend.onrender.com',
+  'https://attendra-frontend.onrender.com',
+  'https://attendra.onrender.com'
 ];
 
 const configuredOrigins = process.env.ALLOWED_ORIGINS
@@ -447,7 +449,7 @@ async function startServer() {
       if (isCloudEnv && keepAliveUrl) {
         const TEN_MINUTES_MS = 10 * 60 * 1000;
         setInterval(() => {
-          fetch(keepAliveUrl, { headers: { 'User-Agent': 'HostelGuard-KeepAlive-Worker/1.0' } })
+          fetch(keepAliveUrl, { headers: { 'User-Agent': 'ATTENDRA-KeepAlive-Worker/1.0' } })
             .then((r) => r.json())
             .then((data) => {
               console.log(`[Keep-Alive Ping] Server pulse healthy at ${new Date().toLocaleTimeString()} (status: ${data.status})`);

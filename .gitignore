@@ -61,3 +61,7 @@ scratch/
 tools/
 *.exe
 
+# Native APK binaries and OTA binary drops
+*.apk
+backend/data/ota/*.apk
+

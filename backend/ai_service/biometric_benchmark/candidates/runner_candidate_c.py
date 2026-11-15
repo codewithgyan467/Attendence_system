@@ -17,7 +17,7 @@ class ActiveLivenessChallenge:
     Implements randomized, nonce-backed active liveness challenges (Section 11 & 13 of Charter).
     Prevents replay attacks, digital screen playback, and deepfake injection.
     """
-    VALID_CHALLENGES = ['TURN_LEFT', 'TURN_RIGHT', 'TILT_UP', 'SMILE', 'HOLD_STILL']
+    VALID_CHALLENGES = ['TURN_LEFT', 'TURN_RIGHT', 'TILT_UP', 'SMILE']
 
     @classmethod
     def generate_challenge(cls, student_id: str = "demo") -> dict:
@@ -60,7 +60,7 @@ class ActiveLivenessChallenge:
         detected = probe_landmarks_or_angle.get('detected_action', 'HOLD_STILL')
 
         # Matches requested randomized movement
-        return expected == detected or expected == 'HOLD_STILL'
+        return expected == detected
 
 class CandidateCRunner:
     """
@@ -109,7 +109,7 @@ class CandidateCRunner:
         return {
             "is_live": is_live,
             "score": round(0.70 * passive_res["liveness_score"] + (0.30 if active_pass else 0.0), 2),
-            "passive_metrics": passive_res["metrics"],
+            "passive_metrics": passive_res.get("metrics", passive_res.get("deep_pad", {})),
             "active_verified": active_pass,
             "active_details": active_details
         }

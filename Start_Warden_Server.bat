@@ -1,10 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
-title HostelGuard Enterprise - Multi-Router Roaming Warden Server
+title ATTENDRA Enterprise - Multi-Router Roaming Warden Server
 color 0A
 
 echo ===================================================
-echo   STARTING HOSTELGUARD PRODUCTION SERVICES
+echo   STARTING ATTENDRA PRODUCTION SERVICES
 echo   Multi-Floor Wi-Fi Roaming ^& LAN Auto-Discovery
 echo ===================================================
 
@@ -19,7 +19,7 @@ set NODE_OPTIONS=--max-old-space-size=1024
 set STRICT_LOCK_LOCAL=true
 
 :: 1. Permanent Windows Firewall Inbound Rules across ALL Network Profiles (Public, Private, Domain)
-echo [i] Configuring Windows Firewall for Ports 5000 (Backend) and 8000 (AI Microservice)...
+echo [i] Configuring Windows Firewall for Port 5000 (Backend Gateway)...
 netsh advfirewall firewall show rule name="HostelGuard Warden Backend (Port 5000)" >nul 2>nul
 if %errorlevel% neq 0 (
     netsh advfirewall firewall add rule name="HostelGuard Warden Backend (Port 5000)" dir=in action=allow protocol=TCP localport=5000 profile=any >nul 2>nul
@@ -27,11 +27,10 @@ if %errorlevel% neq 0 (
     netsh advfirewall firewall set rule name="HostelGuard Warden Backend (Port 5000)" new profile=any >nul 2>nul
 )
 
+:: Remove external exposure for internal AI microservice (Port 8000 is loopback 127.0.0.1 only)
 netsh advfirewall firewall show rule name="HostelGuard AI Service (Port 8000)" >nul 2>nul
-if %errorlevel% neq 0 (
-    netsh advfirewall firewall add rule name="HostelGuard AI Service (Port 8000)" dir=in action=allow protocol=TCP localport=8000 profile=any >nul 2>nul
-) else (
-    netsh advfirewall firewall set rule name="HostelGuard AI Service (Port 8000)" new profile=any >nul 2>nul
+if %errorlevel% equ 0 (
+    netsh advfirewall firewall delete rule name="HostelGuard AI Service (Port 8000)" >nul 2>nul
 )
 
 :: 2. Auto-Detect Primary Wi-Fi / Hotspot LAN IPv4 Address
@@ -42,7 +41,7 @@ if "!PRIMARY_LAN_IP!"=="" set PRIMARY_LAN_IP=localhost
 
 :: 3. Launch AI Liveness Microservice (FastAPI + OpenCV + MiniFASNet)
 echo [1/2] Starting AI Liveness Microservice...
-start "HostelGuard-AI-Engine" cmd /k "cd /d %~dp0backend\ai_service && if exist venv\Scripts\activate (call venv\Scripts\activate) && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2"
+start "ATTENDRA-AI-Engine" cmd /k "cd /d %~dp0backend\ai_service && if exist venv\Scripts\activate (call venv\Scripts\activate) && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2"
 
 timeout /t 5 /nobreak >nul
 
@@ -57,8 +56,8 @@ start /b "" cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:5000"
 
 echo.
 echo ================================================================================
-echo   HOSTELGUARD ENTERPRISE - MULTI-ROUTER ROAMING WARDEN SERVER
-echo   Institutional Physical Presence Architecture ^& Offline Vault
+echo   ATTENDRA ENTERPRISE - MULTI-ROUTER ROAMING WARDEN SERVER
+echo   Presence Powered by Intelligence ^& Offline Vault
 echo ================================================================================
 echo.
 echo   [ACTIVE NETWORK ADAPTERS]

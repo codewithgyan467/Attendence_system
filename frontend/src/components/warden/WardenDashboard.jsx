@@ -146,7 +146,7 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
       'Status': musterTab === 'missing' ? 'UNACCOUNTED / MISSING' : (musterTab === 'inside' ? 'VERIFIED INSIDE' : 'APPROVED LEAVE'),
       'Date': getTodayDateIST()
     }));
-    exportToCsv(formatted, `HostelGuard_Muster_${musterTab.toUpperCase()}_${getTodayDateIST()}.csv`);
+    exportToCsv(formatted, `Attendra_Muster_${musterTab.toUpperCase()}_${getTodayDateIST()}.csv`);
   };
 
   const handleExportMusterExcel = () => {
@@ -167,7 +167,7 @@ export default function WardenDashboard({ subTab = 'warden_overview', onSelectTa
       'Status': musterTab === 'missing' ? 'UNACCOUNTED / MISSING' : (musterTab === 'inside' ? 'VERIFIED INSIDE' : 'APPROVED LEAVE'),
       'Date': getTodayDateIST()
     }));
-    exportToExcel(formatted, `HostelGuard_Muster_${musterTab.toUpperCase()}_${getTodayDateIST()}`, 'Muster Roll');
+    exportToExcel(formatted, `Attendra_Muster_${musterTab.toUpperCase()}_${getTodayDateIST()}`, 'Muster Roll');
   };
 
   const handleConfirmPhysicalAttendance = async (item) => {

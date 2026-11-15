@@ -59,16 +59,24 @@ def run_evaluation():
             if v_en is not None and v_pr is not None:
                 sim = runner.compare(v_en, v_pr)
                 genuine_scores.append(sim)
-            if aligned is not None:
-                pad_res = runner.evaluate_pad(aligned)
-                bona_fide_pad.append(pad_res["is_live"])
 
-        # Also evaluate real user sample if present
+            # Evaluate PAD on the probe frame (with 2.7x face context)
+            if isinstance(runner, CandidateCRunner):
+                challenge = ActiveLivenessChallenge.generate_challenge(f"sub_{pair.get('subject', 1)}")
+                pad_res = runner.evaluate_pad(pair["probe"], challenge=challenge, action_response={"detected_action": challenge["challenge_type"]})
+            else:
+                pad_res = runner.evaluate_pad(pair["probe"])
+            bona_fide_pad.append(pad_res["is_live"])
+
+        # Also evaluate real user sample if present and valid (qualitative inspection)
         if has_real_user_sample:
             v_real, aligned_real, _ = runner.extract_features(real_user_bgr)
             if aligned_real is not None:
-                user_pad_res = runner.evaluate_pad(aligned_real)
-                bona_fide_pad.append(user_pad_res["is_live"])
+                if isinstance(runner, CandidateCRunner):
+                    challenge = ActiveLivenessChallenge.generate_challenge("real_user")
+                    user_pad_res = runner.evaluate_pad(real_user_bgr, challenge=challenge, action_response={"detected_action": challenge["challenge_type"]})
+                else:
+                    user_pad_res = runner.evaluate_pad(real_user_bgr)
                 print(f"     * Real User Probe Liveness: is_live={user_pad_res['is_live']}, score={user_pad_res.get('score')}")
 
         # B. Impostor Pairs Verification
@@ -83,17 +91,13 @@ def run_evaluation():
         # C. Presentation Attack Evaluation
         attack_results = []
         for atk in attack_samples:
-            _, aligned_atk, _ = runner.extract_features(atk["image"])
-            # Fallback to raw crop if detector didn't find face in blur
-            probe_face = aligned_atk if aligned_atk is not None else atk["image"]
-
             # If evaluating Candidate C with active challenge: simulate static attack failing challenge
             if isinstance(runner, CandidateCRunner):
                 challenge = ActiveLivenessChallenge.generate_challenge("attacker")
-                # Static presentation cannot respond to challenge
-                pad_res = runner.evaluate_pad(probe_face, challenge=challenge, action_response={"detected_action": "HOLD_STILL"})
+                # Static presentation cannot respond to randomized active challenge
+                pad_res = runner.evaluate_pad(atk["image"], challenge=challenge, action_response={"detected_action": "HOLD_STILL"})
             else:
-                pad_res = runner.evaluate_pad(probe_face)
+                pad_res = runner.evaluate_pad(atk["image"])
 
             # Attack is successfully neutralized if is_live is False
             attack_results.append(not pad_res["is_live"])

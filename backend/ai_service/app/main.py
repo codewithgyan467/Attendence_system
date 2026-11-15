@@ -60,7 +60,9 @@ app = FastAPI(
 )
 
 # Concurrency Limiter: Queues peak high-volume check-ins smoothly in RAM (max 4 concurrent)
-INFERENCE_SEMAPHORE = asyncio.Semaphore(4)
+# Dynamically scale concurrency semaphore to CPU cores to prevent event-loop starving
+MAX_INFERENCE_CONCURRENCY = max(1, min(4, (os.cpu_count() or 2) // 2))
+INFERENCE_SEMAPHORE = asyncio.Semaphore(MAX_INFERENCE_CONCURRENCY)
 INFERENCE_LOCK = threading.Lock()
 
 # ----------------- Request / Response Models -----------------

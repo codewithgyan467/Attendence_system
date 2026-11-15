@@ -402,7 +402,7 @@ export default function StudentRosterManager() {
       const ws = XLSX.utils.json_to_sheet(sampleRows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'StudentRoster');
-      XLSX.writeFile(wb, 'hostelguard_student_roster_template.xlsx');
+      XLSX.writeFile(wb, 'attendra_student_roster_template.xlsx');
       showFeedback('Official Excel Template (.xlsx) downloaded with 13-column format!', 'success');
     } catch (err) {
       showFeedback('Failed to generate Excel template: ' + err.message, 'danger');
@@ -425,7 +425,7 @@ export default function StudentRosterManager() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', 'hostelguard_student_roster_template.csv');
+    link.setAttribute('download', 'attendra_student_roster_template.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -467,7 +467,7 @@ export default function StudentRosterManager() {
       biometric_status: s.face_enrollment_status === 'ENROLLED' ? 'Enrolled' : 'Pending'
     }));
     exportToCsv({
-      filename: `hostelguard_student_roster_${getTodayDateIST()}`,
+      filename: `attendra_student_roster_${getTodayDateIST()}`,
       headers,
       data
     });
@@ -508,7 +508,7 @@ export default function StudentRosterManager() {
       biometric_status: s.face_enrollment_status === 'ENROLLED' ? 'Enrolled' : 'Pending'
     }));
     exportToExcel({
-      filename: `hostelguard_student_roster_${getTodayDateIST()}`,
+      filename: `attendra_student_roster_${getTodayDateIST()}`,
       sheetName: 'Student Roster',
       headers,
       data
@@ -519,7 +519,7 @@ export default function StudentRosterManager() {
   // 3. Download Word / Document Roster Template (.docx format preview)
   const handleDownloadDocTemplate = () => {
     const docContent =
-      "HOSTELGUARD STUDENT ROSTER IMPORT GUIDE & WORD TEMPLATE\n" +
+      "ATTENDRA STUDENT ROSTER IMPORT GUIDE & WORD TEMPLATE\n" +
       "========================================================================\n\n" +
       "Instructions for Warden / Admin:\n" +
       "1. You can paste a table or line-separated student list directly into Microsoft Word (.docx).\n" +
@@ -534,7 +534,7 @@ export default function StudentRosterManager() {
     const blob = new Blob([docContent], { type: 'text/plain;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', 'hostelguard_student_roster_template.docx');
+    link.setAttribute('download', 'attendra_student_roster_template.docx');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -554,7 +554,7 @@ export default function StudentRosterManager() {
     }
 
     const trimmedEmail = manualFormData.email.trim().toLowerCase();
-    if (trimmedEmail === 'admin@hostelguard.local' || trimmedEmail === 'warden@hostelguard.local') {
+    if (trimmedEmail === 'admin@hostelguard.local' || trimmedEmail === 'warden@hostelguard.local' || trimmedEmail === 'admin@attendra.local' || trimmedEmail === 'warden@attendra.local') {
       showFeedback(`The email "${trimmedEmail}" is reserved for system administrators. Please enter the student's unique email address.`, 'danger');
       return;
     }

@@ -200,7 +200,7 @@ export default function CorrectionRequestDesk() {
       created_at: c.created_at ? formatDateTime12h(c.created_at) : 'N/A'
     }));
     exportToCsv({
-      filename: `hostelguard_corrections_${getTodayDateIST()}`,
+      filename: `attendra_corrections_${getTodayDateIST()}`,
       headers,
       data
     });
@@ -227,7 +227,7 @@ export default function CorrectionRequestDesk() {
       created_at: c.created_at ? formatDateTime12h(c.created_at) : 'N/A'
     }));
     exportToExcel({
-      filename: `hostelguard_corrections_${getTodayDateIST()}`,
+      filename: `attendra_corrections_${getTodayDateIST()}`,
       sheetName: 'Corrections',
       headers,
       data

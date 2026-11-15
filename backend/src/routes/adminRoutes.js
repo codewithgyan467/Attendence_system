@@ -3018,7 +3018,7 @@ router.post('/security/update-profile', requireRole('ADMIN'), async (req, res) =
       return res.status(400).json({ success: false, error: 'Username, email, and current password are required.' });
     }
 
-    if (email.trim().toLowerCase().endsWith('@hostelguard.local')) {
+    if (email.trim().toLowerCase().endsWith('@hostelguard.local') || email.trim().toLowerCase().endsWith('@attendra.local')) {
       return res.status(400).json({ success: false, error: 'Please enter a valid official email address.' });
     }
 

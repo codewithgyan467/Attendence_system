@@ -279,7 +279,7 @@ export default function AdminSecurityDesk() {
                     required
                   />
                 </div>
-                {u?.email?.endsWith('@hostelguard.local') && (
+                {(u?.email?.endsWith('@hostelguard.local') || u?.email?.endsWith('@attendra.local')) && (
                   <div className="text-danger small mt-1 d-flex align-items-center gap-1" style={{ fontSize: '11px' }}>
                     <AlertTriangle size={12} />
                     <span>Currently using placeholder email. Update to your official email to enable OTP recovery.</span>
