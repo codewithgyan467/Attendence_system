@@ -1,7 +1,7 @@
 const request = require('supertest');
 const crypto = require('crypto');
 const { app } = require('../src/server');
-const { runQuery, getQuery, allQuery } = require('../src/db/database');
+const { initDatabase, runQuery, getQuery, allQuery } = require('../src/db/database');
 const bleBeaconService = require('../src/services/bleBeaconService');
 const antiSpoofPolicyEngine = require('../src/services/antiSpoofPolicyEngine');
 const beaconCache = require('../src/services/beaconCache');
@@ -13,6 +13,8 @@ describe('HostelGuard Strict Mode: Dual ESP32 Hardware Presence Lock Enforcement
   let beacon2;
 
   beforeAll(async () => {
+    await initDatabase();
+
     // 1. Ensure test student exists
     const existing = await getQuery(`SELECT * FROM students WHERE roll_number = 'BEACON_TEST_01'`);
     if (!existing) {
