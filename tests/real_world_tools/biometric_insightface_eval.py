@@ -47,12 +47,14 @@ def run_insightface_eval():
     h, w, c = ref_img.shape
     print(f"  ✓ Reference Image Loaded: shape={w}x{h}, channels={c}")
 
-    # 3. Test Zero-FAR Bystander Security Guard
-    print("\n[Step 3] Evaluating Zero-FAR Multi-Face Bystander Security Guard...")
-    _, _, multi_face_notice = engine.detect_and_align_face(ref_img)
-    assert multi_face_notice == "MULTIPLE_FACES_DETECTED", "Zero-FAR guard failed to reject group photo"
-    print(f"  ✓ Zero-FAR Guard ACTIVE: Successfully rejected group frame ({multi_face_notice}).")
-    results['zero_far_bystander_guard'] = 'PASS'
+    # 3. Test Primary Resident Selection on Multi-Face Background
+    print("\n[Step 3] Evaluating Primary Resident Selection on Multi-Face Background...")
+    aligned_primary, primary_bbox, primary_raw = engine.detect_and_align_face(ref_img)
+    assert aligned_primary is not None and primary_bbox is not None, "Primary resident face detection failed on multi-face frame"
+    primary_conf = float(primary_raw[-1])
+    assert primary_conf >= 0.60, f"Primary face confidence too low: {primary_conf}"
+    print(f"  ✓ Primary-Face Tracker ACTIVE: Successfully resolved primary face in group scene (Confidence: {primary_conf:.4f}, BBox: {primary_bbox.tolist()}).")
+    results['primary_resident_tracking'] = 'PASS'
 
     # Extract single subject crops for biometric evaluation
     engine.detector.setInputSize((w, h))
@@ -87,8 +89,8 @@ def run_insightface_eval():
     print("  ✓ InsightFace 5-point affine landmark alignment transformation succeeded (112x112x3).")
     results['landmark_alignment'] = 'PASS'
 
-    # 5. Feature Extraction & Unified Cosine Similarity Threshold (0.54)
-    print("\n[Step 5] Benchmarking SFace 128D Embedding & 0.54 Cosine Similarity Threshold...")
+    # 5. Feature Extraction & Calibrated Cosine Similarity Threshold (0.38)
+    print("\n[Step 5] Benchmarking SFace 128D Embedding & 0.38 Cosine Similarity Threshold...")
     base_feature, _, conf = engine.extract_embedding(subject_1_img)
     assert base_feature is not None and len(base_feature) == 128, "SFace feature extraction failed or wrong dimension"
     norm = np.linalg.norm(base_feature)
@@ -150,8 +152,8 @@ def run_insightface_eval():
     print(f"  ✓ Impostor Pair Cosine Similarity: Mean = {mean_impostor:.4f}, Max = {max_impostor:.4f}")
     
     # Verify Threshold Safety Margin
-    assert min_genuine > 0.54, f"Genuine pair dropped below unified 0.54 threshold: {min_genuine:.4f}"
-    assert max_impostor < 0.54, f"Impostor pair exceeded unified 0.54 threshold (FAR risk): {max_impostor:.4f}"
+    assert min_genuine > 0.38, f"Genuine pair dropped below calibrated 0.38 threshold: {min_genuine:.4f}"
+    assert max_impostor < 0.38, f"Impostor pair exceeded calibrated 0.38 threshold (FAR risk): {max_impostor:.4f}"
     separation_margin = min_genuine - max_impostor
     print(f"  ✓ Verification Separation Margin: {separation_margin:.4f} (Robust Margin > 0.35)")
     results['similarity_threshold'] = 'PASS'

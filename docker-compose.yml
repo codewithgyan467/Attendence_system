@@ -13,7 +13,7 @@ services:
       - PORT=5000
       - AI_SERVICE_URL=http://localhost:8000
       - NODE_ENV=production
-      - FACE_SIMILARITY_THRESHOLD=0.54
+      - FACE_SIMILARITY_THRESHOLD=0.38
       - AI_SERVICE_SECRET=${AI_SERVICE_SECRET:-hostelguard_ai_secret_key_2026}
     volumes:
       - ./backend/data:/app/data

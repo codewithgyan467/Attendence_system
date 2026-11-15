@@ -17,7 +17,7 @@ const { getIstTime12h, getIstDateString } = require('../utils/istTime');
 const localVaultDb = require('../config/localVaultDb');
 const { strictLanGuard } = require('../middleware/strictLanGuard');
 const authorizedWifiService = require('../services/authorizedWifiService');
-const FACE_SIMILARITY_THRESHOLD = parseFloat(process.env.FACE_SIMILARITY_THRESHOLD || '0.54');
+const FACE_SIMILARITY_THRESHOLD = parseFloat(process.env.FACE_SIMILARITY_THRESHOLD || '0.38');
 
 // Lightweight FIFO Semaphore Queue for Low-Spec Warden Laptop (Prevents CPU/RAM spikes)
 class FifoSemaphore {

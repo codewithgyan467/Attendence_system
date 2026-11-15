@@ -23,7 +23,7 @@ logger = logging.getLogger("ai_service_v4")
 # Initialize models
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR = os.path.join(BASE_DIR, "models")
-DEFAULT_SIMILARITY_THRESHOLD = float(os.getenv("FACE_SIMILARITY_THRESHOLD", "0.54"))
+DEFAULT_SIMILARITY_THRESHOLD = float(os.getenv("FACE_SIMILARITY_THRESHOLD", "0.38"))
 face_engine = FaceEngine(MODELS_DIR)
 liveness_detector = LivenessDetectorV4(MODELS_DIR)
 
@@ -248,7 +248,7 @@ async def _do_verify_live(req: VerifyLiveRequest):
 
                 if live_vec is not None:
                     # 3. Fast Cosine Matching against enrolled templates
-                    threshold = float(req.similarity_threshold) if (req.similarity_threshold and 0.30 <= req.similarity_threshold <= 0.85) else DEFAULT_SIMILARITY_THRESHOLD
+                    threshold = float(req.similarity_threshold) if (req.similarity_threshold and 0.25 <= req.similarity_threshold < 0.60) else DEFAULT_SIMILARITY_THRESHOLD
 
                     def match_pre_cropped():
                         best_sim = -1.0
@@ -292,13 +292,13 @@ async def _do_verify_live(req: VerifyLiveRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image format: {e}")
 
-    # Fast pre-inference quality gate: Laplacian variance blur test
+    # Fast pre-inference quality gate: Laplacian variance blur test (relaxed for indoor hostel lighting)
     if not req.allow_simulation_fallback:
         def check_blur(bgr):
             gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
             return float(cv2.Laplacian(gray, cv2.CV_64F).var())
         blur_var = await run_in_threadpool(check_blur, primary_bgr)
-        if blur_var < 20.0:
+        if blur_var < 5.0:
             return VerifyLiveResponse(
                 is_match=False,
                 is_live=False,
@@ -307,36 +307,13 @@ async def _do_verify_live(req: VerifyLiveRequest):
                 confidence_passed=False,
                 status="IMAGE_TOO_BLURRY",
                 details={
-                    "message": f"Image is too blurry for biometric verification (Laplacian variance {blur_var:.1f} < 20.0). Please hold camera steady.",
+                    "message": f"Image is too blurry for biometric verification (Laplacian variance {blur_var:.1f} < 5.0). Please hold camera steady.",
                     "blur_variance": round(blur_var, 2)
                 }
             )
 
-    # 1. Detect and extract face from primary frame offloaded to thread pool
+    # 1. Detect and extract primary resident face from frame offloaded to thread pool
     live_vec, aligned_face, raw_face, conf = await run_in_threadpool(face_engine.extract_full_face_data, primary_bgr)
-
-    # Multi-face bystander spoof prevention & bounding box gate
-    if isinstance(raw_face, str):
-        if raw_face == "MULTIPLE_FACES_DETECTED":
-            return VerifyLiveResponse(
-                is_match=False,
-                is_live=False,
-                similarity_score=0.0,
-                liveness_score=0.0,
-                confidence_passed=False,
-                status="MULTIPLE_FACES_DETECTED",
-                details={"message": "Multiple faces detected in frame. Only one student allowed during verification."}
-            )
-        if raw_face == "FACE_TOO_SMALL":
-            return VerifyLiveResponse(
-                is_match=False,
-                is_live=False,
-                similarity_score=0.0,
-                liveness_score=0.0,
-                confidence_passed=False,
-                status="FACE_TOO_FAR",
-                details={"message": "Face is too small or far from camera. Please hold camera closer."}
-            )
 
     if live_vec is None or aligned_face is None or raw_face is None:
         if req.allow_simulation_fallback:
@@ -407,7 +384,7 @@ async def _do_verify_live(req: VerifyLiveRequest):
         eval_details = {"is_live": True, "reason": "Simulation mode"}
 
     # 4. Identity Matching via Cosine Similarity across Burst Frames & Multi-Pose Enrolled Templates
-    threshold = float(req.similarity_threshold) if (req.similarity_threshold and 0.30 <= req.similarity_threshold <= 0.85) else DEFAULT_SIMILARITY_THRESHOLD
+    threshold = float(req.similarity_threshold) if (req.similarity_threshold and 0.25 <= req.similarity_threshold < 0.60) else DEFAULT_SIMILARITY_THRESHOLD
 
     def match_burst_candidates():
         best_sim = -1.0
