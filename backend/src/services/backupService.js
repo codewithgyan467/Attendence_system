@@ -3,7 +3,7 @@ const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const { runQuery, getQuery, checkDatabaseIntegrity, closeSqliteConnection, openSqliteConnection } = require('../db/database');
 
-const DB_PATH = process.env.SQLITE_PATH || path.resolve(__dirname, '../../data/hostel_attendance.sqlite');
+const DB_PATH = process.env.DATABASE_PATH || process.env.SQLITE_PATH || path.resolve(__dirname, '../../data/hostel_attendance.sqlite');
 const BACKUP_DIR = process.env.BACKUP_DIR || path.resolve(__dirname, '../../data/backups');
 
 // Ensure backup directory exists

@@ -39,8 +39,6 @@ jobs:
 
       - name: 🐘 Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          build-root-directory: frontend/android
 
       - name: 🧪 Run Backend Automated Security & Unit Tests
         run: |
@@ -92,17 +90,19 @@ jobs:
           mkdir -p release-output
           if [ -f "frontend/android/app/build/outputs/apk/release/app-release.apk" ]; then
             cp frontend/android/app/build/outputs/apk/release/app-release.apk release-output/app-release.apk
+            cp frontend/android/app/build/outputs/apk/release/app-release.apk release-output/Attendra.apk
             cp frontend/android/app/build/outputs/apk/release/app-release.apk release-output/HostelGuard.apk
           elif [ -f "frontend/android/app/build/outputs/apk/debug/app-debug.apk" ]; then
             cp frontend/android/app/build/outputs/apk/debug/app-debug.apk release-output/app-debug.apk
-            cp frontend/android/app/build/outputs/apk/debug/app-debug.apk release-output/HostelGuard-debug.apk
+            cp frontend/android/app/build/outputs/apk/debug/app-debug.apk release-output/Attendra.apk
+            cp frontend/android/app/build/outputs/apk/debug/app-debug.apk release-output/HostelGuard.apk
           fi
           cd frontend/dist && zip -r ../../release-output/ota-bundle.zip . && cd ../..
 
       - name: 📤 Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: HostelGuard-Android-and-OTA
+          name: Attendra-Android-and-OTA
           path: release-output/*
           retention-days: 30
 
@@ -111,19 +111,21 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: "HostelGuard Mobile App v1.0.${{ github.run_number }}"
+          name: "ATTENDRA Mobile App v1.0.${{ github.run_number }}"
           body: |
-            ### 🏨 HostelGuard Enterprise Android APK & OTA Live Update (Build #${{ github.run_number }})
+            ### 📱 ATTENDRA Enterprise Android APK & OTA Live Update (Build #${{ github.run_number }})
             
-            Automated production build for Android devices.
+            Presence Powered by Intelligence. Automated production build for Android devices.
             
             #### 📦 Included Downloads:
-            - **`app-release.apk`**: Direct installable APK for Android phones and emulators.
-            - **`HostelGuard.apk`**: Named package for direct distribution.
+            - **`Attendra.apk`**: Official signed APK for direct distribution.
+            - **`app-release.apk`**: Direct installable release binary.
+            - **`HostelGuard.apk`**: Backward-compatible binary link.
             - **`ota-bundle.zip`**: Over-The-Air live web bundle (No APK reinstall needed).
             
             #### ⚙️ Hardware Features:
             - Native Hardware GPS positioning with anti-spoof mock location detection
+            - Native ESP32 BLE Hardware Beacon proximity verification
             - Native Front-Facing camera integration
             - Over-The-Air (OTA) live web updates powered by Capgo
             - Configurable backend server endpoint on login screen
