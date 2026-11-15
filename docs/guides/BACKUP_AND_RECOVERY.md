@@ -64,5 +64,5 @@ In the event of hardware failure or accidental data corruption:
    ```
 5. Restart application services:
    ```powershell
-   .\start_all.bat
+   .\start.bat
    ```

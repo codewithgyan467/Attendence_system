@@ -56,7 +56,7 @@ Zero Mixed-Content blocks        Auto-evicts stale IP in 1.5s     Pulls fresh fl
 ## 2. Step-by-Step Warden Floor-to-Floor Operating Procedure
 
 ### Step 1: Booting the Server
-1. Double-click **`Start_Warden_Server.bat`** on the Warden laptop.
+1. Double-click **`start.bat`** on the Warden laptop.
 2. The terminal automatically:
    - Sets Windows Firewall rule for port `5000` (Backend Gateway).
    - Detects all active Wi-Fi adapters.
@@ -136,7 +136,7 @@ When testing without institutional Wi-Fi routers using a smartphone's Personal H
 - [ ] **Static DHCP Reservation (Optional Best Practice):**
   Bind the Warden laptop MAC address to a fixed floor IP (e.g. `.100`) on each of the 4 floor routers so the IP remains identical every time the Warden enters that floor.
 - [ ] **Windows Network Profile:**
-  When Windows prompts *"Do you want your PC to be discoverable?"* on a new network, click **Yes (Private)**. Even if set to Public, our hardened `Start_Warden_Server.bat` enforces firewall rules across `profile=any`.
+  When Windows prompts *"Do you want your PC to be discoverable?"* on a new network, click **Yes (Private)**. Even if set to Public, our hardened `start.bat` enforces firewall rules across `profile=any`.
 
 ---
 
@@ -172,6 +172,6 @@ To prevent through-ceiling radio spillover while guaranteeing instant roll-call 
 | **Student gets `ERR_CONNECTION_TIMED_OUT`** | Router has **AP Isolation** turned ON, blocking client-to-client traffic | Disable "AP Isolation" in router settings, or switch to laptop/phone hotspot. |
 | **"Wi-Fi network changed" modal appears** | Warden switched to a new floor router | The app auto-cleared the old IP. Tap "Auto-Detect on Wi-Fi" or scan the Warden screen QR code. |
 | **Mixed Content Error on Mobile Chrome** | Student accessed `https://...onrender.com` instead of local HTTP | Have student scan the Warden QR code or navigate directly to `http://<WARDEN_IP>:5000`. |
-| **Port 5000 already in use** | Previous Node process still running | Run `taskkill /F /IM node.exe` in Command Prompt, then relaunch `Start_Warden_Server.bat`. |
+| **Port 5000 already in use** | Previous Node process still running | Run `start.bat` and select Option [4] (Stop All Services), then relaunch `start.bat`. |
 | **Warden IP shows `127.0.0.1`** | Wi-Fi is disconnected or connected via a virtual adapter | Connect laptop to active Wi-Fi; `wifiRoamingWatcher` will update within 5s. |
 

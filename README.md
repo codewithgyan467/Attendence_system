@@ -45,11 +45,12 @@ HostelGuard Enterprise is an institutional, client-deployable attendance and res
 
 ## 🚀 Quick Start (Local Setup)
 
-### Option A: One-Click Windows Launcher
-Run in PowerShell:
-```powershell
-.\start_all.ps1
+### Option A: One-Click Windows Launcher (Universal)
+Simply double-click **`start.bat`** (or run via terminal):
+```cmd
+.\start.bat
 ```
+*Auto-launches production services, configures Windows Firewall, auto-detects multi-floor Wi-Fi IP addresses, and opens the dashboard.*
 
 ### Option B: Manual Startup
 

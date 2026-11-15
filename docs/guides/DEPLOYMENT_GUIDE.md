@@ -41,9 +41,9 @@ npm.cmd run build
 ### Step 3: Launching Services
 Run the launcher:
 ```powershell
-.\start_all.bat
+.\start.bat
 # or in PowerShell:
-.\start_all.ps1
+.\start.bat
 ```
 
 ---
