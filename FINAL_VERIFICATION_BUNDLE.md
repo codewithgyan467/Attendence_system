@@ -146,10 +146,10 @@ HostelGuard_Master_Audit_Report.pdf                |   187 -
 ### 2.3 Tracked Binary, Database & Secret Audit (`git ls-files`)
 Verification ensuring no operational databases (`*.db`, `*.sqlite`), credentials, or temporary cache files are inadvertently tracked in version control:
 ```text
-backend/data/ota/HostelGuard.apk
-finalapps/HostelGuard_Android.apk
+backend/data/ota/Attendra.apk
+finalapps/Attendra_Android.apk
 frontend/android/app/hostelguard-release-key.jks
-frontend/public/downloads/hostelguard.apk
+frontend/public/downloads/attendra.apk
 ```
 
 ---
