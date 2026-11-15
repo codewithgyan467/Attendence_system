@@ -39,7 +39,7 @@ describe('Student Password Reset System (Email & Phone OTP)', () => {
     // Obtain admin token for admin credentials endpoint
     const res = await request(app)
       .post('/api/v1/auth/login')
-      .send({ username: 'admin', password: 'Admin@12345' });
+      .send({ username: 'admin', password: 'admin@123' });
     adminToken = res.body.token;
   });
 

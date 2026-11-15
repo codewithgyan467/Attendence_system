@@ -37,7 +37,7 @@ HostelGuard Enterprise is an institutional, client-deployable attendance and res
 
 | Role | Username / Identifier | Password | Access Scope |
 | :--- | :--- | :--- | :--- |
-| **System Administrator** | `admin` | `Admin@12345` | Executive Dashboard, Schedules, Roster, Geofence, Security Desk, Diagnostics |
+| **System Administrator** | `admin` | `admin@123` | Executive Dashboard, Schedules, Roster, Geofence, Security Desk, Diagnostics |
 | **Hostel Warden** | `warden` | `Warden@12345` | Block Supervision, Muster Desk, Physical Sign-off, Absent Desk, Facility Feedback |
 | **Student Resident** | `2023CS01` *(or self-onboard)* | `Student@12345` | Evening Roll Call, Location & Face Verification, History, Appeals, Support Tickets |
 

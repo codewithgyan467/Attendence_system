@@ -232,7 +232,7 @@ router.post('/change-password', requireAuth, async (req, res) => {
   }
 });
 
-// 4b. Mandatory Administrator Initial Security Setup (Sets official email & rotates away from Admin@12345)
+// 4b. Mandatory Administrator Initial Security Setup (Sets official email & rotates away from admin@123)
 router.post('/initial-admin-setup', requireAuth, async (req, res) => {
   try {
     if (req.user.role !== 'ADMIN') {
@@ -249,8 +249,8 @@ router.post('/initial-admin-setup', requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: 'New password must be at least 8 characters long.' });
     }
 
-    if (new_password === 'Admin@12345') {
-      return res.status(400).json({ success: false, error: 'New password cannot be the default Admin@12345 password.' });
+    if (new_password === 'admin@123') {
+      return res.status(400).json({ success: false, error: 'New password cannot be the default admin@123 password.' });
     }
 
     if (new_email.trim().toLowerCase().endsWith('@hostelguard.local') || new_email.trim().toLowerCase().endsWith('@attendra.local')) {

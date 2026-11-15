@@ -157,7 +157,7 @@ describe('HostelGuard Master Fix: Permanent Biometric Face Enrollment & Persiste
     // 5d. Admin logs in and approves the request
     const adminLogin = await request(app)
       .post('/api/v1/auth/login')
-      .send({ username: 'admin', password: 'Admin@12345' });
+      .send({ username: 'admin', password: 'admin@123' });
     expect(adminLogin.status).toBe(200);
     const adminToken = adminLogin.body.token;
 

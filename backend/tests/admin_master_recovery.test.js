@@ -12,7 +12,7 @@ describe('Master Recovery Key & Administrator Security Desk API', () => {
     // Login as default admin
     const loginRes = await request(app)
       .post('/api/v1/auth/login')
-      .send({ username: 'admin', password: 'Admin@12345' });
+      .send({ username: 'admin', password: 'admin@123' });
 
     if (loginRes.body.token || loginRes.body.accessToken) {
       adminToken = loginRes.body.accessToken || loginRes.body.token;
@@ -36,7 +36,7 @@ describe('Master Recovery Key & Administrator Security Desk API', () => {
     const res = await request(app)
       .post('/api/v1/admin/security/regenerate-master-key')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ current_password: 'Admin@12345' });
+      .send({ current_password: 'admin@123' });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -58,7 +58,7 @@ describe('Master Recovery Key & Administrator Security Desk API', () => {
     const regenRes = await request(app)
       .post('/api/v1/admin/security/regenerate-master-key')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ current_password: 'Admin@12345' });
+      .send({ current_password: 'admin@123' });
 
     const keyToUse = regenRes.body.masterRecoveryKey;
 
@@ -79,7 +79,7 @@ describe('Master Recovery Key & Administrator Security Desk API', () => {
     // Verify old credentials fail
     const oldLogin = await request(app)
       .post('/api/v1/auth/login')
-      .send({ username: 'admin', password: 'Admin@12345' });
+      .send({ username: 'admin', password: 'admin@123' });
     expect(oldLogin.status).toBe(401);
 
     // Verify new credentials succeed
@@ -91,14 +91,14 @@ describe('Master Recovery Key & Administrator Security Desk API', () => {
     expect(newLogin.body.user.username).toBe('super_warden_test');
     expect(newLogin.body.user.email).toBe('warden.new@testcollege.edu');
 
-    // Reset back to admin / Admin@12345 for other test suites
+    // Reset back to admin / admin@123 for other test suites
     const revertRes = await request(app)
       .post('/api/v1/auth/master-recovery/reset')
       .send({
         master_key: resetRes.body.newMasterRecoveryKey,
         new_username: 'admin',
         new_email: 'admin@hostelguard.local',
-        new_password: 'Admin@12345'
+        new_password: 'admin@123'
       });
     expect(revertRes.status).toBe(200);
   });

@@ -19,7 +19,7 @@ export default function InitialAdminSetupModal({ isOpen, user, onSetupComplete }
   const { setAuthenticatedStudent } = useAuth();
   const [username, setUsername] = useState(user?.username || 'admin');
   const [email, setEmail] = useState('');
-  const [currentPassword, setCurrentPassword] = useState('Admin@12345');
+  const [currentPassword, setCurrentPassword] = useState('admin@123');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -57,8 +57,8 @@ export default function InitialAdminSetupModal({ isOpen, user, onSetupComplete }
       return;
     }
 
-    if (newPassword === 'Admin@12345') {
-      setErrorMsg('New password cannot be the default Admin@12345.');
+    if (newPassword === 'admin@123') {
+      setErrorMsg('New password cannot be the default admin@123.');
       return;
     }
 
@@ -179,7 +179,7 @@ export default function InitialAdminSetupModal({ isOpen, user, onSetupComplete }
                 <div className="alert alert-light border d-flex gap-2 p-2.5 mb-3" style={{ fontSize: '12px' }}>
                   <AlertTriangle size={18} className="text-warning flex-shrink-0 mt-0.5" />
                   <div>
-                    This hostel attendance system holds sensitive biometric and geo-fenced logs. You must replace the default <code>admin</code> / <code>Admin@12345</code> account before proceeding.
+                    This hostel attendance system holds sensitive biometric and geo-fenced logs. You must replace the default <code>admin</code> / <code>admin@123</code> account before proceeding.
                   </div>
                 </div>
 
@@ -230,7 +230,7 @@ export default function InitialAdminSetupModal({ isOpen, user, onSetupComplete }
                     <input
                       type="password"
                       className="form-control"
-                      placeholder="Admin@12345"
+                      placeholder="admin@123"
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
                       required

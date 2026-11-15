@@ -58,7 +58,7 @@ describe('HostelGuard Biometric Security: Dual-Authority Face Re-Enrollment Gate
     student2Token = s2Res.body.token;
 
     // Admin login
-    const adminRes = await request(app).post('/api/v1/auth/login').send({ username: 'admin', password: 'Admin@12345' });
+    const adminRes = await request(app).post('/api/v1/auth/login').send({ username: 'admin', password: 'admin@123' });
     adminToken = adminRes.body.token;
 
     // Seed Warden user if not present
@@ -70,7 +70,7 @@ describe('HostelGuard Biometric Security: Dual-Authority Face Re-Enrollment Gate
         VALUES (?, 'warden_test', 'warden_test@hostel.local', ?, 'WARDEN', 1)
       `, [wardenId, passwordHash]);
     }
-    const wardenLogin = await request(app).post('/api/v1/auth/login').send({ username: wardenUser ? wardenUser.username : 'warden_test', password: wardenUser ? 'Admin@12345' : 'TestPass@123' });
+    const wardenLogin = await request(app).post('/api/v1/auth/login').send({ username: wardenUser ? wardenUser.username : 'warden_test', password: wardenUser ? 'admin@123' : 'TestPass@123' });
     wardenToken = wardenLogin.body?.token;
     if (!wardenToken) {
       // Fallback: reset password for warden_test

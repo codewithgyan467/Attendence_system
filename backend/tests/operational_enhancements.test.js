@@ -24,7 +24,7 @@ describe('Operational Enhancements & System Optimization Suite', () => {
     // Obtain authentic admin/warden token via login
     const loginRes = await request(app)
       .post('/api/v1/auth/login')
-      .send({ username: 'admin', password: 'Admin@12345' });
+      .send({ username: 'admin', password: 'admin@123' });
     wardenToken = loginRes.body.token;
 
     // Create a student user and matching student record

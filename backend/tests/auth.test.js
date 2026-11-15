@@ -13,7 +13,7 @@ describe('Authentication & Role-Based Access Control (RBAC)', () => {
   test('POST /api/v1/auth/login - Admin authentication succeeds with valid credentials', async () => {
     const res = await request(app)
       .post('/api/v1/auth/login')
-      .send({ username: 'admin', password: 'Admin@12345' });
+      .send({ username: 'admin', password: 'admin@123' });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -38,7 +38,7 @@ describe('Authentication & Role-Based Access Control (RBAC)', () => {
   test('POST /api/v1/auth/login - Rejects hardcoded backdoor password bypasses when not matching stored bcrypt hash', async () => {
     const res = await request(app)
       .post('/api/v1/auth/login')
-      .send({ username: 'admin', password: 'admin@123' });
+      .send({ username: 'admin', password: 'invalid_backdoor_pwd' });
 
     expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);

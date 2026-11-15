@@ -39,7 +39,7 @@ def run_tests():
 
         # 1. Admin Login for Protected Admin Endpoints
         print("\n[PHASE 1] Logging in as System Administrator...")
-        login_body = {'username': 'admin', 'password': 'Admin@12345'}
+        login_body = {'username': 'admin', 'password': 'admin@123'}
         req_login = urllib.request.Request(
             'http://localhost:5000/api/v1/auth/login',
             data=json.dumps(login_body).encode(),

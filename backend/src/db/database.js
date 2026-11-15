@@ -818,23 +818,23 @@ const seedInitialData = async () => {
     const anyAdmin = await getQuery(`SELECT id FROM users WHERE role = 'ADMIN' LIMIT 1`);
     if (anyAdmin) {
       const salt = await bcrypt.genSalt(10);
-      const hash = await bcrypt.hash('Admin@12345', salt);
+      const hash = await bcrypt.hash('admin@123', salt);
       await runQuery(`UPDATE users SET username = 'admin', email = 'admin@hostelguard.local', password_hash = ?, is_active = 1 WHERE id = ?`, [hash, anyAdmin.id]);
       existingAdmin = anyAdmin;
     } else {
       const salt = await bcrypt.genSalt(10);
-      const hash = await bcrypt.hash('Admin@12345', salt);
+      const hash = await bcrypt.hash('admin@123', salt);
       await runQuery(`
         INSERT INTO users (id, username, email, password_hash, role, is_active, must_change_password)
         VALUES (?, ?, ?, ?, 'ADMIN', 1, 0)
       `, [uuidv4(), 'admin', 'admin@hostelguard.local', hash]);
-      console.log('✅ Default Administrator seeded (Username: admin | Pass: Admin@12345)');
+      console.log('✅ Default Administrator seeded (Username: admin | Pass: admin@123)');
     }
   } else if (process.env.NODE_ENV === 'test') {
-    const isMatch = await bcrypt.compare('Admin@12345', existingAdmin.password_hash || '');
+    const isMatch = await bcrypt.compare('admin@123', existingAdmin.password_hash || '');
     if (!isMatch) {
       const salt = await bcrypt.genSalt(10);
-      const hash = await bcrypt.hash('Admin@12345', salt);
+      const hash = await bcrypt.hash('admin@123', salt);
       await runQuery(`UPDATE users SET password_hash = ?, is_active = 1 WHERE id = ?`, [hash, existingAdmin.id]);
     }
   }

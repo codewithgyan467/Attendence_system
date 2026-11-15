@@ -20,7 +20,7 @@ describe('Security, Concurrency & Release Hardening Tests', () => {
     // 1. Authenticate as Admin to get Admin Bearer Token
     const adminRes = await request(app)
       .post('/api/v1/auth/login')
-      .send({ username: 'admin', password: 'Admin@12345' });
+      .send({ username: 'admin', password: 'admin@123' });
 
     expect(adminRes.status).toBe(200);
     adminToken = adminRes.body.token;
