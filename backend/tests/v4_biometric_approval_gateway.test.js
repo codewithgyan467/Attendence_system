@@ -1,6 +1,6 @@
 const request = require('supertest');
 const { app } = require('../src/server');
-const { runQuery, getQuery } = require('../src/db/database');
+const { initDatabase, runQuery, getQuery } = require('../src/db/database');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 
@@ -11,6 +11,7 @@ describe('HostelGuard Biometric Security: Dual-Authority Face Re-Enrollment Gate
   let wardenToken;
 
   beforeAll(async () => {
+    await initDatabase();
     const timestamp = Date.now().toString().slice(-6);
     student1Roll = `SEC_${timestamp}_01`;
     student1Id = `HSTL-2026-${student1Roll}`;

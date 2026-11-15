@@ -844,11 +844,10 @@ export default function StudentRosterManager() {
                     </td>
                     <td className="text-center">{st.admission_year || 2024}</td>
                     <td>
-                      <span className={`badge ${
-                        st.remarks === 'Lateral' ? 'bg-info' : 
-                        st.remarks === 'Late Admission' ? 'bg-warning text-dark' : 
-                        'bg-light text-muted border'
-                      }`}>
+                      <span className={`badge ${st.remarks === 'Lateral' ? 'bg-info' :
+                        st.remarks === 'Late Admission' ? 'bg-warning text-dark' :
+                          'bg-light text-muted border'
+                        }`}>
                         {st.remarks || 'Regular'}
                       </span>
                     </td>
@@ -1071,11 +1070,10 @@ export default function StudentRosterManager() {
                               <td className="text-muted">{r.email || 'Auto-generate'}</td>
                               <td className="text-center">{r.admission_year || 2024}</td>
                               <td>
-                                <span className={`badge ${
-                                  r.remarks === 'Lateral' ? 'bg-info' : 
-                                  r.remarks === 'Late Admission' ? 'bg-warning text-dark' : 
-                                  'bg-secondary'
-                                }`}>
+                                <span className={`badge ${r.remarks === 'Lateral' ? 'bg-info' :
+                                  r.remarks === 'Late Admission' ? 'bg-warning text-dark' :
+                                    'bg-secondary'
+                                  }`}>
                                   {r.remarks || 'Regular'}
                                 </span>
                               </td>

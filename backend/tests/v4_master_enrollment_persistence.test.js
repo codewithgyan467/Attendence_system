@@ -1,6 +1,6 @@
 const request = require('supertest');
 const { app } = require('../src/server');
-const { runQuery, getQuery } = require('../src/db/database');
+const { initDatabase, runQuery, getQuery } = require('../src/db/database');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 
@@ -11,6 +11,7 @@ describe('HostelGuard Master Fix: Permanent Biometric Face Enrollment & Persiste
   let userId;
 
   beforeAll(async () => {
+    await initDatabase();
     rollNumber = `PERM_${Date.now().toString().slice(-6)}`;
     studentId = `HSTL-2026-${rollNumber}`;
     userId = uuidv4();

@@ -129,9 +129,8 @@ export default function AppDownloadModal({ isOpen, onClose }) {
         <div className="d-flex bg-light border-bottom p-1 flex-shrink-0">
           <button
             type="button"
-            className={`btn btn-sm flex-fill fw-semibold d-flex align-items-center justify-content-center gap-1.5 py-1 px-2 rounded-3 transition-all ${
-              activeTab === 'android' ? 'bg-white shadow-sm text-success' : 'text-muted border-0 bg-transparent'
-            }`}
+            className={`btn btn-sm flex-fill fw-semibold d-flex align-items-center justify-content-center gap-1.5 py-1 px-2 rounded-3 transition-all ${activeTab === 'android' ? 'bg-white shadow-sm text-success' : 'text-muted border-0 bg-transparent'
+              }`}
             style={{ fontSize: '12px' }}
             onClick={() => setActiveTab('android')}
           >
@@ -143,9 +142,8 @@ export default function AppDownloadModal({ isOpen, onClose }) {
 
           <button
             type="button"
-            className={`btn btn-sm flex-fill fw-semibold d-flex align-items-center justify-content-center gap-1.5 py-1 px-2 rounded-3 transition-all ${
-              activeTab === 'ios' ? 'bg-white shadow-sm text-primary' : 'text-muted border-0 bg-transparent'
-            }`}
+            className={`btn btn-sm flex-fill fw-semibold d-flex align-items-center justify-content-center gap-1.5 py-1 px-2 rounded-3 transition-all ${activeTab === 'ios' ? 'bg-white shadow-sm text-primary' : 'text-muted border-0 bg-transparent'
+              }`}
             style={{ fontSize: '12px' }}
             onClick={() => setActiveTab('ios')}
           >

@@ -1,6 +1,6 @@
 const request = require('supertest');
 const { app } = require('../src/server');
-const { runQuery, getQuery } = require('../src/db/database');
+const { initDatabase, runQuery, getQuery } = require('../src/db/database');
 const { v4: uuidv4 } = require('uuid');
 
 describe('HostelGuard Enterprise v4.0 - Advanced Facial Security & Anti-Spoofing Engine', () => {
@@ -8,6 +8,7 @@ describe('HostelGuard Enterprise v4.0 - Advanced Facial Security & Anti-Spoofing
   let testRollNumber;
 
   beforeAll(async () => {
+    await initDatabase();
     testRollNumber = `V4TEST_${Date.now().toString().slice(-6)}`;
     testStudentId = `HSTL-2026-${testRollNumber}`;
 

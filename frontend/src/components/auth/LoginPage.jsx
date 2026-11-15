@@ -58,7 +58,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
         setShowServerSettings(true);
         setErrorMsg('Wi-Fi network changed. Enter the new Warden IP shown on the Warden laptop or scan the Warden QR code.');
       }
-    }).catch(() => {});
+    }).catch(() => { });
     return () => { active = false; };
   }, []);
 
@@ -84,7 +84,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
             await login(username.trim(), password);
             return;
           }
-        } catch (_) {}
+        } catch (_) { }
         setErrorMsg('Unable to connect to server. If offline, ensure your phone is connected to the Hostel Wi-Fi / Hotspot and tap "Server Wi-Fi Settings" below to connect to the Warden PC.');
       } else {
         setErrorMsg(err.message || 'Invalid credentials or inactive account.');
@@ -304,7 +304,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
                       <RefreshCw size={13} className={discoveringWarden ? 'spin' : ''} />
                       {discoveringWarden ? 'Scanning Wi-Fi...' : '🔄 Auto-Connect to Warden on Current Wi-Fi'}
                     </button>
-                    
+
                     <button
                       type="button"
                       className="btn btn-outline-secondary btn-sm py-1 px-2 fw-semibold d-flex align-items-center justify-content-center gap-1.5"

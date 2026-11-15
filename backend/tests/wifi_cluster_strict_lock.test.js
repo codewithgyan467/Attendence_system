@@ -1,6 +1,6 @@
 const request = require('supertest');
 const { app } = require('../src/server');
-const { runQuery, getQuery } = require('../src/db/database');
+const { initDatabase, runQuery, getQuery } = require('../src/db/database');
 const wifiClusterService = require('../src/services/wifiClusterService');
 const antiSpoofPolicyEngine = require('../src/services/antiSpoofPolicyEngine');
 const bleBeaconService = require('../src/services/bleBeaconService');
@@ -13,6 +13,7 @@ describe('HostelGuard Enterprise v3.4: Multi-Router Strict Lock Cluster & Multit
   let testStudent;
 
   beforeAll(async () => {
+    await initDatabase();
     // 1. Ensure test student exists
     const existing = await getQuery(`SELECT * FROM students WHERE roll_number = 'CLUSTER_TEST_01'`);
     if (!existing) {

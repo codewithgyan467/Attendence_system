@@ -1,9 +1,14 @@
 const { calculateDistanceMeters, validateLocation } = require('../src/services/geofenceService');
+const { initDatabase } = require('../src/db/database');
 
 describe('Geofence & Haversine Math Verification', () => {
   const HOSTEL_LAT = 28.535512;
   const HOSTEL_LON = 77.391028;
   const RADIUS_METERS = 20.0;
+
+  beforeAll(async () => {
+    await initDatabase();
+  });
 
   test('Haversine distance is 0 meters at identical coordinates', () => {
     const dist = calculateDistanceMeters(HOSTEL_LAT, HOSTEL_LON, HOSTEL_LAT, HOSTEL_LON);
