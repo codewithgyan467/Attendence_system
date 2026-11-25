@@ -128,8 +128,15 @@ async function getAttendanceWindowStatus(customDate = null, customTime = null) {
   const start12 = formatTime12h(startTime);
   const end12 = formatTime12h(endTime);
 
-  if (curMins >= startMins && curMins <= endMins) {
-    const remaining = endMins - curMins;
+  const isOvernight = endMins < startMins;
+  const isWithinWindow = isOvernight
+    ? (curMins >= startMins || curMins <= endMins)
+    : (curMins >= startMins && curMins <= endMins);
+
+  if (isWithinWindow) {
+    const remaining = isOvernight && curMins >= startMins
+      ? (1440 - curMins) + endMins
+      : (endMins - curMins);
     return {
       enforced: true,
       isOpen: true,

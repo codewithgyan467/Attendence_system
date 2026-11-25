@@ -127,6 +127,18 @@ class AuthorizedWifiService {
     return this.authorizedList;
   }
 
+  getAll() {
+    return this.getAllAuthorized();
+  }
+
+  async remove(ipOrSubnet, db = null) {
+    return this.removeAuthorized(ipOrSubnet, db);
+  }
+
+  async saveToDb(runQueryFn = null) {
+    return this.persist(runQueryFn ? { runQuery: runQueryFn } : null);
+  }
+
   /**
    * Persists the in-memory authorized list to system_settings.
    */

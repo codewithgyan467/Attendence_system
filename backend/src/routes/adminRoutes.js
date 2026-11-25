@@ -344,40 +344,6 @@ router.get('/today-roster', requireRole('ADMIN'), async (req, res) => {
 // 2. Student Management CRUD (Search, Filter, Pagination)
 router.get('/students', async (req, res) => {
   try {
-    // Auto-sync any allotments that lack student records so they appear on the roster with 'Pending Biometric Enrollment'
-    await runQuery(`
-      INSERT OR IGNORE INTO students (
-        id, user_id, allotment_id, roll_number, full_name, email, phone,
-        course, admission_year, semester, room_number, hostel_block,
-        branch, building, floor, remarks, date_of_entry, whatsapp_no,
-        device_id, device_model, is_active
-      )
-      SELECT 
-        'HSTL-' || COALESCE(admission_year, 2026) || '-' || REPLACE(roll_number, ' ', ''),
-        NULL,
-        id,
-        roll_number,
-        full_name,
-        email,
-        phone,
-        COALESCE(course, 'BTech'),
-        COALESCE(admission_year, 2026),
-        COALESCE(semester, 1),
-        COALESCE(room_number, 'A-101'),
-        COALESCE(hostel_block, 'Block A'),
-        branch,
-        COALESCE(building, hostel_block, 'Block A'),
-        floor,
-        remarks,
-        date_of_entry,
-        COALESCE(whatsapp_no, phone),
-        'DEV-' || LOWER(roll_number),
-        'Pending Self-Enrollment & Face Activation',
-        1
-      FROM hostel_allotments a
-      WHERE NOT EXISTS (SELECT 1 FROM students s WHERE s.roll_number = a.roll_number)
-    `);
-
     const { search = '', block = '', course = '', page = 1, limit = 25 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -455,7 +421,7 @@ router.get('/students/:id', async (req, res) => {
 });
 
 // Update Student
-router.put('/students/:id', async (req, res) => {
+router.put('/students/:id', requireRole('ADMIN'), async (req, res) => {
   try {
     const {
       course, semester, room_number, hostel_block, phone, email, is_active,
@@ -681,7 +647,7 @@ async function parseRosterFile(filePath, originalFilename = '') {
 }
 
 // 3. Roster Upload Preview (Excel .xlsx/.xls, Word .docx/.doc, CSV .csv)
-router.post('/allotment/upload-preview', upload.single('file'), async (req, res) => {
+router.post('/allotment/upload-preview', requireRole('ADMIN'), upload.single('file'), async (req, res) => {
   try {
     let records = [];
 
@@ -813,7 +779,7 @@ router.post('/allotment/upload-preview', upload.single('file'), async (req, res)
 });
 
 // Commit Roster Allotments Atomically in a Transaction
-router.post('/allotment/upload-commit', async (req, res) => {
+router.post('/allotment/upload-commit', requireRole('ADMIN'), async (req, res) => {
   try {
     const { validRecords, preCreateLogins = false } = req.body;
     if (!validRecords || !Array.isArray(validRecords) || validRecords.length === 0) {
@@ -940,8 +906,8 @@ router.post('/allotment/upload-commit', async (req, res) => {
   }
 });
 
-// Manual Student Registration / Onboarding (Warden/Admin Form)
-router.post('/students/manual-add', async (req, res) => {
+// Manual Student Registration / Onboarding (Admin Form)
+router.post('/students/manual-add', requireRole('ADMIN'), async (req, res) => {
   try {
     const {
       roll_number,
@@ -1414,16 +1380,16 @@ router.post('/wifi/authorize-current', requireRole('ADMIN'), async (req, res) =>
     const label = req.body.label || `Hostel Wi-Fi (${new Date().toLocaleTimeString()})`;
 
     // Authorize current caller IP and detected primary LAN IP
-    if (clientIp) authorizedWifiService.authorizeIp(clientIp, `${label} (Warden Device)`, false);
-    if (lanIp && lanIp !== '127.0.0.1') authorizedWifiService.authorizeIp(lanIp, `${label} (Laptop Server)`, false);
-    await authorizedWifiService.saveToDb(runQuery);
+    if (clientIp) await authorizedWifiService.authorizeIp(clientIp, `${label} (Warden Device)`, false);
+    if (lanIp && lanIp !== '127.0.0.1') await authorizedWifiService.authorizeIp(lanIp, `${label} (Laptop Server)`, false);
+    await authorizedWifiService.persist();
 
     res.json({
       success: true,
       message: 'Current Wi-Fi router / subnet authorized successfully!',
       clientIp,
       lanIp,
-      authorizedList: authorizedWifiService.getAll()
+      authorizedList: authorizedWifiService.getAllAuthorized()
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -1434,7 +1400,7 @@ router.get('/wifi/authorized', requireRole('ADMIN'), async (req, res) => {
   try {
     res.json({
       success: true,
-      authorizedList: authorizedWifiService.getAll(),
+      authorizedList: authorizedWifiService.getAllAuthorized(),
       primaryLanIp: lanDiscovery.getPrimaryLanIp()
     });
   } catch (err) {
@@ -1445,12 +1411,11 @@ router.get('/wifi/authorized', requireRole('ADMIN'), async (req, res) => {
 router.delete('/wifi/authorized/:ip', requireRole('ADMIN'), async (req, res) => {
   try {
     const { ip } = req.params;
-    authorizedWifiService.remove(decodeURIComponent(ip));
-    await authorizedWifiService.saveToDb(runQuery);
+    await authorizedWifiService.removeAuthorized(decodeURIComponent(ip));
     res.json({
       success: true,
       message: `Removed ${ip} from authorized Wi-Fi list.`,
-      authorizedList: authorizedWifiService.getAll()
+      authorizedList: authorizedWifiService.getAllAuthorized()
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -1570,12 +1535,22 @@ router.get('/ble/beacons/:id/sketch', requireRole('ADMIN'), async (req, res) => 
       return res.status(404).json({ success: false, error: 'Beacon not found' });
     }
 
-    const anchorId = (beacon.beacon_public_id || 'A01').replace(/^HG-BEACON-|^HG-/, '').substring(0, 3).toUpperCase() || 'A01';
+    const rawPublicId = String(beacon.beacon_public_id || 'A01').trim().toUpperCase();
+    const blkMatch = rawPublicId.match(/BLK([A-Z])[-_]?(\d{2})/);
+    const flrMatch = rawPublicId.match(/^FLR[-_]?(\d{1,2})$/);
+    let anchorId = 'A01';
+    if (blkMatch) {
+      anchorId = `${blkMatch[1]}${blkMatch[2]}`;
+    } else if (flrMatch) {
+      anchorId = `FL${flrMatch[1].slice(-1)}`;
+    } else {
+      anchorId = rawPublicId.replace(/^HG-BEACON-|^HG-/, '').replace(/[^A-Z0-9]/g, '').substring(0, 3) || 'A01';
+    }
     const deviceName = beacon.beacon_public_id || 'HG-BEACON-BLKA-01';
     const secret = beacon.shared_secret_ref || process.env.ANCHOR_HMAC_SECRET || 'HG_STRICT_ANCHOR_SECRET_2026';
 
     const sketch = `/**
- * HostelGuard Enterprise v4.2 - Layer 2 Hardware BLE Anchor Firmware
+ * ATTENDRA Enterprise v4.2 - Layer 2 Hardware BLE Anchor Firmware
  * Target MCU: Seeed Studio XIAO ESP32C6 / ESP32-WROOM / ESP32-S3
  * Framework: Arduino-ESP32 (v2.0.x or v3.0.x)
  * Floor/Wing: ${beacon.block_name || 'Main Hostel'}
@@ -1586,19 +1561,22 @@ router.get('/ble/beacons/:id/sketch', requireRole('ADMIN'), async (req, res) => 
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <esp_task_wdt.h>
 #include "mbedtls/md.h"
 
 // 1. MULTI-FLOOR CONFIGURATION
-#define FLOOR_ANCHOR_ID      "${anchorId}"
-#define BLE_DEVICE_NAME      "${deviceName}"
-#define ANCHOR_HMAC_SECRET   "${secret}"
+#define FLOOR_ANCHOR_ID        "${anchorId}"
+#define BLE_DEVICE_NAME        "${deviceName}"
+#define ANCHOR_HMAC_SECRET     "${secret}"
 
 #define HG_SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define HG_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define HG_TIME_SYNC_CHAR_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a9"
 
-#define TOTP_STEP_MS         30000ULL
-#define MAX_CONN_HOLD_MS     3500UL
-#define TOKEN_UPDATE_MS      1000UL
+#define TOTP_STEP_MS           30000ULL
+#define MAX_CONN_HOLD_MS       5000UL
+#define TOKEN_UPDATE_MS        1000UL
+#define WDT_TIMEOUT_SECONDS    8
 
 #ifndef LED_BUILTIN
   #if defined(CONFIG_IDF_TARGET_ESP32C6)
@@ -1612,30 +1590,36 @@ BLEServer* pServer = nullptr;
 BLECharacteristic* pTokenCharacteristic = nullptr;
 
 volatile bool deviceConnected = false;
-volatile uint16_t activeConnId = 0;
+volatile uint16_t activeConnId = 0xFFFF;
 volatile unsigned long connectedTimestampMs = 0;
 unsigned long lastTokenUpdateMs = 0;
 uint32_t lastComputedStep = 0xFFFFFFFF;
 char currentPayload[20] = {0};
 
 void updateRollingToken(bool forceUpdate = false) {
-  uint64_t uptimeMs = esp_timer_get_time() / 1000ULL;
-  uint32_t currentStep = (uint32_t)(uptimeMs / TOTP_STEP_MS);
+  time_t nowSec;
+  time(&nowSec);
+  uint32_t currentStep = 0;
+  if (nowSec > 1700000000LL) {
+    currentStep = (uint32_t)(nowSec / 30);
+  } else {
+    uint64_t uptimeMs = esp_timer_get_time() / 1000ULL;
+    currentStep = (uint32_t)(uptimeMs / TOTP_STEP_MS);
+  }
 
-  if (!forceUpdate && currentStep == lastComputedStep) {
+  uint32_t stepToSign = (currentStep & 0xFFFFFF);
+  if (!forceUpdate && stepToSign == lastComputedStep) {
     return;
   }
-  lastComputedStep = currentStep;
+  lastComputedStep = stepToSign;
 
   char messageToSign[32];
-  snprintf(messageToSign, sizeof(messageToSign), "%s:%lu", FLOOR_ANCHOR_ID, (unsigned long)currentStep);
+  snprintf(messageToSign, sizeof(messageToSign), "%s:%lu", FLOOR_ANCHOR_ID, (unsigned long)stepToSign);
 
   uint8_t hmacResult[32];
   mbedtls_md_context_t ctx;
-  mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
-
   mbedtls_md_init(&ctx);
-  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
+  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1);
   mbedtls_md_hmac_starts(&ctx, (const unsigned char*)ANCHOR_HMAC_SECRET, strlen(ANCHOR_HMAC_SECRET));
   mbedtls_md_hmac_update(&ctx, (const unsigned char*)messageToSign, strlen(messageToSign));
   mbedtls_md_hmac_finish(&ctx, hmacResult);
@@ -1646,34 +1630,90 @@ void updateRollingToken(bool forceUpdate = false) {
     sizeof(currentPayload),
     "%-3.3s|%06lX|%02X%02X%02X%02X",
     FLOOR_ANCHOR_ID,
-    (unsigned long)(currentStep & 0xFFFFFF),
+    (unsigned long)stepToSign,
     hmacResult[0], hmacResult[1], hmacResult[2], hmacResult[3]
   );
 
   if (pTokenCharacteristic != nullptr) {
     pTokenCharacteristic->setValue((uint8_t*)currentPayload, strlen(currentPayload));
   }
+
+  BLEAdvertising* pAdv = BLEDevice::getAdvertising();
+  if (pAdv != nullptr) {
+    BLEAdvertisementData advData;
+    advData.setFlags(0x06);
+    advData.setCompleteServices(BLEUUID(HG_SERVICE_UUID));
+    String mfgPayload = "";
+    mfgPayload += (char)0xFF;
+    mfgPayload += (char)0xFF;
+    mfgPayload += currentPayload;
+    advData.setManufacturerData(mfgPayload);
+    pAdv->setAdvertisementData(advData);
+  }
 }
 
 class HGServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* server, esp_ble_gatts_cb_param_t* param) override {
+  void onConnect(BLEServer* server) override {
     deviceConnected = true;
-    activeConnId = param->connect.conn_id;
+    activeConnId = server != nullptr ? server->getConnId() : 0xFFFF;
     connectedTimestampMs = millis();
     digitalWrite(LED_BUILTIN, LOW);
-    server->updateConnParams(param->connect.remote_bda, 0x0C, 0x18, 0, 200);
     BLEDevice::startAdvertising();
   }
 
   void onDisconnect(BLEServer* server) override {
     deviceConnected = false;
+    activeConnId = 0xFFFF;
     digitalWrite(LED_BUILTIN, HIGH);
     BLEDevice::startAdvertising();
   }
 };
 
 class HGCharacteristicCallbacks : public BLECharacteristicCallbacks {
-  void onRead(BLECharacteristic* pCharacteristic) override {
+  void onRead(BLECharacteristic* pCharacteristic) override {}
+};
+
+static bool verifyTimeSyncHmac(long long epoch, const String& receivedHmacHex) {
+  if (receivedHmacHex.length() < 16) return false;
+  const char* candidateIds[2] = {BLE_DEVICE_NAME, FLOOR_ANCHOR_ID};
+  for (int i = 0; i < 2; i++) {
+    char msg[96];
+    snprintf(msg, sizeof(msg), "TIMESYNC|%s|%lld", candidateIds[i], epoch);
+    uint8_t hmacResult[32];
+    mbedtls_md_context_t ctx;
+    mbedtls_md_init(&ctx);
+    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1);
+    mbedtls_md_hmac_starts(&ctx, (const unsigned char*)ANCHOR_HMAC_SECRET, strlen(ANCHOR_HMAC_SECRET));
+    mbedtls_md_hmac_update(&ctx, (const unsigned char*)msg, strlen(msg));
+    mbedtls_md_hmac_finish(&ctx, hmacResult);
+    mbedtls_md_free(&ctx);
+
+    char expectedHex[17];
+    for (int b = 0; b < 8; b++) snprintf(&expectedHex[b * 2], 3, "%02X", hmacResult[b]);
+    expectedHex[16] = '\\0';
+
+    String upperRecv = receivedHmacHex.substring(0, 16);
+    upperRecv.toUpperCase();
+    uint8_t diff = 0;
+    for (int c = 0; c < 16; c++) diff |= (uint8_t)(expectedHex[c] ^ upperRecv[c]);
+    if (diff == 0) return true;
+  }
+  return false;
+}
+
+class HGTimeSyncCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* pCharacteristic) override {
+    String rxValue = pCharacteristic->getValue().c_str();
+    rxValue.trim();
+    int colonIdx = rxValue.indexOf(':');
+    if (colonIdx <= 0) return;
+    long long receivedEpoch = atoll(rxValue.substring(0, colonIdx).c_str());
+    String hmacPart = rxValue.substring(colonIdx + 1);
+    if (receivedEpoch <= 1700000000LL || !verifyTimeSyncHmac(receivedEpoch, hmacPart)) return;
+    struct timeval tv;
+    tv.tv_sec = (time_t)receivedEpoch;
+    tv.tv_usec = 0;
+    settimeofday(&tv, NULL);
     updateRollingToken(true);
   }
 };
@@ -1691,12 +1731,10 @@ void setup() {
   Serial.begin(115200);
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
-
   initRadioHardware();
 
   BLEDevice::init(BLE_DEVICE_NAME);
   BLEDevice::setMTU(128);
-
   BLEDevice::setPower(ESP_PWR_LVL_P9, ESP_BLE_PWR_TYPE_DEFAULT);
   BLEDevice::setPower(ESP_PWR_LVL_P9, ESP_BLE_PWR_TYPE_ADV);
   BLEDevice::setPower(ESP_PWR_LVL_P9, ESP_BLE_PWR_TYPE_CONN_HDL0);
@@ -1705,13 +1743,18 @@ void setup() {
   pServer->setCallbacks(new HGServerCallbacks());
 
   BLEService* pService = pServer->createService(HG_SERVICE_UUID);
-
   pTokenCharacteristic = pService->createCharacteristic(
     HG_CHARACTERISTIC_UUID,
     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
   );
   pTokenCharacteristic->addDescriptor(new BLE2902());
   pTokenCharacteristic->setCallbacks(new HGCharacteristicCallbacks());
+
+  BLECharacteristic* pTimeSyncChar = pService->createCharacteristic(
+    HG_TIME_SYNC_CHAR_UUID,
+    BLECharacteristic::PROPERTY_WRITE
+  );
+  pTimeSyncChar->setCallbacks(new HGTimeSyncCallbacks());
 
   updateRollingToken(true);
   pService->start();
@@ -1723,26 +1766,30 @@ void setup() {
   pAdvertising->setMaxInterval(0xF0);
   pAdvertising->setMinPreferred(0x06);
   pAdvertising->setMaxPreferred(0x12);
-
   BLEDevice::startAdvertising();
-  Serial.println("[HG-ANCHOR] BLE Hardware Anchor Active & Advertising!");
+
+  #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
+  esp_task_wdt_config_t wdt_config = { .timeout_ms = WDT_TIMEOUT_SECONDS * 1000, .idle_core_mask = (1 << 0), .trigger_panic = true };
+  esp_task_wdt_init(&wdt_config);
+  #else
+  esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
+  #endif
+  esp_task_wdt_add(NULL);
 }
 
 void loop() {
+  esp_task_wdt_reset();
   unsigned long now = millis();
-
   if (now - lastTokenUpdateMs >= TOKEN_UPDATE_MS) {
     lastTokenUpdateMs = now;
     updateRollingToken(false);
   }
-
   if (deviceConnected && (now - connectedTimestampMs > MAX_CONN_HOLD_MS)) {
-    Serial.println("[HG-ANCHOR] Watchdog: Dropping stale BLE peer & restarting advertising");
-    pServer->disconnect(activeConnId);
+    if (pServer != nullptr && activeConnId != 0xFFFF) pServer->disconnect(activeConnId);
     deviceConnected = false;
+    activeConnId = 0xFFFF;
     BLEDevice::startAdvertising();
   }
-
   delay(20);
 }
 `;
@@ -1993,7 +2040,7 @@ router.post('/attendance/override', async (req, res) => {
 });
 
 // DELETE single attendance record
-router.delete('/attendance/:id', async (req, res) => {
+router.delete('/attendance/:id', requireRole('ADMIN'), async (req, res) => {
   try {
     const record = await getQuery('SELECT * FROM attendance_records WHERE id = ?', [req.params.id]);
     if (!record) {
@@ -2105,7 +2152,7 @@ router.post('/corrections/:id/review', async (req, res) => {
 });
 
 // DELETE single correction request
-router.delete('/corrections/:id', async (req, res) => {
+router.delete('/corrections/:id', requireRole('ADMIN'), async (req, res) => {
   try {
     const correction = await getQuery('SELECT * FROM attendance_corrections WHERE id = ?', [req.params.id]);
     if (!correction) {
@@ -2120,7 +2167,7 @@ router.delete('/corrections/:id', async (req, res) => {
 });
 
 // DELETE all / status-filtered correction requests
-router.delete('/corrections', async (req, res) => {
+router.delete('/corrections', requireRole('ADMIN'), async (req, res) => {
   try {
     const { status } = req.query;
     let sql = 'DELETE FROM attendance_corrections';
@@ -2344,7 +2391,7 @@ router.post('/security/reset-strike', async (req, res) => {
 });
 
 // Reset All Flagged Strikes (Emergency clearance for batch testing)
-router.post('/security/reset-all-strikes', async (req, res) => {
+router.post('/security/reset-all-strikes', requireRole('ADMIN'), async (req, res) => {
   try {
     const { reason = 'Batch administrative strike clearance' } = req.body;
     await runQuery(`UPDATE students SET failed_attempts = 0, is_flagged_forge = 0`);
@@ -2360,7 +2407,7 @@ router.post('/security/reset-all-strikes', async (req, res) => {
 });
 
 // DELETE single security incident alert
-router.delete('/security/alerts/:id', async (req, res) => {
+router.delete('/security/alerts/:id', requireRole('ADMIN'), async (req, res) => {
   try {
     const alert = await getQuery('SELECT * FROM security_audit_logs WHERE id = ?', [req.params.id]);
     if (!alert) {
@@ -2417,7 +2464,7 @@ router.get('/audit-logs', async (req, res) => {
 });
 
 // DELETE single audit log entry
-router.delete('/audit-logs/:id', async (req, res) => {
+router.delete('/audit-logs/:id', requireRole('ADMIN'), async (req, res) => {
   try {
     const log = await getQuery('SELECT * FROM admin_audit_events WHERE id = ?', [req.params.id]);
     if (!log) {
@@ -2499,7 +2546,7 @@ router.post('/feedback/:id/resolve', async (req, res) => {
 });
 
 // DELETE single feedback ticket
-router.delete('/feedback/:id', async (req, res) => {
+router.delete('/feedback/:id', requireRole('ADMIN'), async (req, res) => {
   try {
     const ticket = await getQuery('SELECT * FROM feedback_tickets WHERE id = ?', [req.params.id]);
     if (!ticket) {
@@ -2514,7 +2561,7 @@ router.delete('/feedback/:id', async (req, res) => {
 });
 
 // DELETE all / filtered feedback tickets
-router.delete('/feedback', async (req, res) => {
+router.delete('/feedback', requireRole('ADMIN'), async (req, res) => {
   try {
     const { status } = req.query;
     let sql = 'DELETE FROM feedback_tickets';
@@ -2563,7 +2610,7 @@ router.get('/attendance-schedule', async (req, res) => {
   }
 });
 
-router.post('/attendance-schedule', async (req, res) => {
+router.post('/attendance-schedule', requireRole('ADMIN'), async (req, res) => {
   try {
     const { default_start_time, default_end_time, is_enabled, timezone } = req.body;
 
@@ -2597,7 +2644,7 @@ router.post('/attendance-schedule', async (req, res) => {
   }
 });
 
-router.post('/attendance-schedule/overrides', async (req, res) => {
+router.post('/attendance-schedule/overrides', requireRole('ADMIN'), async (req, res) => {
   try {
     const { override_date, title, start_time, end_time, is_holiday, notes } = req.body;
 
@@ -2634,7 +2681,7 @@ router.post('/attendance-schedule/overrides', async (req, res) => {
   }
 });
 
-router.delete('/attendance-schedule/overrides/:id', async (req, res) => {
+router.delete('/attendance-schedule/overrides/:id', requireRole('ADMIN'), async (req, res) => {
   try {
     const override = await getQuery(`SELECT * FROM attendance_schedule_overrides WHERE id = ?`, [req.params.id]);
     if (!override) {
@@ -2649,7 +2696,7 @@ router.delete('/attendance-schedule/overrides/:id', async (req, res) => {
   }
 });
 
-router.post('/attendance-schedule/upload-holidays', upload.single('file'), async (req, res) => {
+router.post('/attendance-schedule/upload-holidays', requireRole('ADMIN'), upload.single('file'), async (req, res) => {
   try {
     let rows = [];
 
@@ -2730,7 +2777,7 @@ router.post('/attendance-schedule/upload-holidays', upload.single('file'), async
 });
 
 // 11. Complete System Credentials & Student Password Hub
-router.get('/credentials-directory', async (req, res) => {
+router.get('/credentials-directory', requireRole('ADMIN'), async (req, res) => {
   try {
     // 1. Staff users
     const staff = await allQuery(`
@@ -2784,7 +2831,7 @@ router.get('/credentials-directory', async (req, res) => {
 });
 
 // Admin One-Click Password Reset for Student
-router.post('/students/:id/reset-password', async (req, res) => {
+router.post('/students/:id/reset-password', requireRole('ADMIN'), async (req, res) => {
   try {
     const { new_password = 'Student@12345', reason = 'Admin initiated credential reset' } = req.body;
 
@@ -2841,7 +2888,7 @@ router.post('/students/:id/reset-password', async (req, res) => {
 });
 
 // Admin One-Click Device Binding Reset for Student
-router.post('/students/:id/reset-device', async (req, res) => {
+router.post('/students/:id/reset-device', requireRole('ADMIN'), async (req, res) => {
   try {
     const student = await getQuery(`SELECT * FROM students WHERE id = ? OR roll_number = ?`, [req.params.id, req.params.id]);
     if (!student) {

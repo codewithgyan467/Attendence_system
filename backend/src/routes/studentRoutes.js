@@ -160,6 +160,7 @@ router.post('/onboarding/send-otp', authLimiter, async (req, res) => {
         a.id as allotment_id,
         a.roll_number,
         a.full_name,
+        a.is_registered,
         COALESCE(s.email, a.email) as email,
         COALESCE(s.phone, a.phone) as phone
       FROM hostel_allotments a
@@ -171,16 +172,34 @@ router.post('/onboarding/send-otp', authLimiter, async (req, res) => {
       return res.status(404).json({ success: false, error: 'Student allotment record not found.' });
     }
 
+    if (record.is_registered === 1) {
+      return res.status(400).json({
+        success: false,
+        error: 'This student account has already completed onboarding. Please use Sign In or Forgot Password.'
+      });
+    }
+
+    const allowContactOverride = process.env.NODE_ENV !== 'production';
     let destination = '';
     if (cleanMethod === 'PHONE') {
-      destination = record.phone || contact_override;
+      destination = record.phone || (allowContactOverride ? contact_override : '');
       if (!destination || destination.trim().length < 8) {
-        return res.status(400).json({ success: false, error: 'No mobile phone number registered on file. Please enter your mobile number.' });
+        return res.status(400).json({
+          success: false,
+          error: allowContactOverride
+            ? 'No mobile phone number registered on file. Please enter your mobile number.'
+            : 'No mobile phone number registered on your hostel allotment. Contact your Warden to update your contact details before onboarding.'
+        });
       }
     } else {
-      destination = record.email || contact_override;
+      destination = record.email || (allowContactOverride ? contact_override : '');
       if (!destination || !destination.includes('@')) {
-        return res.status(400).json({ success: false, error: 'No email address registered on file. Please enter your email.' });
+        return res.status(400).json({
+          success: false,
+          error: allowContactOverride
+            ? 'No email address registered on file. Please enter your email.'
+            : 'No email address registered on your hostel allotment. Contact your Warden to update your contact details before onboarding.'
+        });
       }
     }
 
@@ -442,6 +461,31 @@ router.post('/onboard', async (req, res) => {
 
     if (!aiResponse.embeddings || aiResponse.embeddings.length === 0) {
       return res.status(400).json({ success: false, error: 'Could not detect face in captured photos.' });
+    }
+
+    // Enforce anti-spoofing on initial onboarding just like /register-face
+    const spoofedItem = aiResponse.embeddings.find(
+      (e) => e.is_live === false || (e.liveness_score !== undefined && e.liveness_score < 0.60)
+    );
+    if (spoofedItem) {
+      await runQuery(`
+        INSERT INTO security_audit_logs (
+          id, student_id, roll_number, incident_type, calculated_distance, details,
+          ip_address, risk_score, decision_outcome, reason_codes
+        ) VALUES (?, ?, ?, 'ENROLLMENT_SPOOF_ATTEMPT', 0, ?, ?, 95, 'DENY', 'L8_ONBOARDING_PAD_FAILED')
+      `, [
+        uuidv4(),
+        existingStudent?.id || `PENDING-${targetRoll}`,
+        allotment.roll_number,
+        `Spoof attack detected during initial onboarding (score: ${spoofedItem.liveness_score || 0.0})`,
+        req.ip || '127.0.0.1'
+      ]).catch(() => {});
+
+      return res.status(403).json({
+        success: false,
+        status: 'ENROLLMENT_SPOOF_DETECTED',
+        error: 'Onboarding rejected: Presentation attack detected (photo or screen display). Please use your live camera.'
+      });
     }
 
     // Generate credentials & IDs

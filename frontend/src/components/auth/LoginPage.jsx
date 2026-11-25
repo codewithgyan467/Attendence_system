@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Shield, Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, CheckCircle2, Download, QrCode, Smartphone, RefreshCw, Settings, Wifi, Eye, EyeOff } from 'lucide-react';
+import { Lock, User, ArrowRight, UserCheck, AlertTriangle, Key, CheckCircle2, Smartphone, RefreshCw, Settings, Eye, EyeOff } from 'lucide-react';
 import ForgotPasswordModal from './ForgotPasswordModal';
 import GoogleSignInButton from './GoogleSignInButton';
 import AppDownloadModal from './AppDownloadModal';
-import { probeLocalWardenIp, clearLocalWardenUrl, getLocalWardenUrl, setLocalWardenUrl } from '../../utils/api';
+import { probeLocalWardenIp, verifyHostWifiConnection, clearLocalWardenUrl, getLocalWardenUrl, setLocalWardenUrl } from '../../utils/api';
 
 export default function LoginPage({ onNavigateOnboarding }) {
   const { login, loginWithGoogle } = useAuth();
@@ -17,8 +17,8 @@ export default function LoginPage({ onNavigateOnboarding }) {
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [magicLinkToken, setMagicLinkToken] = useState(null);
-  const [discoveringWarden, setDiscoveringWarden] = useState(false);
-  const [showServerSettings, setShowServerSettings] = useState(false);
+  const [hostStatus, setHostStatus] = useState('scanning'); // 'scanning' | 'connected' | 'disconnected'
+  const [showManualIp, setShowManualIp] = useState(false);
   const [manualIp, setManualIp] = useState('');
   const [currentWardenUrl, setCurrentWardenUrl] = useState(() => {
     const u = getLocalWardenUrl();
@@ -28,6 +28,24 @@ export default function LoginPage({ onNavigateOnboarding }) {
     }
     return u;
   });
+
+  const syncHostConnection = useCallback(async ({ showScanning = false } = {}) => {
+    if (showScanning) setHostStatus('scanning');
+    try {
+      const res = await verifyHostWifiConnection({ autoProbe: true });
+      if (res.connected) {
+        setCurrentWardenUrl(res.url);
+        setHostStatus('connected');
+      } else {
+        setCurrentWardenUrl(null);
+        setHostStatus('disconnected');
+      }
+      return res;
+    } catch (_) {
+      setHostStatus('disconnected');
+      return { connected: false, url: null, wardenIp: null };
+    }
+  }, []);
 
   // Check URL query parameters (e.g. ?mode=reset or ?token=... or ?roll=2023CS01)
   useEffect(() => {
@@ -46,21 +64,45 @@ export default function LoginPage({ onNavigateOnboarding }) {
     }
   }, []);
 
-  // Silently probe local Warden server on mount so phone auto-connects to live Warden laptop on Wi-Fi
+  // Auto-detect host Wi-Fi server on mount, focus/network regain, and periodic heartbeat
   useEffect(() => {
     let active = true;
-    probeLocalWardenIp().then((res) => {
+    const runCheck = async (showScanning = false) => {
       if (!active) return;
-      if (res.success) {
-        setCurrentWardenUrl(res.url);
-      } else if (res.reason === 'WIFI_ROUTER_CHANGED') {
-        setCurrentWardenUrl(null);
-        setShowServerSettings(true);
-        setErrorMsg('Wi-Fi network changed. Enter the new Warden IP shown on the Warden laptop or scan the Warden QR code.');
+      await syncHostConnection({ showScanning });
+    };
+
+    runCheck(true);
+
+    const handleReconnectEvent = () => runCheck(false);
+    const handleVisibility = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        runCheck(false);
       }
-    }).catch(() => { });
-    return () => { active = false; };
-  }, []);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleReconnectEvent);
+      window.addEventListener('focus', handleReconnectEvent);
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibility);
+    }
+
+    const intervalId = setInterval(() => runCheck(false), 10000);
+
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleReconnectEvent);
+        window.removeEventListener('focus', handleReconnectEvent);
+      }
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibility);
+      }
+    };
+  }, [syncHostConnection]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -75,17 +117,18 @@ export default function LoginPage({ onNavigateOnboarding }) {
     try {
       await login(username.trim(), password);
     } catch (err) {
-      // If failed due to unreachable server / network glitch, probe local Warden server (e.g. 172.20.10.2:5000)
-      if (err.message && (err.message.includes('unreachable') || err.message.toLowerCase().includes('failed to fetch') || err.message.includes('NetworkError') || err.message.includes('Offline'))) {
+      if (err.message && (err.message.includes('unreachable') || err.message.toLowerCase().includes('failed to fetch') || err.message.includes('NetworkError') || err.message.includes('Offline') || err.message.includes('Unable to reach'))) {
         try {
           const probeRes = await probeLocalWardenIp();
           if (probeRes.success) {
             setCurrentWardenUrl(probeRes.url);
+            setHostStatus('connected');
             await login(username.trim(), password);
             return;
           }
         } catch (_) { }
-        setErrorMsg('Unable to connect to server. If offline, ensure your phone is connected to the Hostel Wi-Fi / Hotspot and tap "Server Wi-Fi Settings" below to connect to the Warden PC.');
+        setHostStatus('disconnected');
+        setErrorMsg('Host server unreachable. Connect your device to the same Hostel Wi-Fi as the Warden host.');
       } else {
         setErrorMsg(err.message || 'Invalid credentials or inactive account.');
       }
@@ -94,50 +137,33 @@ export default function LoginPage({ onNavigateOnboarding }) {
     }
   };
 
-  const handleAutoDiscoverWarden = async () => {
-    setDiscoveringWarden(true);
-    setErrorMsg('');
-    const res = await probeLocalWardenIp();
-    setDiscoveringWarden(false);
-    if (res.success) {
-      setCurrentWardenUrl(res.url);
-      setSuccessBanner(`Connected to Warden Server at ${res.url}! You can now sign in.`);
-    } else {
-      setErrorMsg('Could not auto-detect Warden laptop. Tap "Server Wi-Fi Settings" below to enter the IP from the Warden terminal (e.g. 172.20.10.2:5000) or switch to Cloud.');
-    }
-  };
-
-  const handleUseCloudServer = () => {
-    clearLocalWardenUrl();
-    setCurrentWardenUrl(null);
-    setErrorMsg('');
-    setSuccessBanner('Switched to Cloud Server! You can now sign in.');
-  };
-
   const handleSaveManualIp = async (e) => {
     e.preventDefault();
     if (!manualIp.trim()) return;
-    let clean = manualIp.trim();
-    if (!clean.startsWith('http')) clean = `http://${clean}`;
-    clean = clean.replace(/\/+$/, '');
-    const full = clean.endsWith('/api/v1') ? clean : `${clean}/api/v1`;
+    let clean = manualIp.trim().replace(/\/+$/, '');
+    if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+      clean = `http://${clean}`;
+    }
+    const cleanNoApi = clean.replace(/\/api\/v1$/, '');
+    const withDefaultPort = /^http:\/\/[^/:]+$/i.test(cleanNoApi) ? `${cleanNoApi}:5000` : cleanNoApi;
+    const full = `${withDefaultPort}/api/v1`;
 
-    setDiscoveringWarden(true);
-    const res = await probeLocalWardenIp(clean);
-    setDiscoveringWarden(false);
+    setHostStatus('scanning');
+    const res = await probeLocalWardenIp(withDefaultPort);
 
     if (res.success) {
       setCurrentWardenUrl(res.url);
+      setHostStatus('connected');
       setErrorMsg('');
-      setSuccessBanner(`Connected to Warden Server at ${res.url}! You can now sign in.`);
     } else {
       setLocalWardenUrl(full);
       setCurrentWardenUrl(full);
-      setErrorMsg('');
-      setSuccessBanner(`Server IP saved: ${full}. You can now sign in.`);
+      setHostStatus('disconnected');
+      const displayTarget = withDefaultPort.replace(/^https?:\/\//, '');
+      setErrorMsg(`Could not reach ${displayTarget}. Ensure the host server is running and both devices are on a Wi-Fi allowing local traffic.`);
     }
     setManualIp('');
-    setShowServerSettings(false);
+    setShowManualIp(false);
   };
 
   const handleGoogleSuccess = async (credential) => {
@@ -147,18 +173,28 @@ export default function LoginPage({ onNavigateOnboarding }) {
       const res = await loginWithGoogle(credential);
       setSuccessBanner(res.message || 'Google identity verified successfully! Welcome back.');
     } catch (err) {
-      setErrorMsg(
-        'Google authentication requires internet connection. On offline Hostel Wi-Fi, please sign in above using your Roll Number (e.g. 2023CS01) and Password.'
-      );
+      const msg = err?.message || '';
+      if (/unreachable|failed to fetch|network/i.test(msg)) {
+        setErrorMsg(
+          'Google authentication requires internet access. On offline Hostel Wi-Fi, sign in with Username / Roll No & Password.'
+        );
+      } else {
+        setErrorMsg(
+          msg || 'Google authentication is unavailable on this server. Sign in using your Username & Password.'
+        );
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const hostIpLabel = currentWardenUrl
+    ? currentWardenUrl.replace(/^https?:\/\//, '').replace(/\/api\/v1$/, '')
+    : '';
 
   return (
     <div className="container d-flex justify-content-center my-auto py-2">
-      <div className="card hg-card shadow-lg border-0 rounded-2" style={{ maxWidth: '420px', width: '100%', overflow: 'hidden' }}>
+      <div className="card hg-card shadow-lg border-0 rounded-2" style={{ maxWidth: '410px', width: '100%', overflow: 'hidden' }}>
         {/* Card Header */}
         <div className="px-3 py-2.5 text-center text-white bg-dark border-bottom border-secondary">
           <img
@@ -178,103 +214,70 @@ export default function LoginPage({ onNavigateOnboarding }) {
 
         {/* Card Body */}
         <div className="card-body p-3 p-sm-3.5">
-          {/* Active Server Connection Status Pill */}
-          <div className="d-flex align-items-center justify-content-between px-2.5 py-1.5 mb-2.5 rounded-3 bg-light border small">
-            <div className="d-flex align-items-center gap-1.5 text-truncate" style={{ fontSize: '11px' }}>
-              <span className={`badge rounded-pill p-1 ${currentWardenUrl ? 'bg-success' : 'bg-primary'}`}> </span>
-              <span className="text-muted">Attendance Server:</span>
-              <span className="fw-semibold text-dark text-truncate">
-                {currentWardenUrl ? `Wi-Fi (${currentWardenUrl.replace('http://', '').replace('/api/v1', '')})` : 'Cloud / Auto'}
+          {/* Single-Line Host Wi-Fi Connection Indicator (Blinking Green / Red LED) */}
+          <div className="d-flex align-items-center justify-content-between px-2.5 py-1.5 mb-2.5 rounded-3 bg-light border">
+            <div
+              className="d-flex align-items-center gap-2 text-truncate"
+              style={{ fontSize: '11.5px', cursor: 'pointer' }}
+              onClick={() => syncHostConnection({ showScanning: true })}
+              title={hostStatus === 'connected' ? `Connected to ${hostIpLabel}` : 'Tap to re-scan Host Wi-Fi'}
+            >
+              <span
+                className={`hg-wifi-led ${
+                  hostStatus === 'connected'
+                    ? 'hg-wifi-led--green'
+                    : hostStatus === 'scanning'
+                      ? 'hg-wifi-led--scanning'
+                      : 'hg-wifi-led--red'
+                }`}
+                aria-hidden="true"
+              />
+              <span className={`fw-semibold text-truncate ${hostStatus === 'connected' ? 'text-success' : hostStatus === 'scanning' ? 'text-warning-emphasis' : 'text-danger'}`}>
+                {hostStatus === 'connected'
+                  ? `Host Wi-Fi Connected${hostIpLabel ? ` · ${hostIpLabel}` : ''}`
+                  : hostStatus === 'scanning'
+                    ? 'Detecting Host Wi-Fi...'
+                    : 'Not Connected to Host Wi-Fi'}
               </span>
             </div>
-            <button
-              type="button"
-              className="btn btn-link btn-sm p-0 text-decoration-none text-primary fw-medium"
-              style={{ fontSize: '11px' }}
-              onClick={() => setShowServerSettings(!showServerSettings)}
-            >
-              {showServerSettings ? 'Close' : 'Change'}
-            </button>
+
+            <div className="d-flex align-items-center gap-1.5 flex-shrink-0 ms-2">
+              <button
+                type="button"
+                className="btn btn-link btn-sm p-0 text-decoration-none text-secondary d-inline-flex align-items-center"
+                onClick={() => syncHostConnection({ showScanning: true })}
+                disabled={hostStatus === 'scanning'}
+                title="Re-detect Host Wi-Fi"
+                aria-label="Re-detect Host Wi-Fi"
+              >
+                <RefreshCw size={12} className={hostStatus === 'scanning' ? 'spin' : ''} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-link btn-sm p-0 text-decoration-none text-muted d-inline-flex align-items-center"
+                onClick={() => setShowManualIp((prev) => !prev)}
+                title="Enter custom host IP"
+                aria-label="Enter custom host IP"
+              >
+                <Settings size={12} />
+              </button>
+            </div>
           </div>
 
-          {showServerSettings && (
-            <div className="p-2.5 mb-2.5 bg-light border rounded-3 text-start shadow-xs">
-              <div className="fw-bold small text-dark mb-1" style={{ fontSize: '11.5px' }}>
-                Warden Server Connection
-              </div>
-              <div className="text-muted small mb-2" style={{ fontSize: '11px', lineHeight: '1.35' }}>
-                Active: <code className="text-dark bg-white border px-1 py-0.5 rounded">{currentWardenUrl || 'Cloud Server'}</code>
-              </div>
-
-              <div className="d-flex gap-1.5 mb-2">
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm flex-fill py-1 px-2 fw-semibold"
-                  style={{ fontSize: '11px' }}
-                  onClick={handleAutoDiscoverWarden}
-                  disabled={discoveringWarden}
-                >
-                  <RefreshCw size={12} className={discoveringWarden ? 'spin' : ''} />
-                  {discoveringWarden ? 'Detecting...' : '🔄 Auto-Detect on Wi-Fi'}
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary btn-sm py-1 px-2"
-                  style={{ fontSize: '11px' }}
-                  onClick={handleUseCloudServer}
-                >
-                  Cloud
-                </button>
-              </div>
-
-              <div className="d-flex flex-wrap gap-1 mb-2">
-                <button
-                  type="button"
-                  className="btn btn-outline-dark btn-sm py-0.5 px-2"
-                  style={{ fontSize: '10.5px' }}
-                  onClick={() => {
-                    const full = 'http://172.20.10.2:5000/api/v1';
-                    setLocalWardenUrl(full);
-                    setCurrentWardenUrl(full);
-                    setErrorMsg('');
-                    setSuccessBanner('Connected to Warden Server at 172.20.10.2:5000! You can now sign in.');
-                    setShowServerSettings(false);
-                  }}
-                >
-                  ⚡ iPhone Hotspot (172.20.10.2)
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline-dark btn-sm py-0.5 px-2"
-                  style={{ fontSize: '10.5px' }}
-                  onClick={() => {
-                    const full = 'http://192.168.137.1:5000/api/v1';
-                    setLocalWardenUrl(full);
-                    setCurrentWardenUrl(full);
-                    setErrorMsg('');
-                    setSuccessBanner('Connected to Warden Server at 192.168.137.1:5000! You can now sign in.');
-                    setShowServerSettings(false);
-                  }}
-                >
-                  💻 Laptop Hotspot (192.168.137.1)
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveManualIp} className="d-flex gap-1">
-                <input
-                  type="text"
-                  className="form-control form-control-sm"
-                  style={{ fontSize: '11px' }}
-                  placeholder="e.g. 172.20.10.2:5000"
-                  value={manualIp}
-                  onChange={(e) => setManualIp(e.target.value)}
-                />
-                <button type="submit" className="btn btn-dark btn-sm px-2 fw-semibold" style={{ fontSize: '11px' }}>
-                  Save
-                </button>
-              </form>
-            </div>
+          {showManualIp && (
+            <form onSubmit={handleSaveManualIp} className="d-flex gap-1.5 mb-2.5">
+              <input
+                type="text"
+                className="form-control form-control-sm"
+                style={{ fontSize: '11.5px' }}
+                placeholder="Host IP (e.g. 172.20.10.2:5000)"
+                value={manualIp}
+                onChange={(e) => setManualIp(e.target.value)}
+              />
+              <button type="submit" className="btn btn-dark btn-sm px-2.5 fw-semibold" style={{ fontSize: '11.5px' }}>
+                Connect
+              </button>
+            </form>
           )}
 
           {successBanner && (
@@ -285,37 +288,9 @@ export default function LoginPage({ onNavigateOnboarding }) {
           )}
 
           {errorMsg && (
-            <div className="alert alert-danger py-2 px-3 small mb-2.5" role="alert">
-              <div className="d-flex align-items-center gap-2 mb-1">
-                <AlertTriangle size={16} className="text-danger flex-shrink-0" />
-                <div style={{ fontSize: '12px', lineHeight: '1.4' }}>{errorMsg}</div>
-              </div>
-
-              {errorMsg.toLowerCase().includes('unreachable') && (
-                <div className="mt-2 pt-2 border-top border-danger border-opacity-25">
-                  <div className="d-flex flex-column gap-1.5">
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-sm py-1.5 px-2 fw-bold d-flex align-items-center justify-content-center gap-1.5 shadow-sm text-white"
-                      style={{ fontSize: '11.5px', background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)' }}
-                      onClick={handleAutoDiscoverWarden}
-                      disabled={discoveringWarden}
-                    >
-                      <RefreshCw size={13} className={discoveringWarden ? 'spin' : ''} />
-                      {discoveringWarden ? 'Scanning Wi-Fi...' : '🔄 Auto-Connect to Warden on Current Wi-Fi'}
-                    </button>
-
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary btn-sm py-1 px-2 fw-semibold d-flex align-items-center justify-content-center gap-1.5"
-                      style={{ fontSize: '11px' }}
-                      onClick={handleUseCloudServer}
-                    >
-                      🌐 Switch to Cloud Server
-                    </button>
-                  </div>
-                </div>
-              )}
+            <div className="alert alert-danger d-flex align-items-center gap-2 py-2 px-3 small mb-2.5" role="alert">
+              <AlertTriangle size={15} className="text-danger flex-shrink-0" />
+              <div style={{ fontSize: '12px', lineHeight: '1.35' }}>{errorMsg}</div>
             </div>
           )}
 
@@ -348,7 +323,7 @@ export default function LoginPage({ onNavigateOnboarding }) {
                   style={{ fontSize: '11.5px' }}
                   onClick={() => setShowForgotModal(true)}
                 >
-                  <Key size={11} /> Forgot?
+                  <Key size={11} /> Reset Password?
                 </button>
               </div>
               <div className="input-group input-group-sm">
@@ -408,44 +383,34 @@ export default function LoginPage({ onNavigateOnboarding }) {
           </div>
 
           {/* Modern Google JWT Authentication */}
-          <div className="mb-2">
+          <div className="mb-2.5">
             <GoogleSignInButton
               onSuccess={handleGoogleSuccess}
-              onError={(err) => setErrorMsg('Google Sign-In requires internet. On offline Wi-Fi, sign in above with Roll No & Password.')}
+              onError={(err) => setErrorMsg(typeof err === 'string' && err ? err : 'Google Sign-In is unavailable. Sign in above with Username / Roll No & Password.')}
               disabled={loading}
             />
-            <div className="text-center text-muted small mt-1" style={{ fontSize: '10px' }}>
-              💡 On offline Hostel Wi-Fi, sign in above using Roll No &amp; Password
-            </div>
           </div>
 
-          {/* Mobile App Download & QR Code Modal Link (Android & iOS) */}
-          <div className="text-center mt-2 pt-2 border-top">
+          {/* Footer Links: New Student Enrollment + Compact Mobile App Link */}
+          <div className="d-flex align-items-center justify-content-between mt-2 pt-2 border-top">
             <button
               type="button"
-              className="btn btn-outline-success btn-sm w-100 py-1.5 d-inline-flex align-items-center justify-content-center gap-2 fw-semibold shadow-sm rounded-3"
-              style={{ borderColor: '#10b981', color: '#047857', backgroundColor: '#ecfdf5', fontSize: '12.5px' }}
-              onClick={() => setShowDownloadModal(true)}
-            >
-              <Smartphone size={15} className="text-success" />
-              <span>Get Mobile App (Android &amp; iOS)</span>
-              <QrCode size={14} />
-            </button>
-          </div>
-
-          {/* Student Onboarding Link */}
-          <div className="text-center mt-2 pt-2 border-top">
-            <button
-              type="button"
-              className="btn btn-link btn-sm text-decoration-none text-primary p-0 d-inline-flex align-items-center gap-1"
-              style={{ fontSize: '11.5px' }}
+              className="btn btn-link btn-sm text-decoration-none text-primary fw-semibold p-0 d-inline-flex align-items-center gap-1"
+              style={{ fontSize: '12px' }}
               onClick={onNavigateOnboarding}
             >
-              <UserCheck size={13} /> New Student Enrollment
+              <UserCheck size={14} /> New Student Enrollment
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-link btn-sm text-decoration-none text-success fw-semibold p-0 d-inline-flex align-items-center gap-1"
+              style={{ fontSize: '11.5px' }}
+              onClick={() => setShowDownloadModal(true)}
+            >
+              <Smartphone size={13} /> Mobile App
             </button>
           </div>
-
-
         </div>
       </div>
 

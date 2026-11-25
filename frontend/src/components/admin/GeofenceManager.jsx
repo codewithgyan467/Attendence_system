@@ -194,11 +194,17 @@ export default function GeofenceManager() {
 
   const handleDownloadSketch = (beacon) => {
     const url = api.admin.downloadBeaconSketchUrl(beacon.id);
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('hg_token') || localStorage.getItem('token');
     fetch(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : {}
     })
-      .then(res => res.blob())
+      .then(async (res) => {
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.error || `HTTP ${res.status} while downloading sketch`);
+        }
+        return res.blob();
+      })
       .then(blob => {
         const downloadUrl = window.URL.createObjectURL(blob);
         const a = document.createElement('a');

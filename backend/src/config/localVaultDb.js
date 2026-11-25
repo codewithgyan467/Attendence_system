@@ -3,6 +3,7 @@ const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 const os = require('os');
 const crypto = require('crypto');
+const { getIstDateString, getIstTime12h } = require('../utils/istTime');
 
 /**
  * HostelGuard Enterprise v4.2 - Strict Lock Local SQLite Vault & In-Memory Vector Cache
@@ -350,18 +351,22 @@ async function prepareOfflineCache(cloudDb) {
     console.warn('[StrictVault] Cloud students pull warning:', err.message);
   }
 
-  // 2. Pull Registered BLE Beacons from Cloud
+  // 2. Pull Registered BLE Beacons from Cloud (preserve monotonic anti-replay counter on existing beacons)
   try {
     const beacons = await cloudDb.allQuery(`SELECT * FROM site_ble_beacons WHERE is_active = 1`);
     for (const b of beacons) {
       await runVaultQuery(`
-        INSERT OR REPLACE INTO local_beacons_cache
+        INSERT INTO local_beacons_cache
           (beacon_id, floor_name, secret_key, last_monotonic_step, enabled)
         VALUES (?, ?, ?, -1, 1)
+        ON CONFLICT(beacon_id) DO UPDATE SET
+          floor_name = excluded.floor_name,
+          secret_key = excluded.secret_key,
+          enabled = excluded.enabled
       `, [
         b.beacon_public_id,
         b.block_name || b.beacon_public_id,
-        b.shared_secret_ref || 'HG_STRICT_ANCHOR_SECRET_2026'
+        b.shared_secret_ref || process.env.ANCHOR_HMAC_SECRET || 'HG_STRICT_ANCHOR_SECRET_2026'
       ]);
       cachedBeacons++;
     }
@@ -420,14 +425,19 @@ async function verifyBeaconInLocalVault(rawPayloadOrId, stepNum, receivedCode) {
     [lookupId, anchorId]
   );
 
-  const candidateSecrets = Array.from(new Set([
-    beacon?.secret_key,
-    process.env.ANCHOR_HMAC_SECRET,
-    'HG_STRICT_ANCHOR_SECRET_2026',
-    'hostelguard_super_secret_32b_key',
-    '4a8f9c1b2e3d4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a',
-    '5737e7a308d843d6d5a63d512167d7a89702853d9e8ef53195e08472cc1d2859'
-  ].filter(Boolean)));
+  const isProd = process.env.NODE_ENV === 'production';
+  const candidateSecrets = Array.from(new Set(
+    isProd
+      ? [beacon?.secret_key, process.env.ANCHOR_HMAC_SECRET].filter(Boolean)
+      : [
+          beacon?.secret_key,
+          process.env.ANCHOR_HMAC_SECRET,
+          'HG_STRICT_ANCHOR_SECRET_2026',
+          'hostelguard_super_secret_32b_key',
+          '4a8f9c1b2e3d4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a',
+          '5737e7a308d843d6d5a63d512167d7a89702853d9e8ef53195e08472cc1d2859'
+        ].filter(Boolean)
+  ));
 
   // Compute expected HMAC-SHA256 candidate loop
   const candidateIds = [anchorId, lookupId, 'A01', 'HG-BEACON-BLKA-01', 'HG-A01', 'HG-A1'];
@@ -547,10 +557,23 @@ async function syncVaultToCloud(cloudDb) {
     WHERE a.synced_to_cloud = 0 LIMIT 500
   `);
   if (pendingAttendance.length > 0) {
+    const parseVaultTimestampMs = (rawTs) => {
+      if (!rawTs) return Date.now();
+      const s = String(rawTs).trim();
+      // SQLite datetime('now') yields UTC "YYYY-MM-DD HH:MM:SS" without timezone suffix
+      const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(s)
+        ? s.replace(' ', 'T') + 'Z'
+        : s;
+      const ms = Date.parse(normalized);
+      return Number.isNaN(ms) ? Date.now() : ms;
+    };
+
+    const syncedAttIds = [];
     for (const rec of pendingAttendance) {
       try {
-        const dateStr = rec.verified_at ? rec.verified_at.split('T')[0] : new Date().toISOString().split('T')[0];
-        const timeStr = rec.verified_at && rec.verified_at.includes('T') ? rec.verified_at.split('T')[1].slice(0, 8) : '12:00:00';
+        const verifiedMs = parseVaultTimestampMs(rec.verified_at);
+        const dateStr = getIstDateString(verifiedMs);
+        const timeStr = getIstTime12h(verifiedMs);
         await cloudDb.runQuery(`
           INSERT OR IGNORE INTO attendance_records
             (id, student_id, roll_number, full_name, date, time_marked, status, verified_distance, similarity_score, liveness_score, created_at)
@@ -566,14 +589,17 @@ async function syncVaultToCloud(cloudDb) {
           rec.distance_m || 0,
           rec.face_similarity || 0.9,
           rec.liveness_score || 0.9,
-          rec.verified_at || new Date().toISOString()
+          rec.verified_at || new Date(verifiedMs).toISOString()
         ]);
-
-        await runVaultQuery(`UPDATE local_attendance_vault SET synced_to_cloud = 1 WHERE id = ?`, [rec.id]);
-        syncedAttendance++;
+        syncedAttIds.push(rec.id);
       } catch (err) {
         console.warn(`[StrictVault] Error syncing attendance record ${rec.id}:`, err.message);
       }
+    }
+    if (syncedAttIds.length > 0) {
+      const placeholders = syncedAttIds.map(() => '?').join(',');
+      await runVaultQuery(`UPDATE local_attendance_vault SET synced_to_cloud = 1 WHERE id IN (${placeholders})`, syncedAttIds);
+      syncedAttendance = syncedAttIds.length;
     }
   }
 

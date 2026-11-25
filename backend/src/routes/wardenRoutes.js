@@ -329,13 +329,13 @@ router.get('/emergency-muster', async (req, res) => {
       } else if (rec && rec.status === 'EXCUSED') {
         approvedLeave.push({
           ...s,
-          notes: rec.notes
+          notes: rec.override_reason || null
         });
       } else {
         missingUnaccounted.push({
           ...s,
           status: rec ? rec.status : 'ABSENT',
-          notes: rec?.notes || 'No roll-call check-in recorded tonight'
+          notes: rec?.override_reason || 'No roll-call check-in recorded tonight'
         });
       }
     }

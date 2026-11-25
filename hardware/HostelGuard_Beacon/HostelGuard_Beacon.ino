@@ -52,6 +52,7 @@ BLEServer *pServer = nullptr;
 BLECharacteristic *pTokenCharacteristic = nullptr;
 
 volatile bool deviceConnected = false;
+volatile uint16_t activeConnId = 0xFFFF;
 volatile unsigned long connectedTimestampMs = 0;
 unsigned long lastTokenUpdateMs = 0;
 uint32_t lastComputedStep = 0xFFFFFFFF;
@@ -141,14 +142,16 @@ void updateRollingToken(bool forceUpdate = false) {
 // 5. BLE SERVER & CHARACTERISTIC CALLBACKS (Universal Core 2.x & 3.x / ESP32-C6 Compatible)
 // ============================================================================
 class HGServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer *pServer) override {
+  void onConnect(BLEServer *server) override {
     deviceConnected = true;
+    activeConnId = server != nullptr ? server->getConnId() : 0xFFFF;
     connectedTimestampMs = millis();
     digitalWrite(LED_BUILTIN, LOW); // Active-low LED ON on XIAO ESP32C6 / Standard HIGH
   }
 
-  void onDisconnect(BLEServer *pServer) override {
+  void onDisconnect(BLEServer *server) override {
     deviceConnected = false;
+    activeConnId = 0xFFFF;
     digitalWrite(LED_BUILTIN, HIGH);
     // CRITICAL: Immediately restart advertising so the next check-in never fails
     BLEDevice::startAdvertising();
@@ -163,27 +166,68 @@ class HGCharacteristicCallbacks : public BLECharacteristicCallbacks {
   }
 };
 
+static bool verifyTimeSyncHmac(long long epoch, const String &receivedHmacHex) {
+  if (receivedHmacHex.length() < 16) {
+    return false;
+  }
+  const char *candidateIds[2] = {BLE_DEVICE_NAME, FLOOR_ANCHOR_ID};
+  for (int i = 0; i < 2; i++) {
+    char msg[96];
+    snprintf(msg, sizeof(msg), "TIMESYNC|%s|%lld", candidateIds[i], epoch);
+
+    uint8_t hmacResult[32];
+    mbedtls_md_context_t ctx;
+    mbedtls_md_init(&ctx);
+    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1);
+    mbedtls_md_hmac_starts(&ctx, (const unsigned char *)ANCHOR_HMAC_SECRET,
+                           strlen(ANCHOR_HMAC_SECRET));
+    mbedtls_md_hmac_update(&ctx, (const unsigned char *)msg, strlen(msg));
+    mbedtls_md_hmac_finish(&ctx, hmacResult);
+    mbedtls_md_free(&ctx);
+
+    char expectedHex[17];
+    for (int b = 0; b < 8; b++) {
+      snprintf(&expectedHex[b * 2], 3, "%02X", hmacResult[b]);
+    }
+    expectedHex[16] = '\0';
+
+    String upperRecv = receivedHmacHex.substring(0, 16);
+    upperRecv.toUpperCase();
+    uint8_t diff = 0;
+    for (int c = 0; c < 16; c++) {
+      diff |= (uint8_t)(expectedHex[c] ^ upperRecv[c]);
+    }
+    if (diff == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 class HGTimeSyncCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) override {
     String rxValue = pCharacteristic->getValue().c_str();
-    if (rxValue.length() > 0) {
-      long long receivedEpoch = 0;
-      int colonIdx = rxValue.indexOf(':');
-      if (colonIdx >= 0) {
-        receivedEpoch = atoll(rxValue.substring(0, colonIdx).c_str());
-      } else {
-        receivedEpoch = atoll(rxValue.c_str());
-      }
-      if (receivedEpoch > 1700000000LL) {
-        struct timeval tv;
-        tv.tv_sec = (time_t)receivedEpoch;
-        tv.tv_usec = 0;
-        settimeofday(&tv, NULL);
-        Serial.printf("[HG-ANCHOR] Clock synced via BLE to epoch: %lld\n",
-                      receivedEpoch);
-        updateRollingToken(true);
-      }
+    rxValue.trim();
+    int colonIdx = rxValue.indexOf(':');
+    if (colonIdx <= 0) {
+      Serial.println("[HG-ANCHOR] Rejected unsigned time-sync write.");
+      return;
     }
+
+    long long receivedEpoch = atoll(rxValue.substring(0, colonIdx).c_str());
+    String hmacPart = rxValue.substring(colonIdx + 1);
+    if (receivedEpoch <= 1700000000LL || !verifyTimeSyncHmac(receivedEpoch, hmacPart)) {
+      Serial.println("[HG-ANCHOR] Rejected invalid/forged time-sync HMAC.");
+      return;
+    }
+
+    struct timeval tv;
+    tv.tv_sec = (time_t)receivedEpoch;
+    tv.tv_usec = 0;
+    settimeofday(&tv, NULL);
+    Serial.printf("[HG-ANCHOR] Authenticated clock sync via BLE: %lld\n",
+                  receivedEpoch);
+    updateRollingToken(true);
   }
 };
 
@@ -288,9 +332,13 @@ void loop() {
   // reset state and restart advertising so the anchor is immediately free for
   // the next student.
   if (deviceConnected && (now - connectedTimestampMs > MAX_CONN_HOLD_MS)) {
-    Serial.println("[HG-ANCHOR] Watchdog: Resetting stale BLE peer & "
+    Serial.println("[HG-ANCHOR] Watchdog: Disconnecting stale BLE peer & "
                    "restarting advertising");
+    if (pServer != nullptr && activeConnId != 0xFFFF) {
+      pServer->disconnect(activeConnId);
+    }
     deviceConnected = false;
+    activeConnId = 0xFFFF;
     BLEDevice::startAdvertising();
   }
 

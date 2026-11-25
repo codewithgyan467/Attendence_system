@@ -55,11 +55,15 @@ function getLanIp() {
 
 function printBanner(cloudUrl) {
   const lanIp = getLanIp();
-  const lanUrl = `https://${lanIp}:3000`;
+  const targetPort = process.env.PORT || 5000;
+  const targetUrl = process.env.TUNNEL_TARGET_URL || `http://localhost:${targetPort}`;
+  const isHttpsTarget = targetUrl.startsWith('https://');
+  const lanPort = isHttpsTarget ? 3000 : targetPort;
+  const lanUrl = `${isHttpsTarget ? 'https' : 'http'}://${lanIp}:${lanPort}`;
   const bluefyLanUrl = `bluefy://open?url=${encodeURIComponent(lanUrl)}`;
 
   console.log('\n' + '='.repeat(76));
-  console.log('🚀 HOSTELGUARD ENTERPRISE — PERMANENT ZERO-BURDEN ATTENDANCE PIPELINE');
+  console.log('🚀 ATTENDRA ENTERPRISE — PERMANENT ZERO-BURDEN ATTENDANCE PIPELINE');
   console.log('='.repeat(76));
   console.log(`\n📌 [RECOMMENDED FOR 400-500 STUDENTS] PERMANENT HOSTEL WI-FI URL:`);
   console.log(`   👉 Browser URL:  \x1b[32m\x1b[1m${lanUrl}\x1b[0m`);
@@ -138,9 +142,13 @@ async function startTunnel() {
     process.exit(1);
   }
 
-  console.log('📡 Starting automated Cloudflare secure tunnel to https://localhost:3000...');
+  const targetPort = process.env.PORT || 5000;
+  const targetUrl = process.env.TUNNEL_TARGET_URL || `http://localhost:${targetPort}`;
+  console.log(`📡 Starting automated Cloudflare secure tunnel to ${targetUrl}...`);
 
-  const args = ['tunnel', '--url', 'https://localhost:3000', '--no-tls-verify'];
+  const args = targetUrl.startsWith('https://')
+    ? ['tunnel', '--url', targetUrl, '--no-tls-verify']
+    : ['tunnel', '--url', targetUrl];
   const child = spawn(cloudflaredBin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
   let urlCaptured = false;

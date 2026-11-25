@@ -12,10 +12,24 @@
  */
 
 const os = require('os');
+const dgram = require('dgram');
 const { EventEmitter } = require('events');
 
 const VIRTUAL_ADAPTER_REGEX = /docker|veth|wsl|vmware|vbox|virtual|tun|tap|hyper-v|loopback|npcap|bluetooth/i;
 const WIFI_OR_ETH_REGEX = /wi-fi|wireless|wlan|airport|en0|eth|ethernet|local area connection/i;
+const DEFAULT_UDP_DISCOVERY_PORT = parseInt(process.env.LAN_DISCOVERY_UDP_PORT || '45678', 10);
+
+/**
+ * Computes IPv4 directed broadcast address from an IP and subnet mask.
+ */
+function computeBroadcastAddress(ip, netmask) {
+  if (!ip || !netmask) return null;
+  const ipParts = ip.split('.').map((n) => parseInt(n, 10));
+  const maskParts = netmask.split('.').map((n) => parseInt(n, 10));
+  if (ipParts.length !== 4 || maskParts.length !== 4) return null;
+  if (ipParts.some(Number.isNaN) || maskParts.some(Number.isNaN)) return null;
+  return ipParts.map((octet, idx) => (octet | (~maskParts[idx] & 255)) & 255).join('.');
+}
 
 class WifiRoamingWatcher extends EventEmitter {
   constructor() {
@@ -24,6 +38,8 @@ class WifiRoamingWatcher extends EventEmitter {
     this.currentInterface = null;
     this.pollIntervalMs = 5000;
     this.timer = null;
+    this.udpSocket = null;
+    this.udpPort = DEFAULT_UDP_DISCOVERY_PORT;
     this.port = process.env.PORT || 5000;
     this.db = null;
     this.cloudEndpoint = process.env.CLOUD_DISCOVERY_URL || 'https://hostelguard-backend-oimp.onrender.com/api/v1/lan-discovery';
@@ -104,6 +120,8 @@ class WifiRoamingWatcher extends EventEmitter {
           result.push({
             name,
             ip: net.address,
+            netmask: net.netmask || null,
+            broadcast: computeBroadcastAddress(net.address, net.netmask),
             isPrivate: this.isPrivateIPv4(net.address),
             isWifi: /wi-fi|wireless|wlan|airport/i.test(name)
           });
@@ -216,6 +234,7 @@ class WifiRoamingWatcher extends EventEmitter {
 
       await this.persistToDatabase(detectedIp);
       this.pushToCloud(detectedIp).catch(() => {});
+      this.broadcastLanBeacon();
 
       this.emit('ipChanged', {
         oldIp,
@@ -223,6 +242,105 @@ class WifiRoamingWatcher extends EventEmitter {
         port: this.port,
         fullUrl: `http://${detectedIp}:${this.port}/api/v1`
       });
+    } else {
+      // Periodically pulse LAN discovery beacon on active private adapters
+      this.broadcastLanBeacon();
+    }
+  }
+
+  /**
+   * Builds compact LAN discovery payload shared over HTTP /ping-hostel and UDP discovery
+   */
+  buildDiscoveryPayload(portOverride = null) {
+    const primaryIp = this.getCurrentLanIp();
+    const targetPort = Number(portOverride || this.port || 5000);
+    const interfaces = this.getAllActiveInterfaces();
+    const privateIps = interfaces.filter((i) => i.isPrivate).map((i) => i.ip);
+    return {
+      service: 'ATTENDRA',
+      status: 'ok',
+      wardenIp: primaryIp,
+      ips: privateIps.length > 0 ? privateIps : [primaryIp],
+      port: targetPort,
+      fullUrl: `http://${primaryIp}:${targetPort}/api/v1`,
+      hostname: os.hostname(),
+      timestamp: Date.now()
+    };
+  }
+
+  /**
+   * Broadcasts UDP LAN presence beacon to every active private subnet broadcast address
+   */
+  broadcastLanBeacon() {
+    if (this.isCloudInstance || !this.udpSocket) return;
+    try {
+      const payload = Buffer.from(JSON.stringify(this.buildDiscoveryPayload()));
+      const interfaces = this.getAllActiveInterfaces().filter((i) => i.isPrivate);
+      const targets = new Set(['255.255.255.255']);
+      for (const iface of interfaces) {
+        if (iface.broadcast) {
+          targets.add(iface.broadcast);
+        } else {
+          const parts = iface.ip.split('.');
+          if (parts.length === 4) targets.add(`${parts[0]}.${parts[1]}.${parts[2]}.255`);
+        }
+      }
+      for (const target of targets) {
+        try {
+          this.udpSocket.send(payload, 0, payload.length, this.udpPort, target, () => {});
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  /**
+   * Starts UDP LAN Discovery responder on port 45678 so phones discover the host 100% offline.
+   */
+  startUdpDiscovery(udpPort = DEFAULT_UDP_DISCOVERY_PORT) {
+    if (this.isCloudInstance || this.udpSocket || process.env.NODE_ENV === 'test') return;
+    this.udpPort = udpPort;
+
+    try {
+      const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+
+      socket.on('listening', () => {
+        try {
+          socket.setBroadcast(true);
+          this.broadcastLanBeacon();
+        } catch (_) {}
+      });
+
+      socket.on('message', (msg, rinfo) => {
+        const text = msg ? msg.toString('utf8').trim() : '';
+        if (!text.startsWith('ATTENDRA_DISCOVER') && !text.startsWith('HOSTELGUARD_DISCOVER')) {
+          return;
+        }
+        try {
+          const payload = Buffer.from(JSON.stringify(this.buildDiscoveryPayload()));
+          socket.send(payload, 0, payload.length, rinfo.port, rinfo.address, () => {});
+        } catch (_) {}
+      });
+
+      socket.on('error', (err) => {
+        console.warn('[WifiRoamingWatcher] UDP Discovery socket notice:', err.message);
+        try { socket.close(); } catch (_) {}
+        if (this.udpSocket === socket) this.udpSocket = null;
+      });
+
+      socket.bind(this.udpPort, '0.0.0.0');
+      if (typeof socket.unref === 'function') {
+        socket.unref();
+      }
+      this.udpSocket = socket;
+    } catch (err) {
+      console.warn('[WifiRoamingWatcher] Could not start UDP discovery:', err.message);
+    }
+  }
+
+  stopUdpDiscovery() {
+    if (this.udpSocket) {
+      try { this.udpSocket.close(); } catch (_) {}
+      this.udpSocket = null;
     }
   }
 
@@ -233,7 +351,8 @@ class WifiRoamingWatcher extends EventEmitter {
     this.port = port;
     this.db = db;
 
-    // Run immediate check
+    // Run immediate check and bind offline UDP responder
+    this.startUdpDiscovery();
     this.pollNetworkStatus();
 
     if (!this.timer) {
@@ -242,6 +361,9 @@ class WifiRoamingWatcher extends EventEmitter {
           console.warn('[WifiRoamingWatcher] Poll error:', err.message);
         });
       }, this.pollIntervalMs);
+      if (typeof this.timer.unref === 'function') {
+        this.timer.unref();
+      }
     }
     return this.getWardenUrl(port);
   }
@@ -251,6 +373,7 @@ class WifiRoamingWatcher extends EventEmitter {
       clearInterval(this.timer);
       this.timer = null;
     }
+    this.stopUdpDiscovery();
   }
 }
 

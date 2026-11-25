@@ -1199,22 +1199,32 @@ export default function StudentPortal({ activeTab = 'student_attendance', onSele
       let photometricData = null;
       if (requiresStepUp) {
         const colors = stepUpColorSequence && stepUpColorSequence.length >= 2 ? stepUpColorSequence : ['#FFFFFF', '#3B82F6'];
+        const flashFrames = [];
         try {
-          // Color 1
+          // Color 1 + capture illuminated face frame
           setFlashColor(colors[0]);
           setIsFlashing(true);
           await new Promise((r) => setTimeout(r, 140));
-          // Color 2
+          const f0 = captureCleanFrame(videoRef.current, 320);
+          if (f0) flashFrames.push(f0);
+          // Color 2 + capture illuminated face frame
           setFlashColor(colors[1]);
           await new Promise((r) => setTimeout(r, 140));
+          const f1 = captureCleanFrame(videoRef.current, 320);
+          if (f1) flashFrames.push(f1);
           setIsFlashing(false);
           photometricData = {
-            flash_verified: true,
-            colors: colors
+            flash_verified: flashFrames.length >= 2,
+            colors: colors,
+            frames: flashFrames
           };
         } catch (_) {
           setIsFlashing(false);
-          photometricData = { flash_verified: true, colors: colors };
+          photometricData = {
+            flash_verified: flashFrames.length >= 2,
+            colors: colors,
+            frames: flashFrames
+          };
         }
       } else if (screenFlashEnabled) {
         setTimeout(() => setIsFlashing(false), 200);

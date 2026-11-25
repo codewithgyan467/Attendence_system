@@ -26,18 +26,14 @@ function openOfflineDB() {
 }
 
 /**
- * Calculates SHA-256 hash using native Web Crypto API
+ * Calculates SHA-256 hash using native Web Crypto API matching backend verification:
+ * sha256(String(studentId) + String(frameBase64))
  */
-export async function computeImageSha256(base64Data) {
+export async function computeImageSha256(base64Data, studentId = '') {
   try {
     if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
-      const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
-      const binaryString = atob(cleanBase64);
-      const len = binaryString.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
+      const payloadStr = String(studentId || '') + String(base64Data || '');
+      const bytes = new TextEncoder().encode(payloadStr);
       const hashBuffer = await window.crypto.subtle.digest('SHA-256', bytes);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
@@ -55,10 +51,11 @@ export async function enqueueOfflineAttendance(record) {
   try {
     const db = await openOfflineDB();
     const frameBase64 = record.frameBase64 || record.live_photo || record.livePhoto;
-    const computedHash = record.imageHash || record.image_hash || (frameBase64 ? await computeImageSha256(frameBase64) : null);
+    const studentId = record.studentId || record.student_id || null;
+    const computedHash = record.imageHash || record.image_hash || (frameBase64 ? await computeImageSha256(frameBase64, studentId) : null);
 
     const queueItem = {
-      studentId: record.studentId || record.student_id || null,
+      studentId,
       rollNumber: record.rollNumber || record.roll_number || null,
       frameBase64: frameBase64,
       imageHash: computedHash,
@@ -176,14 +173,24 @@ export async function flushOfflineQueue() {
         console.warn(`[OfflineQueue] Item ${item.id} sync returned unhandled response:`, res);
       }
     } catch (err) {
-      // 409 Conflict means it was already marked, so safe to delete from local queue
-      if (err.status === 409) {
+      const errMsg = String(err.message || err || '');
+      const isConflict = err.status === 409 || /already recorded|409/i.test(errMsg);
+      const isPermanentReject =
+        !isConflict &&
+        (/status 400|status 403|status 404|mismatch|invalid|rejected|missing required|not registered|not found/i.test(errMsg) ||
+          [400, 403, 404].includes(err.status));
+
+      // 409 Conflict means already marked; terminal 4xx validation rejects won't succeed on retry
+      if (isConflict) {
         console.log(`[OfflineQueue] Item ${item.id} already verified on server (409 Conflict). Purging.`);
         await deleteQueuedAttendance(item.id);
         flushed++;
+      } else if (isPermanentReject) {
+        console.warn(`[OfflineQueue] Purging unrecoverable offline item ${item.id}: ${errMsg}`);
+        await deleteQueuedAttendance(item.id);
       } else {
-        console.error(`[OfflineQueue] Failed to sync item ${item.id}:`, err.message || err);
-        // If network error, stop flushing to preserve battery/network and retry later
+        console.error(`[OfflineQueue] Failed to sync item ${item.id}:`, errMsg);
+        // Network / 5xx / transient error: stop flushing and retry later
         break;
       }
     }

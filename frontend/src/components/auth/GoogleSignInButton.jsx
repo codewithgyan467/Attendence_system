@@ -98,7 +98,15 @@ export default function GoogleSignInButton({
       }
     }
 
-    // If client ID is not configured in .env yet, show simulated Google Login dialog
+    // In production without a configured OAuth Client ID, fail closed instead of showing demo email login
+    if (import.meta.env.PROD) {
+      if (onError) {
+        onError('Google Sign-In is not configured on this server. Please sign in with your Roll Number & Password or OTP.');
+      }
+      return;
+    }
+
+    // In local dev without client ID, allow simulated Google Login dialog
     setShowDemoModal(true);
   };
 

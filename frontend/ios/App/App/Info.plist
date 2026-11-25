@@ -76,5 +76,10 @@
 	<string>ATTENDRA requires Bluetooth to detect physical hostel floor ESP32 radio beacons.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>ATTENDRA connects to floor ESP32 beacons to verify physical presence.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

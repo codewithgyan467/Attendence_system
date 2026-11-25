@@ -1,4 +1,5 @@
 import os
+import hmac
 import logging
 import asyncio
 import threading
@@ -8,7 +9,7 @@ import numpy as np
 
 cv2.setNumThreads(min(4, os.cpu_count() or 2))
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Depends, Header
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -64,6 +65,23 @@ app = FastAPI(
 MAX_INFERENCE_CONCURRENCY = max(1, min(4, (os.cpu_count() or 2) // 2))
 INFERENCE_SEMAPHORE = asyncio.Semaphore(MAX_INFERENCE_CONCURRENCY)
 INFERENCE_LOCK = threading.Lock()
+AI_SERVICE_SECRET = os.getenv("AI_SERVICE_SECRET", "hg-internal-mesh-secret-2026")
+
+
+def verify_internal_token(x_internal_token: Optional[str] = Header(default=None)):
+    """Restricts biometric inference endpoints to authenticated Node.js backend callers."""
+    if not x_internal_token or not hmac.compare_digest(x_internal_token, AI_SERVICE_SECRET):
+        raise HTTPException(status_code=401, detail="Unauthorized internal AI service request")
+
+
+def is_simulation_permitted(requested: Optional[bool]) -> bool:
+    """Fail-closed: never allow synthetic simulation fallback in production."""
+    if not requested:
+        return False
+    is_prod = os.getenv("NODE_ENV", "").lower() == "production" or os.getenv("ENVIRONMENT", "").lower() == "production"
+    if is_prod and os.getenv("AI_ALLOW_SIMULATION", "").lower() != "true":
+        return False
+    return True
 
 # ----------------- Request / Response Models -----------------
 
@@ -81,6 +99,7 @@ class EmbeddingResult(BaseModel):
     confidence: float
     liveness_score: float
     is_live: bool
+    diagnostic: Optional[dict] = None
 
 class ExtractEmbeddingsResponse(BaseModel):
     success: bool
@@ -132,6 +151,7 @@ def health_check():
     }
 
 async def _do_extract_embeddings(req: ExtractEmbeddingsRequest):
+    allow_sim = is_simulation_permitted(req.allow_simulation_fallback)
     results: List[EmbeddingResult] = []
 
     for item in req.photos:
@@ -140,7 +160,7 @@ async def _do_extract_embeddings(req: ExtractEmbeddingsRequest):
             vec, aligned_face, raw_face, conf = await run_in_threadpool(face_engine.extract_full_face_data, bgr_img)
 
             if vec is None or aligned_face is None:
-                if req.allow_simulation_fallback:
+                if allow_sim:
                     def compute_fallback():
                         gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
                         resized = cv2.resize(gray, (64, 64))
@@ -205,7 +225,7 @@ async def _do_extract_embeddings(req: ExtractEmbeddingsRequest):
     )
 
 @app.post("/api/v1/faces/extract-embeddings", response_model=ExtractEmbeddingsResponse)
-async def extract_embeddings(req: ExtractEmbeddingsRequest):
+async def extract_embeddings(req: ExtractEmbeddingsRequest, _: None = Depends(verify_internal_token)):
     """
     Phase 2: Student Onboarding - Multi-angle facial vector generation.
     Protected by INFERENCE_SEMAPHORE (max 4 concurrent) with fail-fast queue timeout.
@@ -224,6 +244,7 @@ async def extract_embeddings(req: ExtractEmbeddingsRequest):
         INFERENCE_SEMAPHORE.release()
 
 async def _do_verify_live(req: VerifyLiveRequest):
+    allow_sim = is_simulation_permitted(req.allow_simulation_fallback)
     # Pre-inference input size cap (<= 2MB)
     if len(req.live_image_base64) > 2 * 1024 * 1024 * 4 // 3:
         raise HTTPException(
@@ -244,7 +265,7 @@ async def _do_verify_live(req: VerifyLiveRequest):
             pad_eval = await run_in_threadpool(liveness_detector.evaluate_pre_cropped_pad, pad_80_bgr)
             
             # If fast-path PAD passes, test embedding match
-            if pad_eval.get("is_live", False) or req.allow_simulation_fallback:
+            if pad_eval.get("is_live", False) or allow_sim:
                 # 2. Direct SFace / ArcFace embedding extraction (<10ms) offloaded to thread pool
                 live_vec, conf = await run_in_threadpool(face_engine.extract_from_pre_cropped, crop_112_bgr)
 
@@ -295,7 +316,7 @@ async def _do_verify_live(req: VerifyLiveRequest):
         raise HTTPException(status_code=400, detail=f"Invalid image format: {e}")
 
     # Fast pre-inference quality gate: Laplacian variance blur test (relaxed for indoor hostel lighting)
-    if not req.allow_simulation_fallback:
+    if not allow_sim:
         def check_blur(bgr):
             gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
             return float(cv2.Laplacian(gray, cv2.CV_64F).var())
@@ -317,8 +338,8 @@ async def _do_verify_live(req: VerifyLiveRequest):
     # 1. Detect and extract primary resident face from frame offloaded to thread pool
     live_vec, aligned_face, raw_face, conf = await run_in_threadpool(face_engine.extract_full_face_data, primary_bgr)
 
-    if live_vec is None or aligned_face is None or raw_face is None:
-        if req.allow_simulation_fallback:
+    if live_vec is None or aligned_face is None or raw_face is None or isinstance(raw_face, str):
+        if allow_sim and not isinstance(raw_face, str):
             def compute_primary_fallback():
                 gray = cv2.cvtColor(primary_bgr, cv2.COLOR_BGR2GRAY)
                 resized = cv2.resize(gray, (64, 64))
@@ -361,7 +382,7 @@ async def _do_verify_live(req: VerifyLiveRequest):
                 logger.warning(f"Error decoding temporal burst frame: {t_err}")
 
     # 3. Enterprise v4.0 Multi-Frame PAD & Active Challenge Evaluation offloaded to thread pool
-    if not req.allow_simulation_fallback:
+    if not allow_sim:
         active_target = req.active_challenge or "HOLD_STILL"
         seq_eval = await run_in_threadpool(liveness_detector.evaluate_sequence, eval_bgr_frames, eval_raw_faces, active_target)
         
@@ -379,6 +400,32 @@ async def _do_verify_live(req: VerifyLiveRequest):
                     "evaluation": seq_eval
                 }
             )
+        # Optional photometric flash response sanity check when step-up flash frames are provided
+        if req.requires_step_up and req.step_up_frames and len(req.step_up_frames) >= 2:
+            def check_step_up_flash_delta():
+                f0 = face_engine.decode_image(req.step_up_frames[0])
+                f1 = face_engine.decode_image(req.step_up_frames[1])
+                if f0 is None or f1 is None:
+                    return True, 0.0
+                if f0.shape != f1.shape:
+                    f1 = cv2.resize(f1, (f0.shape[1], f0.shape[0]))
+                diff = float(np.mean(cv2.absdiff(f0, f1)))
+                return diff >= 0.25, diff
+            flash_ok, flash_diff = await run_in_threadpool(check_step_up_flash_delta)
+            if not flash_ok:
+                return VerifyLiveResponse(
+                    is_match=False,
+                    is_live=False,
+                    similarity_score=0.0,
+                    liveness_score=0.0,
+                    confidence_passed=False,
+                    status="SPOOF_ATTEMPT_DETECTED",
+                    details={
+                        "message": "Step-up photometric flash sequence rejected static/frozen frames.",
+                        "reason": "PHOTOMETRIC_STATIC_FRAMES",
+                        "flash_delta": round(flash_diff, 4)
+                    }
+                )
         liveness_score = seq_eval["liveness_score"]
         eval_details = seq_eval
     else:
@@ -428,7 +475,7 @@ async def _do_verify_live(req: VerifyLiveRequest):
     )
 
 @app.post("/api/v1/faces/verify-live", response_model=VerifyLiveResponse)
-async def verify_live(req: VerifyLiveRequest):
+async def verify_live(req: VerifyLiveRequest, _: None = Depends(verify_internal_token)):
     """
     HostelGuard Enterprise v4.0 Attendance Verification & Presentation Attack Detection.
     Protected by INFERENCE_SEMAPHORE (max 4 concurrent) with 5-second queue timeout.
@@ -476,7 +523,7 @@ def run_biometric_pipeline(image_bytes: bytes) -> dict:
         }
 
 @app.post("/verify-attendance")
-async def verify_attendance(file: Optional[UploadFile] = File(None), request: Request = None):
+async def verify_attendance(file: Optional[UploadFile] = File(None), request: Request = None, _: None = Depends(verify_internal_token)):
     """
     Step 3: High-concurrency curfew attendance verification route.
     Protected by INFERENCE_SEMAPHORE (max 4 concurrent) to eliminate CPU freeze and OOM.

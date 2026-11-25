@@ -185,17 +185,11 @@ app.get(['/api/v1/system/version', '/system/version'], (req, res) => {
 
 // Fast Ping-Hostel Discovery Endpoint (Task 1 requirement: <2ms response, zero cache)
 app.get(['/api/v1/ping-hostel', '/ping-hostel'], (req, res) => {
-  const currentIp = wifiRoamingWatcher.getCurrentLanIp();
+  const payload = wifiRoamingWatcher.buildDiscoveryPayload(PORT);
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-  res.json({
-    status: 'ok',
-    wardenIp: currentIp,
-    port: Number(PORT),
-    fullUrl: `http://${currentIp}:${PORT}/api/v1`,
-    timestamp: Date.now()
-  });
+  res.json(payload);
 });
 
 // Cloud LAN Discovery Registry (Allows Warden laptop to register current LAN IP, and students to discover it)
@@ -374,6 +368,10 @@ process.on('uncaughtException', (err) => {
 async function startServer() {
   try {
     await initDatabase();
+    try {
+      const authorizedWifiService = require('./services/authorizedWifiService');
+      await authorizedWifiService.hydrate();
+    } catch (_) {}
     await ensureAiServiceRunning();
     try {
       const localVaultDb = require('./config/localVaultDb');
@@ -473,6 +471,7 @@ async function startServer() {
     // Graceful Shutdown
     const handleShutdown = (signal) => {
       console.log(`Received ${signal}. Shutting down gracefully...`);
+      try { wifiRoamingWatcher.stopRoamingWatcher(); } catch (_) {}
       server.close(() => {
         console.log('HTTP server closed.');
         if (aiProcess) {

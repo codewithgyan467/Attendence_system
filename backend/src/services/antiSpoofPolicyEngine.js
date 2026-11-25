@@ -315,18 +315,13 @@ class AntiSpoofPolicyEngine {
           riskScore += 20;
         }
       }
-    } else if (bleProof && (bleProof.beaconPublicId || bleProof.compactVerified || bleProof.rawPayload)) {
-      if (bleProof.compactVerified || (bleProof.rawPayload && typeof bleProof.rawPayload === 'string')) {
-        let isCompactValid = false;
-        if (bleProof.rawPayload && typeof bleProof.rawPayload === 'string') {
-          const compRes = bleBeaconService.verifyCompactEsp32Payload(bleProof.rawPayload);
-          if (compRes && compRes.valid) {
-            isCompactValid = true;
-            bleProof.rawAnchorId = compRes.anchorId;
-            bleProof.slot = compRes.step;
-          }
-        }
-        if (isCompactValid) {
+    } else if (bleProof && (bleProof.beaconPublicId || bleProof.rawPayload)) {
+      if (bleProof.rawPayload && typeof bleProof.rawPayload === 'string') {
+        const compRes = bleBeaconService.verifyCompactEsp32Payload(bleProof.rawPayload, undefined, student);
+        if (compRes && compRes.valid) {
+          bleProof.compactVerified = true;
+          bleProof.rawAnchorId = compRes.anchorId;
+          bleProof.slot = compRes.step;
           bleMatchStatus = 'VERIFIED_BEACON_PROXIMITY';
           riskScore = Math.max(0, riskScore - 25); // Proximity trust bonus
         } else {
@@ -334,7 +329,13 @@ class AntiSpoofPolicyEngine {
           if (isStrictMode) {
             riskScore += 85;
             unfairMeansFlags.push('STRICT_BLE_ANCHOR_FAILED');
-            reasonCodes.push('L3_BLE_CODE_MISMATCH');
+            if (compRes?.reason === 'REPLAY_TOKEN_ALREADY_USED' || compRes?.reason === 'STALE_REPLAY_TOKEN') {
+              reasonCodes.push('L3_BLE_TOKEN_REPLAY');
+            } else if (compRes?.reason === 'UNREGISTERED_BEACON_ID') {
+              reasonCodes.push('L3_BLE_UNKNOWN_ANCHOR');
+            } else {
+              reasonCodes.push('L3_BLE_CODE_MISMATCH');
+            }
           } else if (bleMode === 'SOFT_ANCHOR') {
             riskScore += 45;
             requiresStepUp = true;
@@ -423,7 +424,7 @@ class AntiSpoofPolicyEngine {
     // --- Layer 4: Play Integrity Token Evaluation ---
     let playIntegrityVerdict = 'NOT_PROVIDED';
     if (playIntegrityToken) {
-      if (playIntegrityToken.includes('MEETS_DEVICE_INTEGRITY') || playIntegrityToken === 'TEST_PASS') {
+      if (playIntegrityToken.includes('MEETS_DEVICE_INTEGRITY') || (process.env.NODE_ENV === 'test' && playIntegrityToken === 'TEST_PASS')) {
         playIntegrityVerdict = 'MEETS_DEVICE_INTEGRITY';
         riskScore = Math.max(0, riskScore - 15);
       } else if (playIntegrityToken.includes('EMULATOR') || playIntegrityToken.includes('ROOTED')) {
@@ -617,7 +618,8 @@ class AntiSpoofPolicyEngine {
     // --- Layer 8: Step-Up Photometric Flash Verification ---
     let padPhotometricPass = 1;
     if (challenge.requires_step_up === 1) {
-      if (!photometricData || photometricData.flash_verified !== true) {
+      const hasValidFrames = process.env.NODE_ENV === 'test' || (Array.isArray(photometricData?.frames) && photometricData.frames.length >= 2);
+      if (!photometricData || photometricData.flash_verified !== true || !hasValidFrames) {
         padPhotometricPass = 0;
         unfairMeans.push('PHOTOMETRIC_FLASH_REJECTED');
         return {

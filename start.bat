@@ -35,7 +35,7 @@ echo ========================================================================
 echo.
 
 set NODE_ENV=production
-set UVICORN_WORKERS=2
+set UVICORN_WORKERS=1
 set PORT=5000
 set OMP_NUM_THREADS=2
 set MKL_NUM_THREADS=2
@@ -44,13 +44,27 @@ set NUMEXPR_NUM_THREADS=2
 set NODE_OPTIONS=--max-old-space-size=1024
 set STRICT_LOCK_LOCAL=true
 
-:: 1. Windows Firewall Setup for Port 5000
-echo [1/4] Configuring Windows Firewall for Local LAN Access (Port 5000)...
+:: 1. Windows Firewall Setup for Port 5000 (TCP API) and Port 45678 (UDP LAN Auto-Discovery)
+echo [1/4] Configuring Windows Firewall for Local LAN Access (Ports 5000 TCP / 45678 UDP)...
+set NEED_FW_ADMIN=0
+netsh advfirewall firewall show rule name="ATTENDRA Warden Backend (Port 5000)" >nul 2>nul
+if %errorlevel% neq 0 set NEED_FW_ADMIN=1
+netsh advfirewall firewall show rule name="ATTENDRA LAN Discovery (UDP 45678)" >nul 2>nul
+if %errorlevel% neq 0 set NEED_FW_ADMIN=1
+
+if "%NEED_FW_ADMIN%"=="1" (
+    net session >nul 2>&1
+    if !errorlevel! equ 0 (
+        netsh advfirewall firewall add rule name="ATTENDRA Warden Backend (Port 5000)" dir=in action=allow protocol=TCP localport=5000 profile=any >nul 2>nul
+        netsh advfirewall firewall add rule name="ATTENDRA LAN Discovery (UDP 45678)" dir=in action=allow protocol=UDP localport=45678 profile=any >nul 2>nul
+    ) else (
+        echo [!] Requesting one-time Administrator permission to open Windows Firewall for LAN phones...
+        powershell -NoProfile -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c netsh advfirewall firewall add rule name=\"ATTENDRA Warden Backend (Port 5000)\" dir=in action=allow protocol=TCP localport=5000 profile=any & netsh advfirewall firewall add rule name=\"ATTENDRA LAN Discovery (UDP 45678)\" dir=in action=allow protocol=UDP localport=45678 profile=any' -Verb RunAs -Wait" >nul 2>nul
+    )
+)
 netsh advfirewall firewall show rule name="ATTENDRA Warden Backend (Port 5000)" >nul 2>nul
 if %errorlevel% neq 0 (
-    netsh advfirewall firewall add rule name="ATTENDRA Warden Backend (Port 5000)" dir=in action=allow protocol=TCP localport=5000 profile=any >nul 2>nul
-) else (
-    netsh advfirewall firewall set rule name="ATTENDRA Warden Backend (Port 5000)" new profile=any >nul 2>nul
+    echo [WARNING] Windows Firewall rule for Port 5000 could not be verified. Run start.bat as Administrator once if phones cannot connect.
 )
 
 :: Ensure Port 8000 (Internal AI Microservice) is loopback only
@@ -67,7 +81,7 @@ if "!PRIMARY_LAN_IP!"=="" set PRIMARY_LAN_IP=localhost
 
 :: 3. Launch AI Liveness Microservice
 echo [2/4] Starting AI Liveness Microservice (Port 8000)...
-start "ATTENDRA AI Microservice" cmd /k "cd /d ""%~dp0backend\ai_service"" && if exist venv\Scripts\activate (call venv\Scripts\activate) && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2"
+start "ATTENDRA AI Microservice" cmd /k "cd /d ""%~dp0backend\ai_service"" && if exist venv\Scripts\activate (call venv\Scripts\activate) && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1"
 
 :: 4. Ensure Web Portal is built
 echo [3/4] Verifying Web Portal Assets...
@@ -125,12 +139,12 @@ echo 3. Launching React Vite Dev Server (Port 3000)...
 start "ATTENDRA Frontend Dev" cmd /k "cd /d ""%~dp0frontend"" && npm.cmd run dev"
 
 echo.
-echo Opening Developer Web Portal (http://localhost:3000)...
-start /b "" cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:3000"
+echo Opening Developer Web Portal (https://localhost:3000)...
+start /b "" cmd /c "timeout /t 4 /nobreak >nul && start https://localhost:3000"
 
 echo ========================================================================
 echo All development services launched in separate windows!
-echo  - Frontend Web UI:  http://localhost:3000
+echo  - Frontend Web UI:  https://localhost:3000
 echo  - Backend API:      http://localhost:5000/health
 echo  - AI Microservice:  http://localhost:8000/health
 echo ========================================================================
@@ -147,13 +161,13 @@ echo ========================================================================
 echo.
 
 echo 1. Launching AI Microservice (Port 8000)...
-start "ATTENDRA AI Microservice" cmd /k "cd /d ""%~dp0backend\ai_service"" && if exist venv\Scripts\activate (call venv\Scripts\activate) && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2"
+start "ATTENDRA AI Microservice" cmd /k "cd /d ""%~dp0backend\ai_service"" && if exist venv\Scripts\activate (call venv\Scripts\activate) && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1"
 
 echo 2. Launching Backend ^& Production Web Hosting (Port 5000)...
 start "ATTENDRA Backend Server" cmd /k "cd /d ""%~dp0backend"" && set NODE_ENV=production && set PORT=5000 && node src/server.js"
 
 echo 3. Launching Cloudflare Tunnel for Remote Mobile ^& Bluefy Access...
-start "ATTENDRA Cloudflare Tunnel" cmd /k "cd /d ""%~dp0"" && node scripts/auto_tunnel.js"
+start "ATTENDRA Cloudflare Tunnel" cmd /k "cd /d ""%~dp0"" && set TUNNEL_TARGET_URL=http://localhost:5000 && node scripts/auto_tunnel.js"
 
 echo.
 echo Opening Web Portal (http://localhost:5000)...

@@ -23,7 +23,7 @@
     </queries>
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -65,9 +65,11 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
-    <!-- Wi-Fi State Permissions for Floor Router Verification -->
+    <!-- Wi-Fi State Permissions for Floor Router Verification & Offline LAN Discovery -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
     <!-- Bluetooth Permissions for ESP32 Beacon Detection -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />

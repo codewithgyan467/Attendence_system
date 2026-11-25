@@ -930,16 +930,21 @@ const seedInitialData = async () => {
       `, [uuidv4(), activeGeoId]);
     }
 
+    const defaultAnchorSecret = (process.env.NODE_ENV !== 'test' && process.env.ANCHOR_HMAC_SECRET)
+      ? process.env.ANCHOR_HMAC_SECRET.trim()
+      : 'hostelguard_super_secret_32b_key';
+
     const existingBle1 = await getQuery(`SELECT id FROM site_ble_beacons WHERE beacon_public_id = 'HG-BEACON-BLKA-01'`);
     if (!existingBle1 && activeGeoId) {
       await runQuery(`
         INSERT INTO site_ble_beacons (id, geofence_id, beacon_public_id, key_version, shared_secret_ref, block_name, is_active)
-        VALUES (?, ?, 'HG-BEACON-BLKA-01', 1, 'hostelguard_super_secret_32b_key', 'Block A Ground Floor', 1)
-      `, [uuidv4(), activeGeoId]);
+        VALUES (?, ?, 'HG-BEACON-BLKA-01', 1, ?, 'Block A Ground Floor', 1)
+      `, [uuidv4(), activeGeoId, defaultAnchorSecret]);
     } else if (existingBle1) {
       // Sync active firmware secret if still on older hex dummy key
       await runQuery(
-        `UPDATE site_ble_beacons SET shared_secret_ref = 'hostelguard_super_secret_32b_key' WHERE beacon_public_id = 'HG-BEACON-BLKA-01' AND shared_secret_ref LIKE '4a8f9c%'`
+        `UPDATE site_ble_beacons SET shared_secret_ref = ? WHERE beacon_public_id = 'HG-BEACON-BLKA-01' AND shared_secret_ref LIKE '4a8f9c%'`,
+        [defaultAnchorSecret]
       ).catch(() => {});
     }
 

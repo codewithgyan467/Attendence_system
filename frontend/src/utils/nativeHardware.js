@@ -430,7 +430,7 @@ export const LocationAndEnvironmentEvidenceService = {
         bssids: []
       },
       ble_proof: null,
-      play_integrity_token: isNative ? 'TEST_PASS' : null,
+      play_integrity_token: null,
       is_native: isNative,
       assurance_tier: isNative ? 'NATIVE_HIGH' : 'PWA_DEGRADED',
       device_info: {
@@ -637,6 +637,8 @@ export async function scanHostelBleBeacon(options = {}) {
             }
 
             if (
+              devName.startsWith('ATTENDRA') ||
+              devName.startsWith('AT-') ||
               devName.startsWith('HG') ||
               devName.includes('BEACON') ||
               devName.includes('HOSTEL') ||
@@ -1042,7 +1044,7 @@ export async function scanHostelBleBeacon(options = {}) {
       const knownDevices = await navigator.bluetooth.getDevices().catch(() => []);
       const matchedDevice = knownDevices.find((d) => {
         const name = (d.name || '').toUpperCase();
-        return name.startsWith('HG-') || name.includes('BEACON') || name.includes('HOSTEL');
+        return name.startsWith('ATTENDRA') || name.startsWith('AT-') || name.startsWith('HG-') || name.includes('BEACON') || name.includes('HOSTEL');
       }) || (knownDevices.length === 1 ? knownDevices[0] : null);
 
       if (matchedDevice) {
@@ -1184,6 +1186,74 @@ export async function openSpoofAppSettings(packageName = null) {
     }
   }
   return false;
+}
+
+/**
+ * Verifies a server URL directly over native Wi-Fi-bound sockets with explicit timeouts,
+ * bypassing WebView's proxy queue so dead LAN IPs never stall subsequent lookups.
+ */
+export async function verifyNativeServerUrl(targetUrl, timeoutMs = 2000) {
+  if (!isNativeMobile() || !AntiSpoofBridge || !AntiSpoofBridge.verifyServerUrl) {
+    return null;
+  }
+  try {
+    const res = await Promise.race([
+      AntiSpoofBridge.verifyServerUrl({ url: targetUrl, timeoutMs }),
+      new Promise((resolve) => setTimeout(() => resolve(null), timeoutMs + 400))
+    ]);
+    if (res && res.ok && res.fullApi) {
+      return {
+        fullApi: res.fullApi,
+        wardenIp: res.wardenIp || '',
+        port: res.port || 5000,
+        hostname: res.hostname || ''
+      };
+    }
+  } catch (_) {}
+  return null;
+}
+
+/**
+ * Discovers the active Wi-Fi subnet and queries native UDP/TCP LAN discovery (ports 45678 / 5000)
+ * so Android and iOS apps find the Warden host server 100% offline.
+ */
+export async function discoverLocalNetworkInfo(options = {}) {
+  const emptyResult = {
+    deviceIp: '',
+    prefixLength: 24,
+    subnetPrefix: '',
+    gatewayIp: '',
+    broadcastIp: '',
+    wifiConnected: false,
+    discoveredUrls: [],
+    verifiedServer: null
+  };
+
+  if (!isNativeMobile() || !AntiSpoofBridge || !AntiSpoofBridge.discoverWardenServer) {
+    return emptyResult;
+  }
+
+  try {
+    const bridgePromise = AntiSpoofBridge.discoverWardenServer({
+      udpPort: options.udpPort || 45678,
+      httpPort: options.httpPort || 5000
+    });
+    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), options.timeoutMs || 4500));
+    const res = await Promise.race([bridgePromise, timeoutPromise]);
+    if (!res) return emptyResult;
+    return {
+      deviceIp: res.deviceIp || '',
+      prefixLength: res.prefixLength || 24,
+      subnetPrefix: res.subnetPrefix || '',
+      gatewayIp: res.gatewayIp || '',
+      broadcastIp: res.broadcastIp || '',
+      wifiConnected: Boolean(res.wifiConnected || res.deviceIp),
+      discoveredUrls: Array.isArray(res.discoveredUrls) ? res.discoveredUrls : [],
+      verifiedServer: res.verifiedServer || null
+    };
+  } catch (_) {
+    return emptyResult;
+  }
 }
 
 

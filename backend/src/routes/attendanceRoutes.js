@@ -105,6 +105,9 @@ router.get('/time-window', async (req, res) => {
  */
 const verifyLocationHandler = async (req, res) => {
   try {
+    if (process.env.NODE_ENV !== 'test' && !req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required to verify attendance location.' });
+    }
     // 0. Enforce real-world attendance schedule window
     const windowStatus = await getAttendanceWindowStatus();
     if (windowStatus.enforced && !windowStatus.isOpen) {
@@ -168,10 +171,13 @@ const verifyLocationHandler = async (req, res) => {
     }
 
     const effectiveBle = ble_proof || req.body.bleBeacon;
+    if (effectiveBle && typeof effectiveBle === 'object') {
+      // Never trust client-supplied compactVerified flag; computed strictly server-side
+      delete effectiveBle.compactVerified;
+    }
     const hasBleSignal = Boolean(
       effectiveBle &&
       (
-        effectiveBle.compactVerified === true ||
         (typeof effectiveBle.rawPayload === 'string' && effectiveBle.rawPayload.trim().length >= 10) ||
         effectiveBle.rollingCode ||
         effectiveBle.signature ||
@@ -249,7 +255,6 @@ const verifyLocationHandler = async (req, res) => {
       const hasBleAnchorSignal = Boolean(
         effectiveBleProof &&
         (
-          effectiveBleProof.compactVerified === true ||
           (typeof effectiveBleProof.rawPayload === 'string' && effectiveBleProof.rawPayload.trim().length >= 10) ||
           effectiveBleProof.rollingCode ||
           effectiveBleProof.signature ||
@@ -279,18 +284,6 @@ const verifyLocationHandler = async (req, res) => {
     const effectiveDeviceId = device_id || device_info.deviceId || student.device_id;
     const clientIp = (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : null) || req.ip || req.connection.remoteAddress || '127.0.0.1';
 
-    // Optional Fast-Pass: 19-Byte Compact ESP32 Payload Verification (0ms NTP Dependency)
-    if (ble_proof && typeof ble_proof.rawPayload === 'string') {
-      const compactRes = bleBeaconService.verifyCompactEsp32Payload(ble_proof.rawPayload, undefined, student);
-      if (compactRes.valid) {
-        ble_proof.compactVerified = true;
-        ble_proof.slot = compactRes.step;
-        ble_proof.rawAnchorId = compactRes.anchorId;
-        // Auto-learn student Wi-Fi router on valid hardware HMAC proof
-        authorizedWifiService.authorizeIp(clientIp, `Floor Beacon ${compactRes.anchorId}`, true);
-      }
-    }
-
     const userAgentHeader = req.headers['user-agent'] || device_info.userAgent || '';
     const evaluation = await antiSpoofPolicyEngine.evaluateLocationAndEnvironment({
       student,
@@ -301,7 +294,7 @@ const verifyLocationHandler = async (req, res) => {
       adbEnabled: Boolean(adb_enabled),
       samples,
       wifiScan: wifi_scan,
-      bleProof: ble_proof,
+      bleProof: effectiveBleProof,
       playIntegrityToken: play_integrity_token,
       deviceInfo: {
         ...device_info,
@@ -313,6 +306,15 @@ const verifyLocationHandler = async (req, res) => {
       geofence,
       userAgent: userAgentHeader
     });
+
+    // Auto-learn student Wi-Fi router only after single-pass cryptographic compact BLE validation succeeded
+    if (
+      evaluation.bleMatchStatus === 'VERIFIED_BEACON_PROXIMITY' &&
+      effectiveBleProof?.compactVerified &&
+      effectiveBleProof?.rawAnchorId
+    ) {
+      authorizedWifiService.authorizeIp(clientIp, `Floor Beacon ${effectiveBleProof.rawAnchorId}`, true);
+    }
 
     // 6. Handle Decision Outcomes
     if (evaluation.decisionOutcome === 'RETRY') {
@@ -351,9 +353,9 @@ const verifyLocationHandler = async (req, res) => {
         reasonCode = 'OUTSIDE_GEOFENCE';
         detailsMsg = `Layer 1 Rejected (Outside Geofence Perimeter): You are ${evaluation.distanceMeters}m away from the hostel center. Permitted boundary is ${evaluation.allowedRadius}m. Please return inside the hostel perimeter.`;
       } else if (isStrictBleFailed) {
-        if (req.body.ble_proof) {
+        if (effectiveBleProof) {
           // A beacon payload was actually received from the client device
-          const detectedId = req.body.ble_proof.beaconPublicId || req.body.ble_proof.rawAnchorId || 'Floor Anchor';
+          const detectedId = effectiveBleProof.beaconPublicId || effectiveBleProof.rawAnchorId || 'Floor Anchor';
           if (evaluation.reasonCodes?.includes('L3_BLE_TOKEN_REPLAY')) {
             reasonCode = 'BLE_TOKEN_REPLAY_COOLDOWN';
             detailsMsg = 'Beacon Token Cooldown: This 30-second Bluetooth verification token was already registered. Please wait 10-15 seconds for your ESP32 board to broadcast the next token slot, then tap Retry.';
@@ -449,8 +451,8 @@ const verifyLocationHandler = async (req, res) => {
       ? ['TURN_LEFT', 'TURN_RIGHT', 'NOD_DOWN'][Math.floor(Math.random() * 3)]
       : 'HOLD_STILL';
 
-    const detectedBeaconId = ble_proof?.rawAnchorId || ble_proof?.beaconPublicId || (ble_proof?.compactVerified ? ble_proof.rawAnchorId : null) || null;
-    const detectedBleToken = typeof ble_proof?.rawPayload === 'string' ? ble_proof.rawPayload : (ble_proof?.token || ble_proof?.rollingCode || null);
+    const detectedBeaconId = effectiveBleProof?.rawAnchorId || effectiveBleProof?.beaconPublicId || null;
+    const detectedBleToken = typeof effectiveBleProof?.rawPayload === 'string' ? effectiveBleProof.rawPayload : (effectiveBleProof?.token || effectiveBleProof?.rollingCode || null);
 
     await runQuery(`
       INSERT INTO attendance_challenges (
@@ -534,7 +536,7 @@ const verifyLocationHandler = async (req, res) => {
       wifiMatchStatus: evaluation.wifiMatchStatus,
       ble_time_sync_packet: bleTimeSyncPacket,
       bleTimeSyncPacket: bleTimeSyncPacket,
-      bleVerified: Boolean(ble_proof?.compactVerified || evaluation.bleMatchStatus === 'VERIFIED_BEACON_PROXIMITY' || evaluation.bleMatchStatus === 'VERIFIED_IOS_HARDWARE_ATTESTED'),
+      bleVerified: Boolean(effectiveBleProof?.compactVerified || evaluation.bleMatchStatus === 'VERIFIED_BEACON_PROXIMITY' || evaluation.bleMatchStatus === 'VERIFIED_IOS_HARDWARE_ATTESTED'),
       studentName: student.full_name,
       detectedSpoofApps: evaluation.detectedSpoofApps || [],
       detectedAppDetails: evaluation.detectedAppDetails || []
@@ -551,6 +553,9 @@ const verifyLocationHandler = async (req, res) => {
  */
 const verifyFaceHandler = async (req, res) => {
   try {
+    if (process.env.NODE_ENV !== 'test' && !req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required to verify facial attendance.' });
+    }
     // 0. Enforce real-world attendance schedule window
     const windowStatus = await getAttendanceWindowStatus();
     if (windowStatus.enforced && !windowStatus.isOpen) {
@@ -596,6 +601,9 @@ const verifyFaceHandler = async (req, res) => {
     const student = await getQuery(`SELECT * FROM students WHERE id = ?`, [challenge.student_id]);
     if (!student) {
       return res.status(404).json({ success: false, error: 'Student not found.' });
+    }
+    if (req.user && req.user.role === 'STUDENT' && req.user.username !== student.roll_number && req.user.student_id !== student.id) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Challenge token does not belong to the signed-in student.' });
     }
 
     // 3. Evaluate Layer 13: "Beyond-Location" Unfair-Means & Relays
@@ -892,6 +900,9 @@ const verifyFaceHandler = async (req, res) => {
  */
 const offlineSyncHandler = async (req, res) => {
   try {
+    if (process.env.NODE_ENV !== 'test' && !req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required to sync offline attendance.' });
+    }
     const live_photo = req.body.live_photo || req.body.frame_base64;
     const {
       student_id,
@@ -928,12 +939,16 @@ const offlineSyncHandler = async (req, res) => {
     if (!student) {
       return res.status(404).json({ success: false, error: 'Student not found or inactive.' });
     }
+    if (req.user && req.user.role === 'STUDENT' && req.user.username !== student.roll_number && req.user.student_id !== student.id) {
+      return res.status(403).json({ success: false, error: 'Unauthorized: Offline sync student mismatch.' });
+    }
 
     // 2. Prevent Replay Attack & Duplicate Attendance Check (IST Date)
+    // Uptime/Epoch-0 ESP32 slots (< 2020-01-01) map to today's date rather than 1970-01-01
     const originalTimestampMs = Number(slot) * 30000;
-    const offlineDate = getIstDateString(originalTimestampMs);
+    const isEpochSlot = Number.isFinite(originalTimestampMs) && originalTimestampMs >= 1577836800000;
     const today = getTodayDateString();
-    const effectiveDate = offlineDate || today;
+    const effectiveDate = isEpochSlot ? (getIstDateString(originalTimestampMs) || today) : today;
 
     // 2. Verify Cryptographic Integrity: Image Hash & Hardware HMAC Signature First
     const sigResult = await bleBeaconService.verifyOfflineHardwareSignature({
@@ -977,7 +992,8 @@ const offlineSyncHandler = async (req, res) => {
     }
 
     // 4. Curfew Schedule Window Verification (Bound to slot timestamp in IST)
-    const slotDate = new Date(originalTimestampMs);
+    const slotTimestampMs = isEpochSlot ? originalTimestampMs : Date.now();
+    const slotDate = new Date(slotTimestampMs);
     const slotTime24 = slotDate.toLocaleTimeString('en-GB', {
       timeZone: 'Asia/Kolkata',
       hour12: false,

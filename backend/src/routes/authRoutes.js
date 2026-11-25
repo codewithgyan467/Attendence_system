@@ -808,7 +808,18 @@ router.post('/forgot-password/reset', authLimiter, async (req, res) => {
         LIMIT 1
       `, [targetIdentifier, targetIdentifier]);
 
-      if (!otpRow || otpRow.otp_code !== cleanOtp) {
+      if (!otpRow) {
+        return res.status(400).json({ success: false, error: 'Invalid or expired OTP code.' });
+      }
+      if (otpRow.attempts >= 5) {
+        await runQuery(`UPDATE password_reset_otps SET is_used = 1 WHERE id = ?`, [otpRow.id]);
+        return res.status(400).json({
+          success: false,
+          error: 'Too many incorrect attempts. This OTP has been invalidated for security. Please request a new one.'
+        });
+      }
+      await runQuery(`UPDATE password_reset_otps SET attempts = attempts + 1 WHERE id = ?`, [otpRow.id]);
+      if (otpRow.otp_code !== cleanOtp) {
         return res.status(400).json({ success: false, error: 'Invalid or expired OTP code.' });
       }
       otpRecordId = otpRow.id;
@@ -1461,7 +1472,8 @@ router.post('/google-login', authLimiter, async (req, res) => {
     let googleData = null;
 
     if (credential) {
-      if (typeof credential === 'string' && (credential.startsWith('demo:') || credential.startsWith('simulated:'))) {
+      const isDevOrTest = process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development';
+      if (isDevOrTest && typeof credential === 'string' && (credential.startsWith('demo:') || credential.startsWith('simulated:'))) {
         const demoEmail = credential.split(':')[1];
         googleData = {
           email: demoEmail,
